@@ -180,10 +180,12 @@ function Page() {
               <Label>Nama Pelanggan *</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
             </div>
-            <div className="space-y-1">
-              <Label>No. HP</Label>
-              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
-            </div>
+            {showPhone && (
+              <div className="space-y-1">
+                <Label>No. HP</Label>
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>No. Resi</Label>
               <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Nomor resi pengiriman" />
