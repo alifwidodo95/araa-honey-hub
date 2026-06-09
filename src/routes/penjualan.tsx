@@ -148,14 +148,20 @@ function Page() {
               <Button size="sm" variant="outline" onClick={addItem}><Plus className="h-3 w-3 mr-1" /> Tambah</Button>
             </div>
             <Table>
-              <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead>Qty</TableHead><TableHead>Harga Satuan</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead>Jenis Madu</TableHead><TableHead>Qty</TableHead><TableHead>Harga Satuan</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
               <TableBody>
                 {items.map((it, i) => (
                   <TableRow key={i}>
                     <TableCell>
                       <Select value={it.size_id} onValueChange={(v) => updateItem(i, { size_id: v })}>
-                        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                         <SelectContent>{(sizes ?? []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Select value={it.honey_type} onValueChange={(v) => updateItem(i, { honey_type: v })}>
+                        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                        <SelectContent>{HONEY_TYPES.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
                       </Select>
                     </TableCell>
                     <TableCell><Input type="number" min={1} className="w-20" value={it.qty} onChange={(e) => updateItem(i, { qty: +e.target.value })} /></TableCell>
@@ -164,7 +170,7 @@ function Page() {
                     <TableCell><Button size="icon" variant="ghost" onClick={() => removeItem(i)}><Trash2 className="h-4 w-4" /></Button></TableCell>
                   </TableRow>
                 ))}
-                {!items.length && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Belum ada item</TableCell></TableRow>}
+                {!items.length && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Belum ada item</TableCell></TableRow>}
               </TableBody>
             </Table>
           </div>
