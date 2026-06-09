@@ -502,6 +502,8 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          grams_per_jerigen: number | null
+          honey_type: string | null
           id: string
           jerigen_qty: number
           jerigen_remaining: number
@@ -514,6 +516,8 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          grams_per_jerigen?: number | null
+          honey_type?: string | null
           id?: string
           jerigen_qty: number
           jerigen_remaining: number
@@ -526,6 +530,8 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          grams_per_jerigen?: number | null
+          honey_type?: string | null
           id?: string
           jerigen_qty?: number
           jerigen_remaining?: number
