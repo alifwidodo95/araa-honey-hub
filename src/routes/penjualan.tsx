@@ -68,7 +68,8 @@ function Page() {
   const subtotal = useMemo(() => items.reduce((s, it) => s + it.qty * it.unit_price, 0), [items]);
   const feePct = Number(fees?.find((f: any) => f.channel === channel)?.fee_percent ?? 0);
   const mpFee = Math.round((subtotal * feePct) / 100);
-  const net = subtotal - mpFee - shipping;
+  const received = amountReceived === "" ? 0 : Number(amountReceived);
+  const net = received - shipping;
 
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
