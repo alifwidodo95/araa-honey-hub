@@ -62,14 +62,16 @@ function Page() {
       </div>
 
       <Card className="bg-honey/5 border-honey/30">
-        <CardContent className="p-5 flex justify-between items-center">
-          <div>
-            <div className="text-xs text-muted-foreground">Saldo Madu di Dandang</div>
-            <div className="text-3xl font-bold">{Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg</div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground">HPP rata-rata / kg</div>
-            <div className="text-xl font-semibold">{formatIDR(dandang?.avg_cost_per_kg)}</div>
+        <CardContent className="p-5">
+          <div className="text-xs text-muted-foreground mb-3">Saldo Madu di Dandang per Jenis</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {(dandang ?? []).map((d: any) => (
+              <div key={d.honey_type} className="p-3 rounded-lg bg-background/60 border border-honey/20">
+                <div className="text-xs text-muted-foreground">{d.honey_type}</div>
+                <div className="text-xl font-bold">{Number(d.kg_remaining ?? 0).toFixed(2)} kg</div>
+                <div className="text-[11px] text-muted-foreground mt-1">HPP {formatIDR(d.avg_cost_per_kg)}/kg</div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
