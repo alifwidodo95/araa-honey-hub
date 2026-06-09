@@ -28,6 +28,7 @@ function Page() {
     setSubmitting(true);
     const { error } = await supabase.from("raw_material_lots").insert({
       ...form,
+      kg_per_jerigen: 50,
       jerigen_remaining: form.jerigen_qty,
     });
     setSubmitting(false);
