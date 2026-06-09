@@ -114,7 +114,12 @@ function AuthPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="reg-password">Kata Sandi</Label>
-                  <Input id="reg-password" type="password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+                  <div className="relative">
+                    <Input id="reg-password" type={showPassword ? "text" : "password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className="pr-10" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <Button type="submit" disabled={submitting} className="w-full">
                   {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
