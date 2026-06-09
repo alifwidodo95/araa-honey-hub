@@ -101,7 +101,7 @@ function Page() {
         <CardHeader><CardTitle>Riwayat Pindah Wadah</CardTitle></CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Supplier</TableHead><TableHead>Jerigen</TableHead><TableHead>Kg</TableHead><TableHead>HPP/kg</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Supplier</TableHead><TableHead>Jerigen</TableHead><TableHead>Kg</TableHead><TableHead>HPP/kg</TableHead><TableHead></TableHead></TableRow></TableHeader>
             <TableBody>
               {(transfers ?? []).map((t: any) => (
                 <TableRow key={t.id}>
@@ -110,9 +110,10 @@ function Page() {
                   <TableCell>{t.jerigen_opened}</TableCell>
                   <TableCell>{Number(t.kg_added).toFixed(2)}</TableCell>
                   <TableCell>{formatIDR(t.cost_per_kg)}</TableCell>
+                  <TableCell><Button size="icon" variant="ghost" onClick={() => handleDelete(t.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                 </TableRow>
               ))}
-              {!transfers?.length && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Belum ada</TableCell></TableRow>}
+              {!transfers?.length && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Belum ada</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
