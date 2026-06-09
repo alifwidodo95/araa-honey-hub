@@ -672,6 +672,10 @@ export type Database = {
             Returns: string
           }
       current_role_label: { Args: never; Returns: string }
+      delete_dandang_transfer: {
+        Args: { _transfer_id: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
