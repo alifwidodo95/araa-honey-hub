@@ -42,6 +42,10 @@ function Page() {
   const [tierId, setTierId] = useState<string>("");
   const [shipping, setShipping] = useState(0);
   const [note, setNote] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [items, setItems] = useState<{ size_id: string; qty: number; unit_price: number }[]>([]);
 
   const priceFor = (size_id: string) => {
@@ -68,6 +72,7 @@ function Page() {
 
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
+    if (!customerName.trim()) return toast.error("Nama pelanggan wajib diisi");
     if (!items.length) return toast.error("Tambahkan item pesanan");
     if (channel === "reseller" && !tierId) return toast.error("Pilih tier reseller");
     setSubmitting(true);
@@ -77,12 +82,17 @@ function Page() {
       _items: items as any,
       _shipping_fee: channel === "whatsapp" ? shipping : 0,
       _customer_note: (note || null) as any,
+      _customer_name: customerName.trim(),
+      _customer_phone: (customerPhone.trim() || null) as any,
+      _tracking_number: (trackingNumber.trim() || null) as any,
+      _amount_received: (amountReceived === "" ? null : Number(amountReceived)) as any,
     });
     setSubmitting(false);
     if (error) toast.error(error.message);
     else {
       toast.success("Pesanan diproses & stok dipotong otomatis");
       setItems([]); setShipping(0); setNote("");
+      setCustomerName(""); setCustomerPhone(""); setTrackingNumber(""); setAmountReceived("");
       qc.invalidateQueries();
     }
   };
@@ -155,6 +165,25 @@ function Page() {
             </Table>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Nama Pelanggan *</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
+            </div>
+            <div className="space-y-1">
+              <Label>No. HP</Label>
+              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
+            </div>
+            <div className="space-y-1">
+              <Label>No. Resi</Label>
+              <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Nomor resi pengiriman" />
+            </div>
+            <div className="space-y-1">
+              <Label>Nominal Uang Diterima (Rp)</Label>
+              <Input type="number" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value === "" ? "" : +e.target.value)} placeholder="Contoh: 150000" />
+            </div>
+          </div>
+
           <div className="space-y-1"><Label>Catatan</Label><Input value={note} onChange={(e) => setNote(e.target.value)} /></div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-muted rounded-lg text-sm">
@@ -172,18 +201,20 @@ function Page() {
         <CardHeader><CardTitle>Pesanan Terbaru</CardTitle></CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Saluran</TableHead><TableHead>Subtotal</TableHead><TableHead>Fee</TableHead><TableHead>Bersih</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Pelanggan</TableHead><TableHead>No. HP</TableHead><TableHead>Saluran</TableHead><TableHead>Resi</TableHead><TableHead>Subtotal</TableHead><TableHead>Bersih</TableHead></TableRow></TableHeader>
             <TableBody>
               {(orders ?? []).map((o: any) => (
                 <TableRow key={o.id}>
                   <TableCell>{new Date(o.created_at).toLocaleString("id-ID")}</TableCell>
+                  <TableCell>{o.customer_name ?? "-"}</TableCell>
+                  <TableCell>{o.customer_phone ?? "-"}</TableCell>
                   <TableCell className="capitalize">{o.channel}</TableCell>
+                  <TableCell className="font-mono text-xs">{o.tracking_number ?? "-"}</TableCell>
                   <TableCell>{formatIDR(o.subtotal_gross)}</TableCell>
-                  <TableCell>{formatIDR(Number(o.marketplace_fee) + Number(o.shipping_fee))}</TableCell>
                   <TableCell className="font-medium">{formatIDR(o.net_revenue)}</TableCell>
                 </TableRow>
               ))}
-              {!orders?.length && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
+              {!orders?.length && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
