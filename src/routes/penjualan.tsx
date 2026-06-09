@@ -42,6 +42,10 @@ function Page() {
   const [tierId, setTierId] = useState<string>("");
   const [shipping, setShipping] = useState(0);
   const [note, setNote] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [items, setItems] = useState<{ size_id: string; qty: number; unit_price: number }[]>([]);
 
   const priceFor = (size_id: string) => {
