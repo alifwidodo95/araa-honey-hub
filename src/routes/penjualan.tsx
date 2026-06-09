@@ -165,6 +165,25 @@ function Page() {
             </Table>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label>Nama Pelanggan *</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
+            </div>
+            <div className="space-y-1">
+              <Label>No. HP</Label>
+              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
+            </div>
+            <div className="space-y-1">
+              <Label>No. Resi</Label>
+              <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Nomor resi pengiriman" />
+            </div>
+            <div className="space-y-1">
+              <Label>Nominal Uang Diterima (Rp)</Label>
+              <Input type="number" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value === "" ? "" : +e.target.value)} placeholder="Contoh: 150000" />
+            </div>
+          </div>
+
           <div className="space-y-1"><Label>Catatan</Label><Input value={note} onChange={(e) => setNote(e.target.value)} /></div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-muted rounded-lg text-sm">
