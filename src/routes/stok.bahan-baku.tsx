@@ -52,8 +52,7 @@ function Page() {
           <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="md:col-span-2 space-y-1"><Label>Supplier / Peternak</Label><Input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} /></div>
             <div className="space-y-1"><Label>Jumlah Jerigen</Label><Input type="number" min={1} value={form.jerigen_qty} onChange={(e) => setForm({ ...form, jerigen_qty: +e.target.value })} required /></div>
-            <div class
-="space-y-1"><Label>Kg / Jerigen</Label><Input type="number" value={50} readOnly disabled /></div>
+            <div className="space-y-1"><Label>Kg / Jerigen</Label><Input type="number" value={50} readOnly disabled /></div>
             <div className="space-y-1"><Label>Harga Total (Rp)</Label><Input type="number" value={form.price_total} onChange={(e) => setForm({ ...form, price_total: +e.target.value })} required /></div>
             <div className="md:col-span-4 space-y-1"><Label>Catatan</Label><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
             <div className="md:col-span-1 flex items-end"><Button type="submit" disabled={submitting} className="w-full">Simpan Lot</Button></div>
