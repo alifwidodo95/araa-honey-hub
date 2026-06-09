@@ -201,18 +201,20 @@ function Page() {
         <CardHeader><CardTitle>Pesanan Terbaru</CardTitle></CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Saluran</TableHead><TableHead>Subtotal</TableHead><TableHead>Fee</TableHead><TableHead>Bersih</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Pelanggan</TableHead><TableHead>No. HP</TableHead><TableHead>Saluran</TableHead><TableHead>Resi</TableHead><TableHead>Subtotal</TableHead><TableHead>Bersih</TableHead></TableRow></TableHeader>
             <TableBody>
               {(orders ?? []).map((o: any) => (
                 <TableRow key={o.id}>
                   <TableCell>{new Date(o.created_at).toLocaleString("id-ID")}</TableCell>
+                  <TableCell>{o.customer_name ?? "-"}</TableCell>
+                  <TableCell>{o.customer_phone ?? "-"}</TableCell>
                   <TableCell className="capitalize">{o.channel}</TableCell>
+                  <TableCell className="font-mono text-xs">{o.tracking_number ?? "-"}</TableCell>
                   <TableCell>{formatIDR(o.subtotal_gross)}</TableCell>
-                  <TableCell>{formatIDR(Number(o.marketplace_fee) + Number(o.shipping_fee))}</TableCell>
                   <TableCell className="font-medium">{formatIDR(o.net_revenue)}</TableCell>
                 </TableRow>
               ))}
-              {!orders?.length && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
+              {!orders?.length && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
