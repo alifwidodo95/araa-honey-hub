@@ -23,7 +23,7 @@ function Page() {
   });
   const { data: dandang } = useQuery({
     queryKey: ["dandang"],
-    queryFn: async () => (await supabase.from("dandang_balance").select("*").single()).data,
+    queryFn: async () => (await supabase.from("dandang_balance").select("*").order("honey_type")).data ?? [],
   });
   const { data: transfers } = useQuery({
     queryKey: ["transfers"],
