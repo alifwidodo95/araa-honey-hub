@@ -46,7 +46,10 @@ function Page() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [amountReceived, setAmountReceived] = useState<number | "">("");
-  const [items, setItems] = useState<{ size_id: string; qty: number; unit_price: number }[]>([]);
+  const [items, setItems] = useState<{ size_id: string; qty: number; unit_price: number; honey_type: string }[]>([]);
+
+  const HONEY_TYPES = ["Akasia", "Randu", "Karet", "Lainnya"];
+  const showPhone = channel === "whatsapp" || channel === "reseller" || channel === "offline";
 
   const priceFor = (size_id: string) => {
     if (channel === "reseller" && tierId) {
