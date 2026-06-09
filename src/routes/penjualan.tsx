@@ -73,10 +73,10 @@ function Page() {
     setSubmitting(true);
     const { error } = await supabase.rpc("create_order", {
       _channel: channel,
-      _tier_id: channel === "reseller" ? tierId : null,
+      _tier_id: (channel === "reseller" ? tierId : null) as any,
       _items: items as any,
       _shipping_fee: channel === "whatsapp" ? shipping : 0,
-      _customer_note: note || null,
+      _customer_note: (note || null) as any,
     });
     setSubmitting(false);
     if (error) toast.error(error.message);
