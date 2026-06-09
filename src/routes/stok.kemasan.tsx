@@ -30,7 +30,7 @@ function Page() {
     setSubmitting(true);
     const { error } = await supabase.rpc("record_packaging_purchase", {
       _item_id: form.item_id, _qty: form.qty, _total: form.total_price,
-      _date: new Date().toISOString().slice(0, 10), _note: form.notes || null,
+      _date: new Date().toISOString().slice(0, 10), _note: form.notes || "",
     });
     setSubmitting(false);
     if (error) toast.error(error.message);

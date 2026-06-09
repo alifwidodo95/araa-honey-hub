@@ -9,38 +9,240 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PenjualanRouteImport } from './routes/penjualan'
+import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pribadi'
+import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
+import { Route as KeuanganRouteImport } from './routes/keuangan'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StokPindahWadahRouteImport } from './routes/stok.pindah-wadah'
+import { Route as StokKemasanRouteImport } from './routes/stok.kemasan'
+import { Route as StokBahanBakuRouteImport } from './routes/stok.bahan-baku'
+import { Route as PengaturanStafRouteImport } from './routes/pengaturan.staf'
+import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumpsum'
+import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 
+const PenjualanRoute = PenjualanRouteImport.update({
+  id: '/penjualan',
+  path: '/penjualan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PengeluaranPribadiRoute = PengeluaranPribadiRouteImport.update({
+  id: '/pengeluaran-pribadi',
+  path: '/pengeluaran-pribadi',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PengeluaranRoute = PengeluaranRouteImport.update({
+  id: '/pengeluaran',
+  path: '/pengeluaran',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KeuanganRoute = KeuanganRouteImport.update({
+  id: '/keuangan',
+  path: '/keuangan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StokPindahWadahRoute = StokPindahWadahRouteImport.update({
+  id: '/stok/pindah-wadah',
+  path: '/stok/pindah-wadah',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StokKemasanRoute = StokKemasanRouteImport.update({
+  id: '/stok/kemasan',
+  path: '/stok/kemasan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StokBahanBakuRoute = StokBahanBakuRouteImport.update({
+  id: '/stok/bahan-baku',
+  path: '/stok/bahan-baku',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PengaturanStafRoute = PengaturanStafRouteImport.update({
+  id: '/pengaturan/staf',
+  path: '/pengaturan/staf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PengaturanLumpsumRoute = PengaturanLumpsumRouteImport.update({
+  id: '/pengaturan/lumpsum',
+  path: '/pengaturan/lumpsum',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PengaturanHargaRoute = PengaturanHargaRouteImport.update({
+  id: '/pengaturan/harga',
+  path: '/pengaturan/harga',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/keuangan': typeof KeuanganRoute
+  '/pengeluaran': typeof PengeluaranRoute
+  '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
+  '/penjualan': typeof PenjualanRoute
+  '/pengaturan/harga': typeof PengaturanHargaRoute
+  '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
+  '/pengaturan/staf': typeof PengaturanStafRoute
+  '/stok/bahan-baku': typeof StokBahanBakuRoute
+  '/stok/kemasan': typeof StokKemasanRoute
+  '/stok/pindah-wadah': typeof StokPindahWadahRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/keuangan': typeof KeuanganRoute
+  '/pengeluaran': typeof PengeluaranRoute
+  '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
+  '/penjualan': typeof PenjualanRoute
+  '/pengaturan/harga': typeof PengaturanHargaRoute
+  '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
+  '/pengaturan/staf': typeof PengaturanStafRoute
+  '/stok/bahan-baku': typeof StokBahanBakuRoute
+  '/stok/kemasan': typeof StokKemasanRoute
+  '/stok/pindah-wadah': typeof StokPindahWadahRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/dashboard': typeof DashboardRoute
+  '/keuangan': typeof KeuanganRoute
+  '/pengeluaran': typeof PengeluaranRoute
+  '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
+  '/penjualan': typeof PenjualanRoute
+  '/pengaturan/harga': typeof PengaturanHargaRoute
+  '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
+  '/pengaturan/staf': typeof PengaturanStafRoute
+  '/stok/bahan-baku': typeof StokBahanBakuRoute
+  '/stok/kemasan': typeof StokKemasanRoute
+  '/stok/pindah-wadah': typeof StokPindahWadahRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/keuangan'
+    | '/pengeluaran'
+    | '/pengeluaran-pribadi'
+    | '/penjualan'
+    | '/pengaturan/harga'
+    | '/pengaturan/lumpsum'
+    | '/pengaturan/staf'
+    | '/stok/bahan-baku'
+    | '/stok/kemasan'
+    | '/stok/pindah-wadah'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/keuangan'
+    | '/pengeluaran'
+    | '/pengeluaran-pribadi'
+    | '/penjualan'
+    | '/pengaturan/harga'
+    | '/pengaturan/lumpsum'
+    | '/pengaturan/staf'
+    | '/stok/bahan-baku'
+    | '/stok/kemasan'
+    | '/stok/pindah-wadah'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/keuangan'
+    | '/pengeluaran'
+    | '/pengeluaran-pribadi'
+    | '/penjualan'
+    | '/pengaturan/harga'
+    | '/pengaturan/lumpsum'
+    | '/pengaturan/staf'
+    | '/stok/bahan-baku'
+    | '/stok/kemasan'
+    | '/stok/pindah-wadah'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
+  DashboardRoute: typeof DashboardRoute
+  KeuanganRoute: typeof KeuanganRoute
+  PengeluaranRoute: typeof PengeluaranRoute
+  PengeluaranPribadiRoute: typeof PengeluaranPribadiRoute
+  PenjualanRoute: typeof PenjualanRoute
+  PengaturanHargaRoute: typeof PengaturanHargaRoute
+  PengaturanLumpsumRoute: typeof PengaturanLumpsumRoute
+  PengaturanStafRoute: typeof PengaturanStafRoute
+  StokBahanBakuRoute: typeof StokBahanBakuRoute
+  StokKemasanRoute: typeof StokKemasanRoute
+  StokPindahWadahRoute: typeof StokPindahWadahRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/penjualan': {
+      id: '/penjualan'
+      path: '/penjualan'
+      fullPath: '/penjualan'
+      preLoaderRoute: typeof PenjualanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pengeluaran-pribadi': {
+      id: '/pengeluaran-pribadi'
+      path: '/pengeluaran-pribadi'
+      fullPath: '/pengeluaran-pribadi'
+      preLoaderRoute: typeof PengeluaranPribadiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pengeluaran': {
+      id: '/pengeluaran'
+      path: '/pengeluaran'
+      fullPath: '/pengeluaran'
+      preLoaderRoute: typeof PengeluaranRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/keuangan': {
+      id: '/keuangan'
+      path: '/keuangan'
+      fullPath: '/keuangan'
+      preLoaderRoute: typeof KeuanganRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +250,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/stok/pindah-wadah': {
+      id: '/stok/pindah-wadah'
+      path: '/stok/pindah-wadah'
+      fullPath: '/stok/pindah-wadah'
+      preLoaderRoute: typeof StokPindahWadahRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stok/kemasan': {
+      id: '/stok/kemasan'
+      path: '/stok/kemasan'
+      fullPath: '/stok/kemasan'
+      preLoaderRoute: typeof StokKemasanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stok/bahan-baku': {
+      id: '/stok/bahan-baku'
+      path: '/stok/bahan-baku'
+      fullPath: '/stok/bahan-baku'
+      preLoaderRoute: typeof StokBahanBakuRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pengaturan/staf': {
+      id: '/pengaturan/staf'
+      path: '/pengaturan/staf'
+      fullPath: '/pengaturan/staf'
+      preLoaderRoute: typeof PengaturanStafRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pengaturan/lumpsum': {
+      id: '/pengaturan/lumpsum'
+      path: '/pengaturan/lumpsum'
+      fullPath: '/pengaturan/lumpsum'
+      preLoaderRoute: typeof PengaturanLumpsumRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pengaturan/harga': {
+      id: '/pengaturan/harga'
+      path: '/pengaturan/harga'
+      fullPath: '/pengaturan/harga'
+      preLoaderRoute: typeof PengaturanHargaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
+  DashboardRoute: DashboardRoute,
+  KeuanganRoute: KeuanganRoute,
+  PengeluaranRoute: PengeluaranRoute,
+  PengeluaranPribadiRoute: PengeluaranPribadiRoute,
+  PenjualanRoute: PenjualanRoute,
+  PengaturanHargaRoute: PengaturanHargaRoute,
+  PengaturanLumpsumRoute: PengaturanLumpsumRoute,
+  PengaturanStafRoute: PengaturanStafRoute,
+  StokBahanBakuRoute: StokBahanBakuRoute,
+  StokKemasanRoute: StokKemasanRoute,
+  StokPindahWadahRoute: StokPindahWadahRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -52,9 +52,9 @@ function Page() {
   };
 
   const addItem = () => {
-    const firstSize = sizes?.[0];
-    if (!firstSize) return;
-    setItems([...items, { size_id: firstSize.id, qty: 1, unit_price: priceFor(firstSize.id) }]);
+    const firstSize: any = sizes?.[0];
+    if (!firstSize?.id) return;
+    setItems([...items, { size_id: firstSize.id as string, qty: 1, unit_price: priceFor(firstSize.id) }]);
   };
   const updateItem = (i: number, patch: Partial<{ size_id: string; qty: number; unit_price: number }>) => {
     setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch, ...(patch.size_id ? { unit_price: priceFor(patch.size_id) } : {}) } : it)));
