@@ -72,6 +72,7 @@ function Page() {
 
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
+    if (!customerName.trim()) return toast.error("Nama pelanggan wajib diisi");
     if (!items.length) return toast.error("Tambahkan item pesanan");
     if (channel === "reseller" && !tierId) return toast.error("Pilih tier reseller");
     setSubmitting(true);
@@ -81,12 +82,17 @@ function Page() {
       _items: items as any,
       _shipping_fee: channel === "whatsapp" ? shipping : 0,
       _customer_note: (note || null) as any,
+      _customer_name: customerName.trim(),
+      _customer_phone: (customerPhone.trim() || null) as any,
+      _tracking_number: (trackingNumber.trim() || null) as any,
+      _amount_received: (amountReceived === "" ? null : Number(amountReceived)) as any,
     });
     setSubmitting(false);
     if (error) toast.error(error.message);
     else {
       toast.success("Pesanan diproses & stok dipotong otomatis");
       setItems([]); setShipping(0); setNote("");
+      setCustomerName(""); setCustomerPhone(""); setTrackingNumber(""); setAmountReceived("");
       qc.invalidateQueries();
     }
   };
