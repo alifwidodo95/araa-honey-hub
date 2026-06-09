@@ -294,9 +294,11 @@ export type Database = {
           marketplace_fee: number
           net_revenue: number
           reseller_tier_id: string | null
+          resi_shared_via_wa: boolean | null
           shipping_fee: number
           subtotal_gross: number
           tracking_number: string | null
+          wa_share_error: string | null
         }
         Insert: {
           amount_received?: number | null
@@ -312,9 +314,11 @@ export type Database = {
           marketplace_fee?: number
           net_revenue?: number
           reseller_tier_id?: string | null
+          resi_shared_via_wa?: boolean | null
           shipping_fee?: number
           subtotal_gross?: number
           tracking_number?: string | null
+          wa_share_error?: string | null
         }
         Update: {
           amount_received?: number | null
@@ -330,9 +334,11 @@ export type Database = {
           marketplace_fee?: number
           net_revenue?: number
           reseller_tier_id?: string | null
+          resi_shared_via_wa?: boolean | null
           shipping_fee?: number
           subtotal_gross?: number
           tracking_number?: string | null
+          wa_share_error?: string | null
         }
         Relationships: [
           {
