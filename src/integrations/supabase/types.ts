@@ -275,11 +275,14 @@ export type Database = {
       }
       orders: {
         Row: {
+          amount_received: number | null
           channel: Database["public"]["Enums"]["sales_channel"]
           cogs_total: number
           created_at: string
           created_by: string | null
+          customer_name: string | null
           customer_note: string | null
+          customer_phone: string | null
           honey_kg_used: number
           id: string
           marketplace_fee: number
@@ -287,13 +290,17 @@ export type Database = {
           reseller_tier_id: string | null
           shipping_fee: number
           subtotal_gross: number
+          tracking_number: string | null
         }
         Insert: {
+          amount_received?: number | null
           channel: Database["public"]["Enums"]["sales_channel"]
           cogs_total?: number
           created_at?: string
           created_by?: string | null
+          customer_name?: string | null
           customer_note?: string | null
+          customer_phone?: string | null
           honey_kg_used?: number
           id?: string
           marketplace_fee?: number
@@ -301,13 +308,17 @@ export type Database = {
           reseller_tier_id?: string | null
           shipping_fee?: number
           subtotal_gross?: number
+          tracking_number?: string | null
         }
         Update: {
+          amount_received?: number | null
           channel?: Database["public"]["Enums"]["sales_channel"]
           cogs_total?: number
           created_at?: string
           created_by?: string | null
+          customer_name?: string | null
           customer_note?: string | null
+          customer_phone?: string | null
           honey_kg_used?: number
           id?: string
           marketplace_fee?: number
@@ -315,6 +326,7 @@ export type Database = {
           reseller_tier_id?: string | null
           shipping_fee?: number
           subtotal_gross?: number
+          tracking_number?: string | null
         }
         Relationships: [
           {
@@ -634,16 +646,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      create_order: {
-        Args: {
-          _channel: Database["public"]["Enums"]["sales_channel"]
-          _customer_note: string
-          _items: Json
-          _shipping_fee: number
-          _tier_id: string
-        }
-        Returns: string
-      }
+      create_order:
+        | {
+            Args: {
+              _channel: Database["public"]["Enums"]["sales_channel"]
+              _customer_note: string
+              _items: Json
+              _shipping_fee: number
+              _tier_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              _amount_received?: number
+              _channel: Database["public"]["Enums"]["sales_channel"]
+              _customer_name?: string
+              _customer_note: string
+              _customer_phone?: string
+              _items: Json
+              _shipping_fee: number
+              _tier_id: string
+              _tracking_number?: string
+            }
+            Returns: string
+          }
       current_role_label: { Args: never; Returns: string }
       has_role: {
         Args: {
