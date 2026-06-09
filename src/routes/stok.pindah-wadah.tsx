@@ -47,6 +47,13 @@ function Page() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Hapus catatan pindah wadah ini? Stok jerigen akan dikembalikan & saldo dandang dikurangi.")) return;
+    const { error } = await supabase.rpc("delete_dandang_transfer" as any, { _transfer_id: id });
+    if (error) toast.error(error.message);
+    else { toast.success("Catatan dihapus"); qc.invalidateQueries(); }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
