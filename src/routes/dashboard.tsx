@@ -15,7 +15,11 @@ function DashboardPage() {
 
   const { data: dandang } = useQuery({
     queryKey: ["dandang"],
-    queryFn: async () => (await supabase.from("dandang_balance").select("*").single()).data,
+    queryFn: async () => {
+      const rows = (await supabase.from("dandang_balance").select("*")).data ?? [];
+      const total = rows.reduce((s: number, r: any) => s + Number(r.kg_remaining ?? 0), 0);
+      return { kg_remaining: total, rows };
+    },
   });
 
   const { data: ordersToday } = useQuery({
