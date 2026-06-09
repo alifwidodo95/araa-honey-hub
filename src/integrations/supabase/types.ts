@@ -35,18 +35,21 @@ export type Database = {
       dandang_balance: {
         Row: {
           avg_cost_per_kg: number
+          honey_type: string
           id: number
           kg_remaining: number
           updated_at: string
         }
         Insert: {
           avg_cost_per_kg?: number
+          honey_type: string
           id?: number
           kg_remaining?: number
           updated_at?: string
         }
         Update: {
           avg_cost_per_kg?: number
+          honey_type?: string
           id?: number
           kg_remaining?: number
           updated_at?: string
@@ -229,6 +232,7 @@ export type Database = {
         Row: {
           cogs_line: number
           honey_kg_used: number
+          honey_type: string | null
           id: string
           line_total: number
           order_id: string
@@ -239,6 +243,7 @@ export type Database = {
         Insert: {
           cogs_line?: number
           honey_kg_used: number
+          honey_type?: string | null
           id?: string
           line_total: number
           order_id: string
@@ -249,6 +254,7 @@ export type Database = {
         Update: {
           cogs_line?: number
           honey_kg_used?: number
+          honey_type?: string | null
           id?: string
           line_total?: number
           order_id?: string

@@ -46,7 +46,10 @@ function Page() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [amountReceived, setAmountReceived] = useState<number | "">("");
-  const [items, setItems] = useState<{ size_id: string; qty: number; unit_price: number }[]>([]);
+  const [items, setItems] = useState<{ size_id: string; qty: number; unit_price: number; honey_type: string }[]>([]);
+
+  const HONEY_TYPES = ["Akasia", "Randu", "Karet", "Lainnya"];
+  const showPhone = channel === "whatsapp" || channel === "reseller" || channel === "offline";
 
   const priceFor = (size_id: string) => {
     if (channel === "reseller" && tierId) {
@@ -58,9 +61,9 @@ function Page() {
   const addItem = () => {
     const firstSize: any = sizes?.[0];
     if (!firstSize?.id) return;
-    setItems([...items, { size_id: firstSize.id as string, qty: 1, unit_price: priceFor(firstSize.id) }]);
+    setItems([...items, { size_id: firstSize.id as string, qty: 1, unit_price: priceFor(firstSize.id), honey_type: "Akasia" }]);
   };
-  const updateItem = (i: number, patch: Partial<{ size_id: string; qty: number; unit_price: number }>) => {
+  const updateItem = (i: number, patch: Partial<{ size_id: string; qty: number; unit_price: number; honey_type: string }>) => {
     setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch, ...(patch.size_id ? { unit_price: priceFor(patch.size_id) } : {}) } : it)));
   };
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
@@ -145,14 +148,20 @@ function Page() {
               <Button size="sm" variant="outline" onClick={addItem}><Plus className="h-3 w-3 mr-1" /> Tambah</Button>
             </div>
             <Table>
-              <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead>Qty</TableHead><TableHead>Harga Satuan</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead>Jenis Madu</TableHead><TableHead>Qty</TableHead><TableHead>Harga Satuan</TableHead><TableHead>Subtotal</TableHead><TableHead></TableHead></TableRow></TableHeader>
               <TableBody>
                 {items.map((it, i) => (
                   <TableRow key={i}>
                     <TableCell>
                       <Select value={it.size_id} onValueChange={(v) => updateItem(i, { size_id: v })}>
-                        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                         <SelectContent>{(sizes ?? []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Select value={it.honey_type} onValueChange={(v) => updateItem(i, { honey_type: v })}>
+                        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                        <SelectContent>{HONEY_TYPES.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
                       </Select>
                     </TableCell>
                     <TableCell><Input type="number" min={1} className="w-20" value={it.qty} onChange={(e) => updateItem(i, { qty: +e.target.value })} /></TableCell>
@@ -161,7 +170,7 @@ function Page() {
                     <TableCell><Button size="icon" variant="ghost" onClick={() => removeItem(i)}><Trash2 className="h-4 w-4" /></Button></TableCell>
                   </TableRow>
                 ))}
-                {!items.length && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Belum ada item</TableCell></TableRow>}
+                {!items.length && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Belum ada item</TableCell></TableRow>}
               </TableBody>
             </Table>
           </div>
@@ -171,10 +180,12 @@ function Page() {
               <Label>Nama Pelanggan *</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
             </div>
-            <div className="space-y-1">
-              <Label>No. HP</Label>
-              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
-            </div>
+            {showPhone && (
+              <div className="space-y-1">
+                <Label>No. HP</Label>
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>No. Resi</Label>
               <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Nomor resi pengiriman" />
