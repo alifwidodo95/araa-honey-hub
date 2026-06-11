@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { formatIDR } from "@/lib/theme";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
 
@@ -13,8 +14,21 @@ function DashboardPage() {
   const { role } = useAuth();
   const today = new Date().toISOString().slice(0, 10);
 
+  const { data: alerts } = useQuery({
+    queryKey: ["unresolved-alerts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stock_alerts")
+        .select("*")
+        .eq("resolved", false);
+      if (error) throw error;
+      return data ?? [];
+    },
+    refetchInterval: 15000,
+  });
+
   const { data: dandang } = useQuery({
-    queryKey: ["dandang"],
+    queryKey: ["dandang-summary"],
     queryFn: async () => {
       const rows = (await supabase.from("dandang_balance").select("*")).data ?? [];
       const total = rows.reduce((s: number, r: any) => s + Number(r.kg_remaining ?? 0), 0);
@@ -25,14 +39,14 @@ function DashboardPage() {
   const { data: ordersToday } = useQuery({
     queryKey: ["orders-today"],
     queryFn: async () =>
-      (await supabase.from("orders").select("subtotal_gross,net_revenue,created_at").gte("created_at", `${today}T00:00:00Z`)).data ?? [],
+      (await supabase.from("orders").select("subtotal_gross,net_revenue,created_at").eq("returned", false).gte("created_at", `${today}T00:00:00Z`)).data ?? [],
   });
 
   const { data: salesTrend } = useQuery({
     queryKey: ["sales-trend"],
     queryFn: async () => {
       const since = new Date(Date.now() - 14 * 86400000).toISOString();
-      const { data } = await supabase.from("orders").select("created_at,net_revenue,cogs_total").gte("created_at", since);
+      const { data } = await supabase.from("orders").select("created_at,net_revenue,cogs_total").eq("returned", false).gte("created_at", since);
       const map: Record<string, { date: string; omzet: number; laba: number }> = {};
       (data ?? []).forEach((o: any) => {
         const d = o.created_at.slice(0, 10);
@@ -53,6 +67,30 @@ function DashboardPage() {
         <h2 className="text-2xl font-semibold">Selamat datang 👋</h2>
         <p className="text-sm text-muted-foreground">Ringkasan operasional Araa Honey hari ini</p>
       </div>
+
+      {alerts && alerts.length > 0 && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-red-500/15 via-orange-500/10 to-red-500/5 border border-red-500/20 text-foreground shadow-xs">
+          <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-semibold mb-2">
+            <AlertTriangle className="h-5 w-5 animate-pulse" />
+            <span>Peringatan: Stok Menipis!</span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Beberapa item berada di bawah batas minimal. Harap segera lakukan restok/pembelian.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+            {alerts.map((alert: any) => (
+              <div key={alert.id} className="text-xs flex items-center justify-between p-2 rounded-lg bg-card border border-destructive/20 shadow-xs">
+                <span className="font-medium truncate max-w-[150px]" title={alert.item_name}>
+                  {alert.item_name}
+                </span>
+                <span className="text-destructive font-bold ml-2">
+                  {Number(alert.current_stock).toFixed(1)} / {Number(alert.min_stock).toFixed(1)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard label="Saldo Madu Dandang" value={`${Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg`} />

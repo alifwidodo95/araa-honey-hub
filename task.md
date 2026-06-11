@@ -1,0 +1,58 @@
+# Task List: Migrasi Database ke Supabase Pribadi
+
+- [x] Buat file `migrate_schema.sql` gabungan dari seluruh migration files
+- [x] Ekstrak dan migrasikan data secara otomatis dari database lama ke database baru
+- [x] Masukkan schema dan data ke database Supabase pribadi baru
+- [x] Perbarui `.env` dengan kredensial database Supabase pribadi baru
+- [x] Restart dev server dan verifikasi aplikasi berjalan normal dengan database baru
+- [x] Implementasi dan verifikasi filter rentang tanggal (Hari Ini, 1 Minggu, 1 Bulan, 3 Bulan, Kustom Tanggal) di halaman Keuangan
+- [x] Implementasi input jenis madu kustom secara bebas (autosinkronisasi harga & dandang) di halaman Bahan Baku
+- [x] Pembatasan antrean kirim resi otomatis WhatsApp hanya untuk pesanan saluran penjualan WhatsApp (Meta Ads)
+
+# Task List: Fitur Hapus/Undo Transaksi Retur
+
+- [x] Buat fungsi database `delete_order_return` untuk melakukan rollback stok dan pengeluaran terkait
+- [x] Tambahkan kolom Aksi dan tombol Hapus (Trash icon) pada riwayat retur di `retur.tsx`
+- [x] Implementasi dialog konfirmasi sebelum penghapusan
+- [x] Hubungkan tombol Hapus dengan RPC `delete_order_return` di Supabase
+- [x] Uji kompilasi build lokal (`npm run build`)
+- [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+
+# Task List: Pilihan Ekspedisi & Metode Pembayaran pada Input Pesanan
+
+- [x] Tambah kolom `expedition` dan `payment_method` di tabel `public.orders`
+- [x] Perbarui fungsi database `create_order` (11 argumen) untuk menyimpan nilai ekspedisi dan metode pembayaran
+- [x] Tambahkan state dan helper `detectCourier` di `penjualan.tsx`
+- [x] Tambahkan dropdown pilihan Ekspedisi dan Metode Pembayaran di form input pesanan
+- [x] Hubungkan input No. Resi dengan auto-detection courier (`SPX...` -> SPX, `ID...`/`IDE...` -> ID EXPRESS)
+- [x] Tampilkan detail metode pembayaran dan ekspedisi di bawah nama channel di tabel riwayat pesanan
+- [x] Tambahkan field Ekspedisi dan Metode Pembayaran di modal Edit Pesanan
+- [x] Uji kompilasi build lokal (`npm run build`)
+- [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+
+# Task List: Rekening Bank untuk Metode Pembayaran Transfer
+
+- [x] Tambah kolom `transfer_bank` di tabel `public.orders`
+- [x] Perbarui fungsi database `create_order` (12 argumen) untuk menyimpan nilai bank transfer
+- [x] Tambahkan state `transferBank` and `editTransferBank` di `penjualan.tsx`
+- [x] Tambahkan dropdown pilihan Rekening Bank (BRI, BCA, MANDIRI, BNI, BSI) di form input pesanan jika metode TRANSFER dipilih
+- [x] Tampilkan detail bank transfer di samping metode pembayaran di tabel riwayat pesanan (contoh: `TRANSFER (BCA)`)
+- [x] Tambahkan field Rekening Bank di modal Edit Pesanan jika metode TRANSFER dipilih
+- [x] Uji kompilasi build lokal (`npm run build`)
+- [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+
+# Task List: Akumulasi Metode Pembayaran di Halaman Keuangan
+
+- [x] Tambahkan kalkulasi omzet kotor & jumlah pesanan untuk COD, TRANSFER, dan CASH di `keuangan.tsx`
+- [x] Tambahkan modul Card "Akumulasi Metode Pembayaran" dengan visualisasi progress bar proporsional
+- [x] Impor ikon Truck, CreditCard, dan Banknote di `keuangan.tsx`
+- [x] Pastikan data ter-update secara dinamis mengikuti filter rentang tanggal
+- [x] Uji kompilasi build lokal (`npm run build`)
+- [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+
+# Task List: Proxy WAHA & Mixed Content Fix
+
+- [x] Buat file handler API `/api/waha-proxy` di `src/routes/api.waha-proxy.ts`
+- [x] Sesuaikan call API di `src/routes/pengaturan.whatsapp.tsx` untuk menggunakan `/api/waha-proxy`
+- [x] Verifikasi hasil build lokal (`npm run build`)
+- [x] Commit dan infokan ke Big Bos untuk dideploy ke Vercel

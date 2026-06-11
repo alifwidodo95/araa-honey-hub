@@ -22,7 +22,7 @@ function Page() {
     queryFn: async () => (await supabase.from("raw_material_lots").select("*").gt("jerigen_remaining", 0).order("received_at")).data ?? [],
   });
   const { data: dandang } = useQuery({
-    queryKey: ["dandang"],
+    queryKey: ["dandang-balance"],
     queryFn: async () => (await supabase.from("dandang_balance").select("*").order("honey_type")).data ?? [],
   });
   const { data: transfers } = useQuery({
@@ -66,10 +66,36 @@ function Page() {
           <div className="text-xs text-muted-foreground mb-3">Saldo Madu di Dandang per Jenis</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {(dandang ?? []).map((d: any) => (
-              <div key={d.honey_type} className="p-3 rounded-lg bg-background/60 border border-honey/20">
-                <div className="text-xs text-muted-foreground">{d.honey_type}</div>
-                <div className="text-xl font-bold">{Number(d.kg_remaining ?? 0).toFixed(2)} kg</div>
-                <div className="text-[11px] text-muted-foreground mt-1">HPP {formatIDR(d.avg_cost_per_kg)}/kg</div>
+              <div key={d.honey_type} className="p-3 rounded-lg bg-background/60 border border-honey/20 flex flex-col justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground">{d.honey_type}</div>
+                  <div className={`text-xl font-bold ${Number(d.kg_remaining ?? 0) < Number(d.min_kg ?? 5) ? "text-destructive font-bold" : ""}`}>
+                    {Number(d.kg_remaining ?? 0).toFixed(2)} kg
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-1">HPP {formatIDR(d.avg_cost_per_kg)}/kg</div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-honey/10 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-muted-foreground">Min (kg):</span>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    defaultValue={d.min_kg ?? 5}
+                    onBlur={async (e) => {
+                      const val = Number(e.target.value);
+                      if (val === Number(d.min_kg)) return;
+                      const { error } = await supabase
+                        .from("dandang_balance")
+                        .update({ min_kg: val } as any)
+                        .eq("id", d.id);
+                      if (error) toast.error("Gagal memperbarui batas minimal: " + error.message);
+                      else {
+                        toast.success(`Batas minimal ${d.honey_type} diperbarui ke ${val} kg`);
+                        qc.invalidateQueries({ queryKey: ["dandang-balance"] });
+                      }
+                    }}
+                    className="w-14 h-6 text-center text-xs p-1"
+                  />
+                </div>
               </div>
             ))}
           </div>

@@ -9,9 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ReturRouteImport } from './routes/retur'
 import { Route as PenjualanRouteImport } from './routes/penjualan'
 import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pribadi'
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
+import { Route as MetaAdsRouteImport } from './routes/meta-ads'
 import { Route as KeuanganRouteImport } from './routes/keuangan'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -19,10 +21,19 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as StokPindahWadahRouteImport } from './routes/stok.pindah-wadah'
 import { Route as StokKemasanRouteImport } from './routes/stok.kemasan'
 import { Route as StokBahanBakuRouteImport } from './routes/stok.bahan-baku'
+import { Route as PengaturanWhatsappRouteImport } from './routes/pengaturan.whatsapp'
 import { Route as PengaturanStafRouteImport } from './routes/pengaturan.staf'
+import { Route as PengaturanProfilRouteImport } from './routes/pengaturan.profil'
 import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumpsum'
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
+import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
+import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
 
+const ReturRoute = ReturRouteImport.update({
+  id: '/retur',
+  path: '/retur',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PenjualanRoute = PenjualanRouteImport.update({
   id: '/penjualan',
   path: '/penjualan',
@@ -36,6 +47,11 @@ const PengeluaranPribadiRoute = PengeluaranPribadiRouteImport.update({
 const PengeluaranRoute = PengeluaranRouteImport.update({
   id: '/pengeluaran',
   path: '/pengeluaran',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetaAdsRoute = MetaAdsRouteImport.update({
+  id: '/meta-ads',
+  path: '/meta-ads',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KeuanganRoute = KeuanganRouteImport.update({
@@ -73,9 +89,19 @@ const StokBahanBakuRoute = StokBahanBakuRouteImport.update({
   path: '/stok/bahan-baku',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PengaturanWhatsappRoute = PengaturanWhatsappRouteImport.update({
+  id: '/pengaturan/whatsapp',
+  path: '/pengaturan/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PengaturanStafRoute = PengaturanStafRouteImport.update({
   id: '/pengaturan/staf',
   path: '/pengaturan/staf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PengaturanProfilRoute = PengaturanProfilRouteImport.update({
+  id: '/pengaturan/profil',
+  path: '/pengaturan/profil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PengaturanLumpsumRoute = PengaturanLumpsumRouteImport.update({
@@ -88,18 +114,34 @@ const PengaturanHargaRoute = PengaturanHargaRouteImport.update({
   path: '/pengaturan/harga',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWahaProxyRoute = ApiWahaProxyRouteImport.update({
+  id: '/api/waha-proxy',
+  path: '/api/waha-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
+  id: '/api/telegram-webhook',
+  path: '/api/telegram-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/keuangan': typeof KeuanganRoute
+  '/meta-ads': typeof MetaAdsRoute
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
+  '/retur': typeof ReturRoute
+  '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
+  '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
   '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
+  '/pengaturan/profil': typeof PengaturanProfilRoute
   '/pengaturan/staf': typeof PengaturanStafRoute
+  '/pengaturan/whatsapp': typeof PengaturanWhatsappRoute
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
@@ -109,12 +151,18 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/keuangan': typeof KeuanganRoute
+  '/meta-ads': typeof MetaAdsRoute
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
+  '/retur': typeof ReturRoute
+  '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
+  '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
   '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
+  '/pengaturan/profil': typeof PengaturanProfilRoute
   '/pengaturan/staf': typeof PengaturanStafRoute
+  '/pengaturan/whatsapp': typeof PengaturanWhatsappRoute
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
@@ -125,12 +173,18 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
   '/keuangan': typeof KeuanganRoute
+  '/meta-ads': typeof MetaAdsRoute
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
+  '/retur': typeof ReturRoute
+  '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
+  '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
   '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
+  '/pengaturan/profil': typeof PengaturanProfilRoute
   '/pengaturan/staf': typeof PengaturanStafRoute
+  '/pengaturan/whatsapp': typeof PengaturanWhatsappRoute
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
@@ -142,12 +196,18 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/keuangan'
+    | '/meta-ads'
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
+    | '/retur'
+    | '/api/telegram-webhook'
+    | '/api/waha-proxy'
     | '/pengaturan/harga'
     | '/pengaturan/lumpsum'
+    | '/pengaturan/profil'
     | '/pengaturan/staf'
+    | '/pengaturan/whatsapp'
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
@@ -157,12 +217,18 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/keuangan'
+    | '/meta-ads'
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
+    | '/retur'
+    | '/api/telegram-webhook'
+    | '/api/waha-proxy'
     | '/pengaturan/harga'
     | '/pengaturan/lumpsum'
+    | '/pengaturan/profil'
     | '/pengaturan/staf'
+    | '/pengaturan/whatsapp'
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
@@ -172,12 +238,18 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/keuangan'
+    | '/meta-ads'
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
+    | '/retur'
+    | '/api/telegram-webhook'
+    | '/api/waha-proxy'
     | '/pengaturan/harga'
     | '/pengaturan/lumpsum'
+    | '/pengaturan/profil'
     | '/pengaturan/staf'
+    | '/pengaturan/whatsapp'
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
@@ -188,12 +260,18 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
   KeuanganRoute: typeof KeuanganRoute
+  MetaAdsRoute: typeof MetaAdsRoute
   PengeluaranRoute: typeof PengeluaranRoute
   PengeluaranPribadiRoute: typeof PengeluaranPribadiRoute
   PenjualanRoute: typeof PenjualanRoute
+  ReturRoute: typeof ReturRoute
+  ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
+  ApiWahaProxyRoute: typeof ApiWahaProxyRoute
   PengaturanHargaRoute: typeof PengaturanHargaRoute
   PengaturanLumpsumRoute: typeof PengaturanLumpsumRoute
+  PengaturanProfilRoute: typeof PengaturanProfilRoute
   PengaturanStafRoute: typeof PengaturanStafRoute
+  PengaturanWhatsappRoute: typeof PengaturanWhatsappRoute
   StokBahanBakuRoute: typeof StokBahanBakuRoute
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
@@ -201,6 +279,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/retur': {
+      id: '/retur'
+      path: '/retur'
+      fullPath: '/retur'
+      preLoaderRoute: typeof ReturRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/penjualan': {
       id: '/penjualan'
       path: '/penjualan'
@@ -220,6 +305,13 @@ declare module '@tanstack/react-router' {
       path: '/pengeluaran'
       fullPath: '/pengeluaran'
       preLoaderRoute: typeof PengeluaranRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/meta-ads': {
+      id: '/meta-ads'
+      path: '/meta-ads'
+      fullPath: '/meta-ads'
+      preLoaderRoute: typeof MetaAdsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/keuangan': {
@@ -271,11 +363,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StokBahanBakuRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pengaturan/whatsapp': {
+      id: '/pengaturan/whatsapp'
+      path: '/pengaturan/whatsapp'
+      fullPath: '/pengaturan/whatsapp'
+      preLoaderRoute: typeof PengaturanWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pengaturan/staf': {
       id: '/pengaturan/staf'
       path: '/pengaturan/staf'
       fullPath: '/pengaturan/staf'
       preLoaderRoute: typeof PengaturanStafRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pengaturan/profil': {
+      id: '/pengaturan/profil'
+      path: '/pengaturan/profil'
+      fullPath: '/pengaturan/profil'
+      preLoaderRoute: typeof PengaturanProfilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pengaturan/lumpsum': {
@@ -292,6 +398,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PengaturanHargaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/waha-proxy': {
+      id: '/api/waha-proxy'
+      path: '/api/waha-proxy'
+      fullPath: '/api/waha-proxy'
+      preLoaderRoute: typeof ApiWahaProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/telegram-webhook': {
+      id: '/api/telegram-webhook'
+      path: '/api/telegram-webhook'
+      fullPath: '/api/telegram-webhook'
+      preLoaderRoute: typeof ApiTelegramWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -300,12 +420,18 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
   KeuanganRoute: KeuanganRoute,
+  MetaAdsRoute: MetaAdsRoute,
   PengeluaranRoute: PengeluaranRoute,
   PengeluaranPribadiRoute: PengeluaranPribadiRoute,
   PenjualanRoute: PenjualanRoute,
+  ReturRoute: ReturRoute,
+  ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
+  ApiWahaProxyRoute: ApiWahaProxyRoute,
   PengaturanHargaRoute: PengaturanHargaRoute,
   PengaturanLumpsumRoute: PengaturanLumpsumRoute,
+  PengaturanProfilRoute: PengaturanProfilRoute,
   PengaturanStafRoute: PengaturanStafRoute,
+  PengaturanWhatsappRoute: PengaturanWhatsappRoute,
   StokBahanBakuRoute: StokBahanBakuRoute,
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
@@ -313,3 +439,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

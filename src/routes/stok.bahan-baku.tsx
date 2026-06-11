@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +15,6 @@ import { formatIDR } from "@/lib/theme";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/stok/bahan-baku")({ component: () => <RequireAuth><Page /></RequireAuth> });
-
-const HONEY_TYPES = ["Akasia", "Randu", "Karet", "Lainnya"];
 
 type LotForm = {
   supplier: string;
@@ -35,22 +33,58 @@ function Page() {
     queryKey: ["lots"],
     queryFn: async () => (await supabase.from("raw_material_lots").select("*").order("received_at", { ascending: false })).data ?? [],
   });
+  const { data: variants } = useQuery({ 
+    queryKey: ["variants"], 
+    queryFn: async () => (await (supabase.from("honey_variants" as any) as any).select("*").eq("active", true).order("name")).data ?? [] 
+  });
+
+  const activeVariants = useMemo(() => {
+    const list = (variants ?? []).map((v: any) => v.name);
+    return list.length > 0 ? list : ["Akasia", "Randu", "Karet", "Lainnya"];
+  }, [variants]);
 
   const [form, setForm] = useState<LotForm>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<LotForm>(emptyForm);
 
+  const [isCustomVariant, setIsCustomVariant] = useState(false);
+  const [customVariantName, setCustomVariantName] = useState("");
+  const [isEditCustomVariant, setIsEditCustomVariant] = useState(false);
+  const [editCustomVariantName, setEditCustomVariantName] = useState("");
+
+  useEffect(() => {
+    if (activeVariants.length > 0 && !activeVariants.includes(form.honey_type)) {
+      setForm(prev => ({ ...prev, honey_type: activeVariants[0] }));
+    }
+  }, [activeVariants]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.grams_per_jerigen <= 0) return toast.error("Isi gram per jerigen");
+    
+    let activeHoneyType = form.honey_type;
+    if (isCustomVariant) {
+      const trimmed = customVariantName.trim();
+      if (!trimmed) return toast.error("Tulis nama jenis madu baru");
+      activeHoneyType = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+      
+      // Insert custom variant if it does not exist
+      if (!activeVariants.some((v: string) => v.toLowerCase() === activeHoneyType.toLowerCase())) {
+        const { error: vError } = await supabase
+          .from("honey_variants" as any)
+          .insert({ name: activeHoneyType, active: true } as any);
+        if (vError) return toast.error("Gagal mendaftarkan jenis madu: " + vError.message);
+      }
+    }
+
     setSubmitting(true);
     const { error } = await supabase.from("raw_material_lots").insert({
       supplier: form.supplier,
       jerigen_qty: form.jerigen_qty,
       kg_per_jerigen: form.grams_per_jerigen / 1000,
       grams_per_jerigen: form.grams_per_jerigen,
-      honey_type: form.honey_type,
+      honey_type: activeHoneyType,
       price_total: form.price_total,
       notes: form.notes,
       jerigen_remaining: form.jerigen_qty,
@@ -60,7 +94,10 @@ function Page() {
     else {
       toast.success("Lot bahan baku tercatat");
       setForm(emptyForm);
+      setCustomVariantName("");
+      setIsCustomVariant(false);
       qc.invalidateQueries({ queryKey: ["lots"] });
+      qc.invalidateQueries({ queryKey: ["variants"] });
     }
   };
 
@@ -69,6 +106,8 @@ function Page() {
       return toast.error("Lot sudah dipakai (sebagian dituang ke dandang). Tidak bisa diedit.");
     }
     setEditing(l);
+    setIsEditCustomVariant(false);
+    setEditCustomVariantName("");
     setEditForm({
       supplier: l.supplier ?? "",
       honey_type: l.honey_type ?? "Akasia",
@@ -82,18 +121,40 @@ function Page() {
   const saveEdit = async () => {
     if (!editing) return;
     if (editForm.grams_per_jerigen <= 0 || editForm.jerigen_qty <= 0) return toast.error("Input tidak valid");
+    
+    let activeHoneyType = editForm.honey_type;
+    if (isEditCustomVariant) {
+      const trimmed = editCustomVariantName.trim();
+      if (!trimmed) return toast.error("Tulis nama jenis madu");
+      activeHoneyType = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+      
+      if (!activeVariants.some((v: string) => v.toLowerCase() === activeHoneyType.toLowerCase())) {
+        const { error: vError } = await supabase
+          .from("honey_variants" as any)
+          .insert({ name: activeHoneyType, active: true } as any);
+        if (vError) return toast.error("Gagal mendaftarkan jenis madu: " + vError.message);
+      }
+    }
+
     const { error } = await supabase.from("raw_material_lots").update({
       supplier: editForm.supplier,
       jerigen_qty: editForm.jerigen_qty,
       jerigen_remaining: editForm.jerigen_qty,
       kg_per_jerigen: editForm.grams_per_jerigen / 1000,
       grams_per_jerigen: editForm.grams_per_jerigen,
-      honey_type: editForm.honey_type,
+      honey_type: activeHoneyType,
       price_total: editForm.price_total,
       notes: editForm.notes,
     } as any).eq("id", editing.id);
     if (error) toast.error(error.message);
-    else { toast.success("Lot diperbarui"); setEditing(null); qc.invalidateQueries({ queryKey: ["lots"] }); }
+    else { 
+      toast.success("Lot diperbarui"); 
+      setEditing(null); 
+      setEditCustomVariantName("");
+      setIsEditCustomVariant(false);
+      qc.invalidateQueries({ queryKey: ["lots"] }); 
+      qc.invalidateQueries({ queryKey: ["variants"] });
+    }
   };
 
   const handleDelete = async (l: any) => {
@@ -122,13 +183,35 @@ function Page() {
               <Input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} />
             </div>
             <div className="md:col-span-2 space-y-1">
-              <Label>Jenis Madu</Label>
-              <Select value={form.honey_type} onValueChange={(v) => setForm({ ...form, honey_type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {HONEY_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="flex justify-between items-center">
+                <Label>Jenis Madu</Label>
+                <Button 
+                  type="button" 
+                  variant="link" 
+                  className="h-auto p-0 text-xs text-honey font-semibold"
+                  onClick={() => {
+                    setIsCustomVariant(!isCustomVariant);
+                    setCustomVariantName("");
+                  }}
+                >
+                  {isCustomVariant ? "← Pilih Daftar" : "+ Tulis Jenis Baru"}
+                </Button>
+              </div>
+              {isCustomVariant ? (
+                <Input 
+                  value={customVariantName} 
+                  onChange={(e) => setCustomVariantName(e.target.value)} 
+                  placeholder="Contoh: Madu Klanceng"
+                  required
+                />
+              ) : (
+                <Select value={form.honey_type} onValueChange={(v) => setForm({ ...form, honey_type: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {activeVariants.map((t: string) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1">
               <Label>Jumlah Jerigen</Label>
@@ -187,10 +270,34 @@ function Page() {
                     <TableCell>{formatIDR(l.price_total / totalKg)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" disabled={!untouched} title={untouched ? "Edit" : "Sudah dipakai"} onClick={() => openEdit(l)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={untouched ? "" : "opacity-45"}
+                          title={untouched ? "Edit" : "Sudah dipakai - klik untuk info"}
+                          onClick={() => {
+                            if (!untouched) {
+                              toast.error("Lot sudah dipakai (sebagian dituang ke dandang). Silakan hapus catatan di menu 'Pindah Wadah' terlebih dahulu untuk mengedit lot ini.");
+                            } else {
+                              openEdit(l);
+                            }
+                          }}
+                        >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" disabled={!untouched} title={untouched ? "Hapus" : "Sudah dipakai"} onClick={() => handleDelete(l)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={untouched ? "" : "opacity-45"}
+                          title={untouched ? "Hapus" : "Sudah dipakai - klik untuk info"}
+                          onClick={() => {
+                            if (!untouched) {
+                              toast.error("Lot sudah dipakai (sebagian dituang ke dandang). Silakan hapus catatan di menu 'Pindah Wadah' terlebih dahulu untuk menghapus lot ini.");
+                            } else {
+                              handleDelete(l);
+                            }
+                          }}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -210,11 +317,33 @@ function Page() {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 space-y-1"><Label>Supplier</Label><Input value={editForm.supplier} onChange={(e) => setEditForm({ ...editForm, supplier: e.target.value })} /></div>
             <div className="col-span-2 space-y-1">
-              <Label>Jenis Madu</Label>
-              <Select value={editForm.honey_type} onValueChange={(v) => setEditForm({ ...editForm, honey_type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{HONEY_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
+              <div className="flex justify-between items-center">
+                <Label>Jenis Madu</Label>
+                <Button 
+                  type="button" 
+                  variant="link" 
+                  className="h-auto p-0 text-xs text-honey font-semibold"
+                  onClick={() => {
+                    setIsEditCustomVariant(!isEditCustomVariant);
+                    setEditCustomVariantName("");
+                  }}
+                >
+                  {isEditCustomVariant ? "← Pilih Daftar" : "+ Tulis Jenis Baru"}
+                </Button>
+              </div>
+              {isEditCustomVariant ? (
+                <Input 
+                  value={editCustomVariantName} 
+                  onChange={(e) => setEditCustomVariantName(e.target.value)} 
+                  placeholder="Contoh: Madu Rambutan"
+                  required
+                />
+              ) : (
+                <Select value={editForm.honey_type} onValueChange={(v) => setEditForm({ ...editForm, honey_type: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{activeVariants.map((t: string) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1"><Label>Jumlah Jerigen</Label><Input type="number" min={1} value={editForm.jerigen_qty} onChange={(e) => setEditForm({ ...editForm, jerigen_qty: +e.target.value })} /></div>
             <div className="space-y-1">

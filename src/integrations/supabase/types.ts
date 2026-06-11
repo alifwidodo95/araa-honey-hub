@@ -289,15 +289,19 @@ export type Database = {
           customer_name: string | null
           customer_note: string | null
           customer_phone: string | null
+          expedition: string | null
           honey_kg_used: number
           id: string
           marketplace_fee: number
           net_revenue: number
+          payment_method: string | null
           reseller_tier_id: string | null
           resi_shared_via_wa: boolean | null
+          returned: boolean | null
           shipping_fee: number
           subtotal_gross: number
           tracking_number: string | null
+          transfer_bank: string | null
           wa_share_error: string | null
         }
         Insert: {
@@ -309,15 +313,19 @@ export type Database = {
           customer_name?: string | null
           customer_note?: string | null
           customer_phone?: string | null
+          expedition?: string | null
           honey_kg_used?: number
           id?: string
           marketplace_fee?: number
           net_revenue?: number
+          payment_method?: string | null
           reseller_tier_id?: string | null
           resi_shared_via_wa?: boolean | null
+          returned?: boolean | null
           shipping_fee?: number
           subtotal_gross?: number
           tracking_number?: string | null
+          transfer_bank?: string | null
           wa_share_error?: string | null
         }
         Update: {
@@ -329,15 +337,19 @@ export type Database = {
           customer_name?: string | null
           customer_note?: string | null
           customer_phone?: string | null
+          expedition?: string | null
           honey_kg_used?: number
           id?: string
           marketplace_fee?: number
           net_revenue?: number
+          payment_method?: string | null
           reseller_tier_id?: string | null
           resi_shared_via_wa?: boolean | null
+          returned?: boolean | null
           shipping_fee?: number
           subtotal_gross?: number
           tracking_number?: string | null
+          transfer_bank?: string | null
           wa_share_error?: string | null
         }
         Relationships: [

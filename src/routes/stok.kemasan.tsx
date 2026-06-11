@@ -23,11 +23,27 @@ function Page() {
   const qc = useQueryClient();
   const { data: items } = useQuery({
     queryKey: ["pkg"],
-    queryFn: async () => (await supabase.from("packaging_items").select("*").order("type")).data ?? [],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("packaging_items").select("*").order("type");
+      if (error) {
+        console.error("Error fetching packaging items:", error);
+        toast.error("Gagal memuat item kemasan: " + error.message);
+        throw error;
+      }
+      return data ?? [];
+    },
   });
   const { data: sizes } = useQuery({
     queryKey: ["sizes"],
-    queryFn: async () => (await supabase.from("product_sizes").select("*").order("weight_grams")).data ?? [],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("product_sizes").select("*").order("weight_grams");
+      if (error) {
+        console.error("Error fetching product sizes:", error);
+        toast.error("Gagal memuat ukuran produk: " + error.message);
+        throw error;
+      }
+      return data ?? [];
+    },
   });
 
   const [form, setForm] = useState({ item_id: "", qty: 0, total_price: 0, notes: "" });
@@ -52,7 +68,7 @@ function Page() {
 
   // Add item dialog state
   const [addOpen, setAddOpen] = useState(false);
-  const [newItem, setNewItem] = useState({ type: "botol", name: "", unit: "pcs", size_id: "" });
+  const [newItem, setNewItem] = useState({ type: "botol", name: "", unit: "pcs", size_id: "", min_stock: 10 });
   const addItem = async () => {
     if (!newItem.name.trim()) return toast.error("Nama item wajib diisi");
     const payload: any = {
@@ -60,11 +76,12 @@ function Page() {
       name: newItem.name.trim(),
       unit: newItem.unit || "pcs",
       size_id: newItem.size_id || null,
+      min_stock: Number(newItem.min_stock) || 10,
     };
     const { error } = await supabase.from("packaging_items").insert(payload);
     if (error) return toast.error(error.message);
     toast.success("Item ditambahkan");
-    setNewItem({ type: "botol", name: "", unit: "pcs", size_id: "" });
+    setNewItem({ type: "botol", name: "", unit: "pcs", size_id: "", min_stock: 10 });
     setAddOpen(false);
     qc.invalidateQueries({ queryKey: ["pkg"] });
   };
@@ -91,8 +108,14 @@ function Page() {
           <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="md:col-span-2 space-y-1">
               <Label>Item</Label>
-              <Select value={form.item_id} onValueChange={(v) => setForm({ ...form, item_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Pilih item" /></SelectTrigger>
+              <Select 
+                value={form.item_id} 
+                onValueChange={(v) => setForm({ ...form, item_id: v })}
+                disabled={!items || items.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={items && items.length === 0 ? "Belum ada item, silakan tambah di bawah" : "Pilih item"} />
+                </SelectTrigger>
                 <SelectContent>
                   {(items ?? []).map((it: any) => (
                     <SelectItem key={it.id} value={it.id}>{it.name} ({it.unit})</SelectItem>
@@ -140,6 +163,10 @@ function Page() {
                 )}
                 <div className="space-y-1"><Label>Nama Item</Label><Input value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} placeholder="contoh: Botol 300 gr" /></div>
                 <div className="space-y-1"><Label>Unit</Label><Input value={newItem.unit} onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })} placeholder="pcs / meter / roll" /></div>
+                <div className="space-y-1">
+                  <Label>Batas Minimum Stok (Peringatan)</Label>
+                  <Input type="number" value={newItem.min_stock} onChange={(e) => setNewItem({ ...newItem, min_stock: +e.target.value })} placeholder="10" />
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddOpen(false)}>Batal</Button>
@@ -150,15 +177,37 @@ function Page() {
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Tipe</TableHead><TableHead>Stok</TableHead><TableHead>Unit</TableHead><TableHead>HPP rata-rata</TableHead><TableHead className="w-12"></TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Tipe</TableHead><TableHead>Stok</TableHead><TableHead>Unit</TableHead><TableHead>HPP rata-rata</TableHead><TableHead>Batas Min.</TableHead><TableHead className="w-12"></TableHead></TableRow></TableHeader>
             <TableBody>
               {(items ?? []).map((it: any) => (
-                <TableRow key={it.id} className={Number(it.current_stock) < 20 ? "bg-destructive/5" : ""}>
+                <TableRow key={it.id} className={Number(it.current_stock) < Number(it.min_stock ?? 10) ? "bg-destructive/5" : ""}>
                   <TableCell className="font-medium">{it.name}</TableCell>
                   <TableCell className="capitalize">{it.type}</TableCell>
-                  <TableCell>{Number(it.current_stock).toFixed(2)}</TableCell>
+                  <TableCell className={Number(it.current_stock) < Number(it.min_stock ?? 10) ? "text-destructive font-bold" : ""}>
+                    {Number(it.current_stock).toFixed(2)}
+                  </TableCell>
                   <TableCell>{it.unit}</TableCell>
                   <TableCell>{formatIDR(it.avg_cost)}</TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      defaultValue={it.min_stock ?? 10}
+                      onBlur={async (e) => {
+                        const val = Number(e.target.value);
+                        if (val === Number(it.min_stock)) return;
+                        const { error } = await supabase
+                          .from("packaging_items")
+                          .update({ min_stock: val } as any)
+                          .eq("id", it.id);
+                        if (error) toast.error("Gagal memperbarui batas minimal: " + error.message);
+                        else {
+                          toast.success(`Batas minimal ${it.name} diperbarui ke ${val}`);
+                          qc.invalidateQueries({ queryKey: ["pkg"] });
+                        }
+                      }}
+                      className="w-20 h-8 text-center"
+                    />
+                  </TableCell>
                   <TableCell>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
