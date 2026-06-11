@@ -36,13 +36,60 @@ interface WahaSession {
 function WhatsAppPage() {
   const qc = useQueryClient();
   
-  // WAHA Configurations (Persisted to localStorage)
+  // WAHA Configurations (Persisted to localStorage + Supabase app_settings)
   const [wahaUrl, setWahaUrl] = useState(() => localStorage.getItem("waha_url") || "http://localhost:3000");
   const [sessionName, setSessionName] = useState(() => localStorage.getItem("waha_session") || "default");
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("waha_api_key") || "");
   const [scheduleTime, setScheduleTime] = useState(() => localStorage.getItem("waha_schedule_time") || "19:00");
   const [intervalVal, setIntervalVal] = useState(() => localStorage.getItem("waha_send_interval") || "60"); // in seconds
   const [autoSchedule, setAutoSchedule] = useState(() => localStorage.getItem("waha_auto_schedule") === "true");
+
+  // Fetch WAHA Config from Supabase database for multi-device sync
+  const { data: wahaConfig, refetch: refetchConfig } = useQuery({
+    queryKey: ["waha-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "waha_config")
+        .maybeSingle();
+      if (error) {
+        console.error("Gagal mengambil waha config:", error);
+        throw error;
+      }
+      return data?.value as any || null;
+    }
+  });
+
+  // Sync Supabase settings to state on load
+  useEffect(() => {
+    if (wahaConfig) {
+      if (wahaConfig.wahaUrl) {
+        setWahaUrl(wahaConfig.wahaUrl);
+        localStorage.setItem("waha_url", wahaConfig.wahaUrl);
+      }
+      if (wahaConfig.sessionName) {
+        setSessionName(wahaConfig.sessionName);
+        localStorage.setItem("waha_session", wahaConfig.sessionName);
+      }
+      if (wahaConfig.apiKey) {
+        setApiKey(wahaConfig.apiKey);
+        localStorage.setItem("waha_api_key", wahaConfig.apiKey);
+      }
+      if (wahaConfig.scheduleTime) {
+        setScheduleTime(wahaConfig.scheduleTime);
+        localStorage.setItem("waha_schedule_time", wahaConfig.scheduleTime);
+      }
+      if (wahaConfig.intervalVal) {
+        setIntervalVal(wahaConfig.intervalVal);
+        localStorage.setItem("waha_send_interval", wahaConfig.intervalVal);
+      }
+      if (wahaConfig.autoSchedule !== undefined) {
+        setAutoSchedule(wahaConfig.autoSchedule);
+        localStorage.setItem("waha_auto_schedule", String(wahaConfig.autoSchedule));
+      }
+    }
+  }, [wahaConfig]);
 
   // UI States
   const [sessionStatus, setSessionStatus] = useState<string>("STOPPED"); // STOPPED, STARTING, SCAN_QR, WORKING, FAILED
@@ -77,15 +124,36 @@ function WhatsAppPage() {
     }
   });
 
-  // Save config helper
-  const handleSaveConfig = () => {
-    localStorage.setItem("waha_url", wahaUrl.trim());
-    localStorage.setItem("waha_session", sessionName.trim());
-    localStorage.setItem("waha_api_key", apiKey.trim());
-    localStorage.setItem("waha_schedule_time", scheduleTime);
-    localStorage.setItem("waha_send_interval", intervalVal);
-    localStorage.setItem("waha_auto_schedule", String(autoSchedule));
-    toast.success("Pengaturan berhasil disimpan!");
+  // Save config helper (Saves to both Supabase and LocalStorage)
+  const handleSaveConfig = async () => {
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({
+          key: "waha_config",
+          value: {
+            wahaUrl: wahaUrl.trim(),
+            sessionName: sessionName.trim(),
+            apiKey: apiKey.trim(),
+            scheduleTime,
+            intervalVal,
+            autoSchedule
+          }
+        });
+      if (error) throw error;
+
+      localStorage.setItem("waha_url", wahaUrl.trim());
+      localStorage.setItem("waha_session", sessionName.trim());
+      localStorage.setItem("waha_api_key", apiKey.trim());
+      localStorage.setItem("waha_schedule_time", scheduleTime);
+      localStorage.setItem("waha_send_interval", intervalVal);
+      localStorage.setItem("waha_auto_schedule", String(autoSchedule));
+      
+      toast.success("Pengaturan berhasil disimpan ke database!");
+      refetchConfig();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan pengaturan.");
+    }
   };
 
   // Helper: Get headers for WAHA API
