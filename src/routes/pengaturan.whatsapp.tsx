@@ -121,6 +121,18 @@ function WhatsAppPage() {
     }
   };
 
+  // Helper for safe JSON parsing to prevent "Unexpected end of JSON input" errors
+  const safeJson = async (res: Response) => {
+    const text = await res.text();
+    if (!text || !text.trim()) return {};
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.warn("Response is not valid JSON:", text);
+      return { message: text };
+    }
+  };
+
   // Check Session Status from WAHA
   const checkSessionStatus = async (silent = false) => {
     if (!silent) setLoadingStatus(true);
@@ -142,8 +154,8 @@ function WhatsAppPage() {
         }
         return;
       }
-      const data: WahaSession = await res.json();
-      let normalizedStatus = data.status;
+      const data = await safeJson(res);
+      let normalizedStatus = data.status || "STOPPED";
       if (data.status === "SCAN_QR_CODE") {
         normalizedStatus = "SCAN_QR";
       }
@@ -176,7 +188,7 @@ function WhatsAppPage() {
           body: { name: sessionName }
         })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       
       if (!res.ok) {
         // If session already exists, start it directly
@@ -190,8 +202,8 @@ function WhatsAppPage() {
               headers: getWahaHeaders()
             })
           });
+          const startData = await safeJson(startRes);
           if (!startRes.ok) {
-            const startData = await startRes.json();
             throw new Error(startData.message || "Gagal memulai sesi yang sudah ada.");
           }
           toast.success("Sesi yang sudah ada sedang dimulai...");
@@ -199,7 +211,21 @@ function WhatsAppPage() {
           throw new Error(data.message || "Gagal menyalakan sesi.");
         }
       } else {
-        toast.success("Sesi baru sedang dimulai...");
+        // Sesi baru berhasil didaftarkan (201 Created), sekarang harus kita jalankan (start) secara eksplisit!
+        const startRes = await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sessions/${sessionName}/start`,
+            method: "POST",
+            headers: getWahaHeaders()
+          })
+        });
+        const startData = await safeJson(startRes);
+        if (!startRes.ok) {
+          throw new Error(startData.message || "Sesi baru didaftarkan, tetapi gagal dijalankan.");
+        }
+        toast.success("Sesi baru berhasil didaftarkan dan sedang dimulai...");
       }
       
       // Poll status for a bit
