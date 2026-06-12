@@ -1,10 +1,11 @@
--- Add honey_type column to packaging_items
-ALTER TABLE public.packaging_items ADD COLUMN honey_type TEXT;
+-- Add honey_type column to packaging_items safely
+ALTER TABLE public.packaging_items ADD COLUMN IF NOT EXISTS honey_type TEXT;
 
 -- Drop old unique constraint
 ALTER TABLE public.packaging_items DROP CONSTRAINT IF EXISTS packaging_items_type_size_id_key;
 
--- Add new unique constraint (using NULLS NOT DISTINCT so nulls are matched as duplicates)
+-- Recreate unique constraint safely
+ALTER TABLE public.packaging_items DROP CONSTRAINT IF EXISTS packaging_items_type_size_id_honey_type_key;
 ALTER TABLE public.packaging_items ADD CONSTRAINT packaging_items_type_size_id_honey_type_key UNIQUE NULLS NOT DISTINCT (type, size_id, honey_type);
 
 -- Update create_order function to be variant-aware for packaging stock and COGS
@@ -93,7 +94,7 @@ BEGIN
   RETURN new_order_id;
 END; $function$;
 
--- Update import_historical_order function to be variant-aware for packaging and honey type
+-- Update import_historical_order function to be variant-aware for packaging and honey type (preventing cogs_total ambiguity)
 CREATE OR REPLACE FUNCTION public.import_historical_order(
   _channel public.sales_channel,
   _tier_id UUID,
@@ -117,9 +118,9 @@ AS $function$
 DECLARE
   new_order_id UUID; it JSONB; size_rec RECORD; qty INTEGER;
   unit_price NUMERIC; line_total NUMERIC; honey_kg NUMERIC;
-  total_honey NUMERIC := 0; subtotal NUMERIC := 0; fee_pct NUMERIC; mp_fee NUMERIC;
+  v_total_honey NUMERIC := 0; v_subtotal NUMERIC := 0; fee_pct NUMERIC; mp_fee NUMERIC;
   alloc JSONB; size_alloc JSONB;
-  cogs_line NUMERIC; cogs_total NUMERIC := 0;
+  v_cogs_line NUMERIC; v_cogs_total NUMERIC := 0;
   sg_item UUID;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Unauthorized'; END IF;
@@ -151,33 +152,33 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'Ukuran tidak ditemukan'; END IF;
     
     honey_kg := (size_rec.weight_grams * qty)::NUMERIC / 1000;
-    total_honey := total_honey + honey_kg;
+    v_total_honey := v_total_honey + honey_kg;
     line_total := unit_price * qty;
-    subtotal := subtotal + line_total;
+    v_subtotal := v_subtotal + line_total;
     
     -- Estimate COGS based on current packaging/honey costs (but DO NOT subtract stock)
-    cogs_line := honey_kg * COALESCE((SELECT avg_cost_per_kg FROM public.dandang_balance WHERE honey_type = it->>'honey_type'), 0)
+    v_cogs_line := honey_kg * COALESCE((SELECT avg_cost_per_kg FROM public.dandang_balance WHERE honey_type = it->>'honey_type'), 0)
       + qty * COALESCE((SELECT avg_cost FROM public.packaging_items WHERE type='botol' AND size_id=size_rec.id AND (honey_type = it->>'honey_type' OR honey_type IS NULL) ORDER BY honey_type NULLS LAST LIMIT 1),0)
       + qty * COALESCE((SELECT avg_cost FROM public.packaging_items WHERE type='stiker' AND size_id=size_rec.id AND (honey_type = it->>'honey_type' OR honey_type IS NULL) ORDER BY honey_type NULLS LAST LIMIT 1),0)
       + qty * COALESCE((SELECT avg_cost FROM public.packaging_items WHERE id=sg_item),0);
-    cogs_total := cogs_total + cogs_line;
+    v_cogs_total := v_cogs_total + v_cogs_line;
     
     -- Insert order items with honey_type
     INSERT INTO public.order_items(order_id, size_id, qty, unit_price, line_total, honey_kg_used, cogs_line, honey_type)
-    VALUES (new_order_id, size_rec.id, qty, unit_price, line_total, honey_kg, cogs_line, it->>'honey_type');
+    VALUES (new_order_id, size_rec.id, qty, unit_price, line_total, honey_kg, v_cogs_line, it->>'honey_type');
   END LOOP;
 
   -- Calculate marketplace/platform fee
   SELECT fee_percent INTO fee_pct FROM public.marketplace_fees WHERE channel=_channel;
-  mp_fee := ROUND(subtotal * COALESCE(fee_pct,0) / 100, 2);
+  mp_fee := ROUND(v_subtotal * COALESCE(fee_pct,0) / 100, 2);
 
   -- Update order calculations
   UPDATE public.orders SET
-    subtotal_gross = subtotal,
+    subtotal_gross = v_subtotal,
     marketplace_fee = mp_fee,
-    net_revenue = COALESCE(_amount_received, subtotal) - mp_fee - COALESCE(_shipping_fee,0),
-    cogs_total = cogs_total,
-    honey_kg_used = total_honey
+    net_revenue = COALESCE(_amount_received, v_subtotal - mp_fee) - COALESCE(_shipping_fee,0),
+    cogs_total = v_cogs_total,
+    honey_kg_used = v_total_honey
   WHERE id = new_order_id;
 
   RETURN new_order_id;
