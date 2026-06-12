@@ -15,6 +15,7 @@ import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pri
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
 import { Route as MetaAdsRouteImport } from './routes/meta-ads'
 import { Route as KeuanganRouteImport } from './routes/keuangan'
+import { Route as ImportRiwayatRouteImport } from './routes/import-riwayat'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
@@ -28,6 +29,7 @@ import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumps
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
+import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 
 const ReturRoute = ReturRouteImport.update({
   id: '/retur',
@@ -57,6 +59,11 @@ const MetaAdsRoute = MetaAdsRouteImport.update({
 const KeuanganRoute = KeuanganRouteImport.update({
   id: '/keuangan',
   path: '/keuangan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportRiwayatRoute = ImportRiwayatRouteImport.update({
+  id: '/import-riwayat',
+  path: '/import-riwayat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -124,11 +131,17 @@ const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   path: '/api/telegram-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSendResiRoute = ApiCronSendResiRouteImport.update({
+  id: '/api/cron/send-resi',
+  path: '/api/cron/send-resi',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/meta-ads': typeof MetaAdsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -145,11 +158,13 @@ export interface FileRoutesByFullPath {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/cron/send-resi': typeof ApiCronSendResiRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/meta-ads': typeof MetaAdsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -166,12 +181,14 @@ export interface FileRoutesByTo {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/cron/send-resi': typeof ApiCronSendResiRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof DashboardRoute
+  '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/meta-ads': typeof MetaAdsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -188,6 +205,7 @@ export interface FileRoutesById {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/cron/send-resi': typeof ApiCronSendResiRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -195,6 +213,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/import-riwayat'
     | '/keuangan'
     | '/meta-ads'
     | '/pengeluaran'
@@ -211,11 +230,13 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/cron/send-resi'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/import-riwayat'
     | '/keuangan'
     | '/meta-ads'
     | '/pengeluaran'
@@ -232,11 +253,13 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/cron/send-resi'
   id:
     | '__root__'
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/import-riwayat'
     | '/keuangan'
     | '/meta-ads'
     | '/pengeluaran'
@@ -253,12 +276,14 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/cron/send-resi'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   DashboardRoute: typeof DashboardRoute
+  ImportRiwayatRoute: typeof ImportRiwayatRoute
   KeuanganRoute: typeof KeuanganRoute
   MetaAdsRoute: typeof MetaAdsRoute
   PengeluaranRoute: typeof PengeluaranRoute
@@ -275,6 +300,7 @@ export interface RootRouteChildren {
   StokBahanBakuRoute: typeof StokBahanBakuRoute
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
+  ApiCronSendResiRoute: typeof ApiCronSendResiRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -319,6 +345,13 @@ declare module '@tanstack/react-router' {
       path: '/keuangan'
       fullPath: '/keuangan'
       preLoaderRoute: typeof KeuanganRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/import-riwayat': {
+      id: '/import-riwayat'
+      path: '/import-riwayat'
+      fullPath: '/import-riwayat'
+      preLoaderRoute: typeof ImportRiwayatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -412,6 +445,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/send-resi': {
+      id: '/api/cron/send-resi'
+      path: '/api/cron/send-resi'
+      fullPath: '/api/cron/send-resi'
+      preLoaderRoute: typeof ApiCronSendResiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -419,6 +459,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   DashboardRoute: DashboardRoute,
+  ImportRiwayatRoute: ImportRiwayatRoute,
   KeuanganRoute: KeuanganRoute,
   MetaAdsRoute: MetaAdsRoute,
   PengeluaranRoute: PengeluaranRoute,
@@ -435,6 +476,7 @@ const rootRouteChildren: RootRouteChildren = {
   StokBahanBakuRoute: StokBahanBakuRoute,
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
+  ApiCronSendResiRoute: ApiCronSendResiRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

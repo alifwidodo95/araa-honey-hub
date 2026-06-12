@@ -16,7 +16,8 @@ import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import { 
   Megaphone, Key, ShieldAlert, CheckCircle, RefreshCw, AlertCircle,
-  TrendingUp, Users, MousePointerClick, Percent, Target, CirclePlay, CirclePause, Eye
+  TrendingUp, Users, MousePointerClick, Percent, Target, CirclePlay, CirclePause, Eye,
+  Database
 } from "lucide-react";
 
 export const Route = createFileRoute("/meta-ads")({
@@ -71,6 +72,7 @@ function MetaAdsPage() {
   const [selectedAccount, setSelectedAccount] = useState("");
   const [dateRange, setDateRange] = useState("7d"); // 1d, 7d, 30d
   const [isSimulation, setIsSimulation] = useState(true);
+  const [syncingToDb, setSyncingToDb] = useState(false);
 
   // Simulation State
   const [simulatedCampaigns, setSimulatedCampaigns] = useState(MOCK_CAMPAIGNS);
@@ -203,6 +205,133 @@ function MetaAdsPage() {
     },
     enabled: !!activeToken && !!selectedAccount && !isSimulation
   });
+
+  const dateRangeBounds = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    if (dateRange === "1d") {
+      start.setHours(0, 0, 0, 0);
+    } else if (dateRange === "7d") {
+      start.setDate(start.getDate() - 6);
+    } else if (dateRange === "30d") {
+      start.setDate(start.getDate() - 29);
+    }
+    return {
+      start: start.toISOString().slice(0, 10),
+      end: end.toISOString().slice(0, 10)
+    };
+  }, [dateRange]);
+
+  const { data: dbOrders } = useQuery({
+    queryKey: ["meta-db-orders", dateRangeBounds],
+    queryFn: async () => {
+      const startIso = `${dateRangeBounds.start}T00:00:00Z`;
+      const endIso = `${dateRangeBounds.end}T23:59:59Z`;
+      return (await supabase
+        .from("orders")
+        .select("net_revenue")
+        .eq("returned", false)
+        .gte("created_at", startIso)
+        .lte("created_at", endIso)
+      ).data ?? [];
+    }
+  });
+
+  const totalRealRevenue = useMemo(() => {
+    return (dbOrders ?? []).reduce((sum, o: any) => sum + Number(o.net_revenue || 0), 0);
+  }, [dbOrders]);
+
+  const handleSyncToDb = async () => {
+    if (!activeToken || !selectedAccount || isSimulation) {
+      toast.error("Tidak dapat mensinkronisasi data dalam mode simulasi.");
+      return;
+    }
+    
+    setSyncingToDb(true);
+    try {
+      let datePreset = "last_7d";
+      if (dateRange === "1d") datePreset = "today";
+      else if (dateRange === "30d") datePreset = "last_30d";
+
+      // 1. Fetch daily spend from Meta API
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/${selectedAccount}/insights?date_preset=${datePreset}&time_increment=1&fields=spend&access_token=${activeToken}`
+      );
+      
+      const json = await res.json();
+      if (json.error) {
+        throw new Error(json.error.message);
+      }
+      
+      const insights = json.data || [];
+      if (insights.length === 0) {
+        toast.info("Tidak ada data pengeluaran iklan Meta Ads pada periode ini.");
+        setSyncingToDb(false);
+        return;
+      }
+
+      // 2. Fetch existing expenses in expenses_business for the same period and category 'meta_ads'
+      const dates = insights.map((i: any) => i.date_start);
+      const minDate = dates.reduce((min: string, d: string) => d < min ? d : min, dates[0]);
+      const maxDate = dates.reduce((max: string, d: string) => d > max ? d : max, dates[0]);
+
+      const { data: existing, error: fetchErr } = await supabase
+        .from("expenses_business")
+        .select("*")
+        .eq("category", "meta_ads")
+        .gte("occurred_on", minDate)
+        .lte("occurred_on", maxDate);
+
+      if (fetchErr) throw fetchErr;
+
+      // 3. For each daily insight, upsert/insert/update
+      let inserted = 0;
+      let updated = 0;
+      
+      const accountsList = isSimulation ? MOCK_ACCOUNTS : (realAccounts || []);
+      const selectedAccountName = accountsList.find((a: any) => a.id === selectedAccount)?.name || selectedAccount;
+
+      for (const item of insights) {
+        const date = item.date_start;
+        const amount = Number(item.spend || 0);
+        
+        if (amount <= 0) continue; // Skip days with 0 spend
+
+        const existingRecord = (existing || []).find((e: any) => e.occurred_on === date);
+
+        if (existingRecord) {
+          if (Number(existingRecord.amount) !== amount) {
+            const { error: updErr } = await supabase
+              .from("expenses_business")
+              .update({ amount, note: `Auto-sync dari Meta Ads API (BM: ${selectedAccountName})` })
+              .eq("id", existingRecord.id);
+            if (updErr) throw updErr;
+            updated++;
+          }
+        } else {
+          const { error: insErr } = await supabase
+            .from("expenses_business")
+            .insert({
+              category: "meta_ads",
+              amount,
+              occurred_on: date,
+              note: `Auto-sync dari Meta Ads API (BM: ${selectedAccountName})`
+            });
+          if (insErr) throw insErr;
+          inserted++;
+        }
+      }
+
+      toast.success(`Sinkronisasi berhasil! ${inserted} pengeluaran baru ditambahkan, ${updated} diperbarui.`);
+      qc.invalidateQueries({ queryKey: ["biz-expenses"] });
+      qc.invalidateQueries({ queryKey: ["fin-biz"] });
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`Gagal melakukan sinkronisasi: ${e.message}`);
+    } finally {
+      setSyncingToDb(false);
+    }
+  };
 
   // Real Toggling Mutation
   const toggleCampaignMutation = useMutation({
@@ -442,6 +571,10 @@ function MetaAdsPage() {
     return { spend, impressions, clicks, ctr, cpc, conversions, roas };
   }, [campaignsList]);
 
+  const realRoas = useMemo(() => {
+    return summaryMetrics.spend > 0 ? totalRealRevenue / summaryMetrics.spend : 0;
+  }, [totalRealRevenue, summaryMetrics.spend]);
+
   // Loading/Error states
   const loadingData = loadingConfig || loadingAccounts || loadingAdData;
   const isSyncing = fetchingAccounts || fetchingAdData;
@@ -580,11 +713,11 @@ function MetaAdsPage() {
           </Select>
         </div>
 
-        {/* Sync Button */}
-        <div className="bg-card p-4 rounded-lg border shadow-sm flex items-end">
+        {/* Sync Buttons */}
+        <div className="bg-card p-4 rounded-lg border shadow-sm flex items-end gap-2">
           <Button 
             variant="outline" 
-            className="w-full flex items-center justify-center gap-2"
+            className="flex-1 flex items-center justify-center gap-1.5"
             onClick={() => {
               qc.invalidateQueries({ queryKey: ["meta-ad-accounts"] });
               qc.invalidateQueries({ queryKey: ["meta-ad-data"] });
@@ -593,8 +726,19 @@ function MetaAdsPage() {
             disabled={isSyncing}
           >
             <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Menyinkronkan..." : "Sinkronisasi Data"}
+            API Sync
           </Button>
+          {!isSimulation && activeToken && selectedAccount && (
+            <Button 
+              variant="default" 
+              className="flex-1 flex items-center justify-center gap-1.5 bg-honey hover:bg-honey/95 text-honey-foreground font-semibold animate-in fade-in slide-in-from-right-2 duration-200"
+              onClick={handleSyncToDb}
+              disabled={syncingToDb || isSyncing}
+            >
+              <Database className="w-4 h-4" />
+              {syncingToDb ? "Menyimpan..." : "Simpan Keuangan"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -643,10 +787,10 @@ function MetaAdsPage() {
           description="Biaya per konversi pembelian"
         />
         <KpiCard 
-          title="Estimasi ROAS" 
-          value={summaryMetrics.roas > 0 ? `${summaryMetrics.roas.toFixed(2)}x` : "—"} 
+          title="ROAS Riil (Database)" 
+          value={realRoas > 0 ? `${realRoas.toFixed(2)}x` : "—"} 
           icon={<TrendingUp className="w-4 h-4 text-violet-500" />} 
-          description="Perkiraan Return on Ad Spend"
+          description={`Estimasi Pixel: ${summaryMetrics.roas > 0 ? `${summaryMetrics.roas.toFixed(2)}x` : "—"}`}
           accent
         />
       </div>

@@ -15,6 +15,80 @@ import { Search, RotateCcw, AlertTriangle, CheckCircle2, HelpCircle, Trash2 } fr
 
 export const Route = createFileRoute("/retur")({ component: () => <RequireAuth><Page /></RequireAuth> });
 
+// Helper function to send follow-up WhatsApp message using WAHA proxy
+const sendFollowUpMessage = async (order: any, config: any): Promise<boolean> => {
+  if (!config || !config.wahaUrl || !config.sessionName) {
+    console.warn("Konfigurasi WAHA tidak lengkap atau tidak ditemukan.");
+    return false;
+  }
+
+  const phone = order.customer_phone;
+  if (!phone) {
+    console.warn("Nomor HP konsumen kosong.");
+    return false;
+  }
+
+  // Format phone number
+  const cleanPhone = phone.replace(/[^0-9]/g, ""); // remove all non-digits
+  let wahaPhone = cleanPhone;
+  if (cleanPhone.startsWith("0")) {
+    wahaPhone = "62" + cleanPhone.slice(1);
+  } else if (cleanPhone.startsWith("8")) {
+    wahaPhone = "62" + cleanPhone;
+  }
+  const chatId = `${wahaPhone}@c.us`;
+
+  const template = config.followUpTemplate || `Halo Kak {customer_name},\n\nKami mendapati paket madu Araa Honey Kakak dengan nomor resi {tracking_number} ({expedition}) dikembalikan oleh pihak ekspedisi (retur).\n\nBoleh kami tahu alasan paketnya diretur, Kak? Apakah kurir tidak datang ke alamat Kakak, atau ada kendala lain?\n\nJika memang ada kesalahan dari pihak kurir/ekspedisi, kami bersedia mengirimkan ulang paket yang baru secara gratis tanpa biaya tambahan untuk Kakak. 😊🍯\n\nTerima kasih banyak atas perhatiannya, Kak!`;
+
+  const message = template
+    .replace(/{customer_name}/g, order.customer_name || "")
+    .replace(/{tracking_number}/g, order.tracking_number || "")
+    .replace(/{expedition}/g, order.expedition || "");
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (config.apiKey) {
+    headers["X-Api-Key"] = config.apiKey;
+  }
+
+  try {
+    const res = await fetch("/api/waha-proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: `${config.wahaUrl}/api/sendText`,
+        method: "POST",
+        headers,
+        body: {
+          session: config.sessionName,
+          chatId: chatId,
+          text: message
+        }
+      })
+    });
+    if (res.ok) return true;
+
+    // Fallback endpoint
+    const fallbackRes = await fetch("/api/waha-proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: `${config.wahaUrl}/api/messages/sendText`,
+        method: "POST",
+        headers,
+        body: {
+          session: config.sessionName,
+          chatId: chatId,
+          text: message
+        }
+      })
+    });
+    return fallbackRes.ok;
+  } catch (err) {
+    console.error("Error API WAHA:", err);
+    return false;
+  }
+};
+
 function Page() {
   const qc = useQueryClient();
   const [resiSearch, setResiSearch] = useState("");
@@ -27,6 +101,23 @@ function Page() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Fetch WAHA Config from Supabase database for follow-up message sending
+  const { data: wahaConfig } = useQuery({
+    queryKey: ["waha-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "waha_config")
+        .maybeSingle();
+      if (error) {
+        console.error("Gagal mengambil waha config:", error);
+        throw error;
+      }
+      return (data?.value as any) || null;
+    }
+  });
 
   const handleDeleteReturn = async (returnId: string) => {
     const isConfirmed = window.confirm(
@@ -154,6 +245,25 @@ function Page() {
         toast.error("Gagal memproses retur: " + error.message);
       } else {
         toast.success("Retur berhasil diproses! Stok disesuaikan & pengeluaran dicatat.");
+        
+        // Trigger follow-up WhatsApp message if phone number exists and WAHA configuration is present
+        if (activeOrder.customer_phone && activeOrder.customer_phone.trim() && wahaConfig && wahaConfig.wahaUrl) {
+          const promise = sendFollowUpMessage(activeOrder, wahaConfig).then((success) => {
+            if (!success) throw new Error("Gagal mengirim pesan melalui gateway WhatsApp");
+            return "Pesan follow-up retur berhasil terkirim ke WhatsApp konsumen!";
+          });
+
+          toast.promise(promise, {
+            loading: "Mengirim pesan follow-up otomatis ke WhatsApp konsumen...",
+            success: (data) => data,
+            error: (err) => err.message || "Gagal mengirim pesan follow-up otomatis."
+          });
+        } else if (!activeOrder.customer_phone || !activeOrder.customer_phone.trim()) {
+          console.log("Follow-up WhatsApp dilewati karena nomor HP kosong.");
+        } else {
+          console.log("Follow-up WhatsApp dilewati karena konfigurasi WAHA belum diset.");
+        }
+
         setActiveOrder(null);
         setResiSearch("");
         qc.invalidateQueries();

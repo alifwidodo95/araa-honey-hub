@@ -7,24 +7,25 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database
 } from "lucide-react";
 import { Button } from "./ui/button";
 
 const navStaff = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/penjualan", label: "Penjualan", icon: ShoppingCart },
+  { to: "/retur", label: "Retur Pesanan", icon: RotateCcw },
   { to: "/stok/bahan-baku", label: "Bahan Baku", icon: Package },
   { to: "/stok/pindah-wadah", label: "Pindah Wadah", icon: ArrowLeftRight },
   { to: "/stok/kemasan", label: "Kemasan & Packing", icon: Boxes },
   { to: "/pengeluaran", label: "Biaya Operasional", icon: Receipt },
-  { to: "/retur", label: "Retur Pesanan", icon: RotateCcw },
 ];
 
 const navOwnerOnly = [
   { to: "/keuangan", label: "Keuangan", icon: TrendingUp },
   { to: "/pengeluaran-pribadi", label: "Pengeluaran Pribadi", icon: Wallet },
   { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone }, // Added Meta Ads Manager
+  { to: "/import-riwayat", label: "Impor Riwayat", icon: Database },
   { to: "/pengaturan/whatsapp", label: "Integrasi WhatsApp", icon: MessageSquare },
   { to: "/pengaturan/harga", label: "Pengaturan Harga", icon: Settings },
   { to: "/pengaturan/lumpsum", label: "Lumpsum Bulanan", icon: Settings },
@@ -148,10 +149,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <Link
                 key={it.to}
                 to={it.to}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                className={`flex items-center gap-3 px-3 py-2 text-sm liquid-honey-item ${
                   active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "hover:bg-sidebar-border/40"
+                    ? "liquid-honey-active"
+                    : "text-sidebar-foreground/85"
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -222,10 +223,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   key={it.to}
                   to={it.to}
                   onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                  className={`flex items-center gap-3 px-3 py-2 text-sm liquid-honey-item ${
                     active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "hover:bg-sidebar-border/40"
+                      ? "liquid-honey-active"
+                      : "text-sidebar-foreground/85"
                   }`}
                 >
                   <Icon className="h-4 w-4" />

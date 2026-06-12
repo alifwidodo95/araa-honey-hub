@@ -100,3 +100,56 @@
   * { border-color: var(--color-border); }
   body { background-color: var(--color-background); color: var(--color-foreground); }
 }
+
+@keyframes honey-blob {
+  0% {
+    border-radius: 8px 20px 8px 20px / 12px 8px 12px 8px;
+  }
+  50% {
+    border-radius: 20px 8px 20px 8px / 8px 12px 8px 12px;
+  }
+  100% {
+    border-radius: 8px 20px 8px 20px / 12px 8px 12px 8px;
+  }
+}
+
+.liquid-honey-active {
+  background-color: var(--color-sidebar-accent) !important;
+  color: var(--color-sidebar-accent-foreground) !important;
+  font-weight: 600;
+  animation: honey-blob 5s ease-in-out infinite;
+  box-shadow: 0 4px 15px -3px rgba(245, 158, 11, 0.3);
+  transform: scale(1.02);
+}
+
+.liquid-honey-item {
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+.liquid-honey-item::after {
+  content: '🍯';
+  position: absolute;
+  right: 12px;
+  font-size: 13px;
+  opacity: 0;
+  transform: scale(0) rotate(-45deg);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.liquid-honey-item:hover::after {
+  opacity: 0.95;
+  transform: scale(1.2) rotate(0deg);
+}
+
+.liquid-honey-item:hover {
+  transform: translateX(8px) scale(1.03);
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  border-radius: 12px 8px 12px 8px / 8px 12px 8px 12px;
+  color: var(--color-honey) !important;
+}
+
+.dark .liquid-honey-item:hover {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+}
+

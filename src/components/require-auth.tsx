@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppLayout } from "./app-layout";
+import { LoadingScreen } from "./loading-screen";
 
 export function RequireAuth({ children, ownerOnly = false }: { children: ReactNode; ownerOnly?: boolean }) {
   const { session, loading, role } = useAuth();
@@ -14,7 +15,7 @@ export function RequireAuth({ children, ownerOnly = false }: { children: ReactNo
   }, [loading, session, role, ownerOnly, navigate]);
 
   if (loading || !session) {
-    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Memuat…</div>;
+    return <LoadingScreen />;
   }
   if (ownerOnly && role !== "owner") {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Mengarahkan…</div>;

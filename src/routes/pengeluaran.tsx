@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/pengeluaran")({ component: () => <RequireAuth><Page /></RequireAuth> });
 
@@ -23,6 +24,7 @@ function Page() {
 
   const [form, setForm] = useState({ category: "meta_ads", amount: 0, note: "", occurred_on: new Date().toISOString().slice(0, 10) });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +36,54 @@ function Page() {
       toast.success("Pengeluaran tercatat");
       setForm({ ...form, amount: 0, note: "" });
       qc.invalidateQueries({ queryKey: ["biz-expenses"] });
+    }
+  };
+
+
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.length} item pengeluaran yang terpilih?`)) return;
+    const { error } = await supabase.from("expenses_business").delete().in("id", selectedIds);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`${selectedIds.length} pengeluaran berhasil dihapus`);
+      setSelectedIds([]);
+      qc.invalidateQueries({ queryKey: ["biz-expenses"] });
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm("⚠️ PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA riwayat pengeluaran operasional? Tindakan ini tidak dapat dibatalkan.")) return;
+    const { error } = await supabase.from("expenses_business").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Semua riwayat pengeluaran berhasil dikosongkan");
+      setSelectedIds([]);
+      qc.invalidateQueries({ queryKey: ["biz-expenses"] });
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleAll = () => {
+    if (!rows || rows.length === 0) return;
+    const allIds = rows.map((r) => r.id);
+    const areAllSelected = rows.every((r) => selectedIds.includes(r.id));
+    if (areAllSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !allIds.includes(id)));
+    } else {
+      setSelectedIds((prev) => {
+        const next = [...prev];
+        allIds.forEach((id) => {
+          if (!next.includes(id)) next.push(id);
+        });
+        return next;
+      });
     }
   };
 
@@ -68,13 +118,56 @@ function Page() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Riwayat</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle>Riwayat</CardTitle>
+          <div className="flex gap-2">
+            {selectedIds.length > 0 && (
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                className="font-semibold animate-in fade-in zoom-in-95 duration-150"
+                onClick={handleDeleteSelected}
+              >
+                Hapus Terpilih ({selectedIds.length})
+              </Button>
+            )}
+            {rows && rows.length > 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive font-semibold"
+                onClick={handleClearAll}
+              >
+                Hapus Semua
+              </Button>
+            )}
+          </div>
+        </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader><TableRow><TableHead>Tanggal</TableHead><TableHead>Kategori</TableHead><TableHead>Nominal</TableHead><TableHead>Catatan</TableHead></TableRow></TableHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[50px]">
+                  <Checkbox 
+                    checked={rows && rows.length > 0 && rows.every(r => selectedIds.includes(r.id))}
+                    onCheckedChange={handleToggleAll}
+                  />
+                </TableHead>
+                <TableHead>Tanggal</TableHead>
+                <TableHead>Kategori</TableHead>
+                <TableHead>Nominal</TableHead>
+                <TableHead>Catatan</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
               {(rows ?? []).map((r: any) => (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} className={selectedIds.includes(r.id) ? "bg-muted/50 transition-colors" : "transition-colors"}>
+                  <TableCell>
+                    <Checkbox 
+                      checked={selectedIds.includes(r.id)}
+                      onCheckedChange={() => handleToggleSelect(r.id)}
+                    />
+                  </TableCell>
                   <TableCell>{r.occurred_on}</TableCell>
                   <TableCell className="capitalize">{String(r.category).replace("_", " ")}</TableCell>
                   <TableCell>{formatIDR(r.amount)}</TableCell>

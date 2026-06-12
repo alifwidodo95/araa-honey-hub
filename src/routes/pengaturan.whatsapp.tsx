@@ -43,6 +43,10 @@ function WhatsAppPage() {
   const [scheduleTime, setScheduleTime] = useState(() => localStorage.getItem("waha_schedule_time") || "19:00");
   const [intervalVal, setIntervalVal] = useState(() => localStorage.getItem("waha_send_interval") || "60"); // in seconds
   const [autoSchedule, setAutoSchedule] = useState(() => localStorage.getItem("waha_auto_schedule") === "true");
+  const [messageTemplate, setMessageTemplate] = useState(() => localStorage.getItem("waha_message_template") || `Halo Kak {customer_name},\n\nPaket madu Araa Honey pesanan Kakak telah dikirim menggunakan {expedition}.\n\n*Resi Pengiriman:* {tracking_number}\n\nKakak bisa melacak status pengiriman secara berkala di aplikasi pelacakan ekspedisi terkait. Terima kasih banyak telah berbelanja di Araa Honey! 🍯🐝`);
+  const [followUpTemplate, setFollowUpTemplate] = useState(() => localStorage.getItem("waha_followup_template") || `Halo Kak {customer_name},\n\nKami mendapati paket madu Araa Honey Kakak dengan nomor resi {tracking_number} ({expedition}) dikembalikan oleh pihak ekspedisi (retur).\n\nBoleh kami tahu alasan paketnya diretur, Kak? Apakah kurir tidak datang ke alamat Kakak, atau ada kendala lain?\n\nJika memang ada kesalahan dari pihak kurir/ekspedisi, kami bersedia mengirimkan ulang paket yang baru secara gratis tanpa biaya tambahan untuk Kakak. 😊🍯\n\nTerima kasih banyak atas perhatiannya, Kak!`);
+  const [activeTemplateTab, setActiveTemplateTab] = useState<"resi" | "retur">("resi");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch WAHA Config from Supabase database for multi-device sync
   const { data: wahaConfig, refetch: refetchConfig } = useQuery({
@@ -88,6 +92,14 @@ function WhatsAppPage() {
         setAutoSchedule(wahaConfig.autoSchedule);
         localStorage.setItem("waha_auto_schedule", String(wahaConfig.autoSchedule));
       }
+      if (wahaConfig.messageTemplate) {
+        setMessageTemplate(wahaConfig.messageTemplate);
+        localStorage.setItem("waha_message_template", wahaConfig.messageTemplate);
+      }
+      if (wahaConfig.followUpTemplate) {
+        setFollowUpTemplate(wahaConfig.followUpTemplate);
+        localStorage.setItem("waha_followup_template", wahaConfig.followUpTemplate);
+      }
     }
   }, [wahaConfig]);
 
@@ -111,7 +123,7 @@ function WhatsAppPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id, customer_name, customer_phone, tracking_number, created_at, resi_shared_via_wa, channel")
+        .select("id, customer_name, customer_phone, tracking_number, created_at, resi_shared_via_wa, channel, expedition")
         .eq("channel", "whatsapp")
         .not("tracking_number", "is", null)
         .eq("resi_shared_via_wa", false)
@@ -137,7 +149,9 @@ function WhatsAppPage() {
             apiKey: apiKey.trim(),
             scheduleTime,
             intervalVal,
-            autoSchedule
+            autoSchedule,
+            messageTemplate,
+            followUpTemplate
           }
         });
       if (error) throw error;
@@ -148,12 +162,74 @@ function WhatsAppPage() {
       localStorage.setItem("waha_schedule_time", scheduleTime);
       localStorage.setItem("waha_send_interval", intervalVal);
       localStorage.setItem("waha_auto_schedule", String(autoSchedule));
+      localStorage.setItem("waha_message_template", messageTemplate);
+      localStorage.setItem("waha_followup_template", followUpTemplate);
       
       toast.success("Pengaturan berhasil disimpan ke database!");
       refetchConfig();
     } catch (err: any) {
       toast.error(err.message || "Gagal menyimpan pengaturan.");
     }
+  };
+
+  // Immediate toggle save helper
+  const handleToggleAutoSchedule = async (checked: boolean) => {
+    setAutoSchedule(checked);
+    localStorage.setItem("waha_auto_schedule", String(checked));
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({
+          key: "waha_config",
+          value: {
+            wahaUrl: wahaUrl.trim(),
+            sessionName: sessionName.trim(),
+            apiKey: apiKey.trim(),
+            scheduleTime,
+            intervalVal,
+            autoSchedule: checked,
+            messageTemplate,
+            followUpTemplate
+          }
+        });
+      if (error) throw error;
+      toast.success(checked ? "Pengiriman otomatis diaktifkan!" : "Pengiriman otomatis dinonaktifkan!");
+      refetchConfig();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memperbarui status pengiriman.");
+      setAutoSchedule(!checked);
+      localStorage.setItem("waha_auto_schedule", String(!checked));
+    }
+  };
+
+  const insertPlaceholder = (ph: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      if (activeTemplateTab === "resi") {
+        setMessageTemplate(prev => prev + ph);
+      } else {
+        setFollowUpTemplate(prev => prev + ph);
+      }
+      return;
+    }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const text = el.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end, text.length);
+    const newText = before + ph + after;
+    
+    if (activeTemplateTab === "resi") {
+      setMessageTemplate(newText);
+    } else {
+      setFollowUpTemplate(newText);
+    }
+    
+    // Focus back and place cursor after the placeholder
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + ph.length, start + ph.length);
+    }, 0);
   };
 
   // Helper: Get headers for WAHA API
@@ -494,8 +570,13 @@ function WhatsAppPage() {
 
     addLog(`⏳ [Kirim] Mengirim resi ke ${order.customer_name} (${order.customer_phone})...`);
     
-    // Construct message
-    const message = `Halo Kak ${order.customer_name},\n\nPaket madu Araa Honey pesanan Kakak telah dikirim. \n\n*Resi Pengiriman:* ${order.tracking_number}\n\nKakak bisa melacak status pengiriman secara berkala di aplikasi pelacakan ekspedisi terkait. Terima kasih banyak telah berbelanja di Araa Honey! 🍯🐝`;
+    // Construct message using customizable template
+    const template = messageTemplate || `Halo Kak {customer_name},\n\nPaket madu Araa Honey pesanan Kakak telah dikirim menggunakan {expedition}.\n\n*Resi Pengiriman:* {tracking_number}\n\nKakak bisa melacak status pengiriman secara berkala di aplikasi pelacakan ekspedisi terkait. Terima kasih banyak telah berbelanja di Araa Honey! 🍯🐝`;
+    
+    const message = template
+      .replace(/{customer_name}/g, order.customer_name || "")
+      .replace(/{tracking_number}/g, order.tracking_number || "")
+      .replace(/{expedition}/g, order.expedition || "");
 
     const success = await sendWhatsAppMessage(order.customer_phone, message);
 
@@ -647,15 +728,12 @@ function WhatsAppPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="auto-schedule" className="cursor-pointer font-medium">Kirim Otomatis</Label>
-                  <p className="text-[10px] text-muted-foreground">Kirim resi saat jam terjadwal (browser harus terbuka).</p>
+                  <p className="text-[10px] text-muted-foreground">Kirim resi terjadwal otomatis via cloud (24/7).</p>
                 </div>
                 <Switch 
                   id="auto-schedule" 
                   checked={autoSchedule} 
-                  onCheckedChange={(checked) => {
-                    setAutoSchedule(checked);
-                    localStorage.setItem("waha_auto_schedule", String(checked));
-                  }}
+                  onCheckedChange={handleToggleAutoSchedule}
                 />
               </div>
 
@@ -694,6 +772,118 @@ function WhatsAppPage() {
                   </Select>
                 </div>
               </div>
+
+              <div className="border-t pt-3 mt-3 space-y-2">
+                <Label className="text-xs font-semibold text-muted-foreground">Info Pemicu Otomatis (Cloud Cron):</Label>
+                <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded border border-border/80 text-[10px] space-y-1 font-mono select-all">
+                  <div className="text-slate-500 dark:text-slate-400 break-all font-semibold">GET https://app.araahoney.my.id/api/cron/send-resi</div>
+                  <div className="text-slate-400 dark:text-slate-500 break-all">Header: Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
+                </div>
+                <p className="text-[9px] text-muted-foreground leading-normal">
+                  Cron bawaan Vercel telah diaktifkan otomatis (berjalan tiap jam 19:00 WIB). Jika ingin memicu lebih sering atau di jam kustom, salin URL & Header di atas ke layanan cron gratis seperti <a href="https://cron-job.org" target="_blank" rel="noopener noreferrer" className="text-honey hover:underline font-semibold">cron-job.org</a>.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Message Template Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-honey" /> Template Pesan
+              </CardTitle>
+              <CardDescription>Sesuaikan kata-kata pesan WhatsApp untuk berbagai notifikasi.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Tab Selector Buttons */}
+              <div className="flex bg-muted/60 p-0.5 rounded-lg border border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setActiveTemplateTab("resi")}
+                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+                    activeTemplateTab === "resi"
+                      ? "bg-white dark:bg-slate-950 shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Kirim Resi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTemplateTab("retur")}
+                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+                    activeTemplateTab === "retur"
+                      ? "bg-white dark:bg-slate-950 shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Follow-Up Retur
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="message-template">
+                  {activeTemplateTab === "resi" ? "Format Pesan Kirim Resi" : "Format Pesan Follow-Up Retur"}
+                </Label>
+                <textarea
+                  id="message-template"
+                  ref={textareaRef}
+                  rows={6}
+                  className="flex min-h-[140px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={activeTemplateTab === "resi" ? messageTemplate : followUpTemplate}
+                  onChange={(e) => {
+                    if (activeTemplateTab === "resi") {
+                      setMessageTemplate(e.target.value);
+                    } else {
+                      setFollowUpTemplate(e.target.value);
+                    }
+                  }}
+                  placeholder="Masukkan format pesan..."
+                />
+              </div>
+
+              <div className="space-y-1 text-xs">
+                <Label className="text-muted-foreground font-semibold">Placeholder yang tersedia:</Label>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <Badge 
+                    variant="outline" 
+                    className="cursor-pointer hover:bg-accent select-none" 
+                    onClick={() => insertPlaceholder("{customer_name}")}
+                  >
+                    {`{customer_name}`}
+                  </Badge>
+                  <Badge 
+                    variant="outline" 
+                    className="cursor-pointer hover:bg-accent select-none" 
+                    onClick={() => insertPlaceholder("{expedition}")}
+                  >
+                    {`{expedition}`}
+                  </Badge>
+                  <Badge 
+                    variant="outline" 
+                    className="cursor-pointer hover:bg-accent select-none" 
+                    onClick={() => insertPlaceholder("{tracking_number}")}
+                  >
+                    {`{tracking_number}`}
+                  </Badge>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Klik tag di atas untuk menyisipkan ke dalam template.</p>
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="mt-3 p-3 bg-muted/30 rounded-lg border border-border/80 text-xs space-y-1.5">
+                <span className="font-semibold text-muted-foreground">Pratinjau Pesan (Simulasi):</span>
+                <div className="bg-white dark:bg-slate-950 p-2.5 rounded border border-border text-slate-800 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
+                  {(activeTemplateTab === "resi" ? messageTemplate : followUpTemplate)
+                    .replace(/{customer_name}/g, "Opa Fandra")
+                    .replace(/{expedition}/g, "J&T Express")
+                    .replace(/{tracking_number}/g, "IDE7002038084020")}
+                </div>
+              </div>
+
+              <Button onClick={handleSaveConfig} className="w-full bg-honey hover:bg-honey-dark text-honey-foreground">
+                Simpan Template
+              </Button>
             </CardContent>
           </Card>
         </div>

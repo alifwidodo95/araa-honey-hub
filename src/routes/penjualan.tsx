@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, Plus, Pencil, Loader2, Upload } from "lucide-react";
+import { Trash2, Plus, Pencil, Loader2, Upload, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import {
@@ -205,15 +205,33 @@ function Page() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [searchVal, setSearchVal] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchVal);
+      setCurrentPage(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchVal]);
 
   const { data: ordersData } = useQuery({
-    queryKey: ["orders-recent", currentPage, pageSize],
+    queryKey: ["orders-recent", currentPage, pageSize, searchQuery],
     queryFn: async () => {
       const from = (currentPage - 1) * pageSize;
       const to = from + pageSize - 1;
-      const { data, count, error } = await supabase
+      
+      let query = supabase
         .from("orders")
-        .select("*", { count: "exact" })
+        .select("*, order_items(*, product_sizes(*))", { count: "exact" });
+
+      if (searchQuery.trim()) {
+        const cleanQuery = searchQuery.trim();
+        query = query.or(`customer_name.ilike.%${cleanQuery}%,customer_phone.ilike.%${cleanQuery}%,tracking_number.ilike.%${cleanQuery}%`);
+      }
+
+      const { data, count, error } = await query
         .order("created_at", { ascending: false })
         .range(from, to);
       if (error) throw error;
@@ -933,8 +951,28 @@ function Page() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-wrap gap-2">
-          <CardTitle>Pesanan Terbaru</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-wrap gap-3">
+          <div className="flex items-center gap-4 flex-1 min-w-[280px] max-w-md">
+            <CardTitle className="shrink-0">Pesanan Terbaru</CardTitle>
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Cari nama, no. HP, atau resi..."
+                value={searchVal}
+                onChange={(e) => setSearchVal(e.target.value)}
+                className="pl-9 h-9 w-full bg-slate-50/50 focus:bg-white transition-colors"
+              />
+              {searchVal && (
+                <button
+                  onClick={() => setSearchVal("")}
+                  className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
           {selectedOrderIds.length > 0 && (
             <Button
               size="sm"
@@ -1008,11 +1046,27 @@ function Page() {
                   </TableCell>
                   <TableCell>{new Date(o.created_at).toLocaleString("id-ID")}</TableCell>
                   <TableCell>
-                    <span className="font-medium">{o.customer_name ?? "-"}</span>
-                    {o.returned && (
-                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-destructive/15 text-destructive border border-destructive/20 uppercase">
-                        Retur
-                      </span>
+                    <div>
+                      <span className="font-medium">{o.customer_name ?? "-"}</span>
+                      {o.returned && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-destructive/15 text-destructive border border-destructive/20 uppercase">
+                          Retur
+                        </span>
+                      )}
+                    </div>
+                    {o.order_items && o.order_items.length > 0 && (
+                      <div className="mt-1.5 p-1.5 bg-slate-50/60 dark:bg-slate-900/40 rounded-md border border-slate-200/80 dark:border-slate-800/80 shadow-sm max-w-[200px] space-y-1">
+                        {o.order_items.map((item: any) => (
+                          <div key={item.id} className="flex gap-1.5 items-center text-[10px] leading-tight">
+                            <span className="bg-honey/15 text-honey-dark dark:text-honey px-1 py-0.5 rounded text-[9px] font-bold border border-honey/20 select-none">
+                              {item.qty}x
+                            </span>
+                            <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
+                              {item.honey_type || "Madu"} {item.product_sizes?.name || ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell>{o.customer_phone ?? "-"}</TableCell>
