@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import { 
   FileSpreadsheet, Upload, CheckCircle2, AlertCircle, Loader2,
-  Calendar, RefreshCw, ShoppingBag, CreditCard, ChevronRight, Settings
+  ShoppingBag, CreditCard
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -24,18 +24,29 @@ export const Route = createFileRoute("/import-riwayat")({
   )
 });
 
+interface ParsedItem {
+  size_id: string;
+  qty: number;
+  unit_price: number;
+  honey_type: string;
+  size_name: string;
+}
+
 interface RawRow {
   rowNumber: number;
   originalDate: string;
   parsedDate: string;
-  trackingNumber: string;
-  shippingFee: number;
   customerName: string;
   customerPhone: string;
-  customerNote: string;
-  productName: string;
-  qty: number;
-  amountReceived: number | null;
+  trackingNumber: string;
+  expedition: string;
+  paymentMethod: string;
+  shippingFee: number;
+  amountReceived: number;
+  productString: string;
+  packageQty: number;
+  items: ParsedItem[];
+  rawRow: any;
 }
 
 // Indonesian word date parser (e.g. "Kamis, 11 Jun 2026") or numeric dates (e.g. "11-06-2026")
@@ -98,47 +109,128 @@ const parseExcelDate = (str: string): string => {
   return new Date().toISOString().slice(0, 10);
 };
 
-// Helper for robustly finding headers (exact matches have preference over partial matches)
-const detectColumnHeader = (headers: string[], keywords: string[]): string => {
-  if (!headers || !Array.isArray(headers)) return "";
+const detectCourier = (resi: string): string | null => {
+  if (!resi) return null;
+  const cleaned = resi.trim().toUpperCase();
+  if (cleaned.startsWith("SPX")) {
+    return "SPX";
+  }
+  if (cleaned.startsWith("ID")) {
+    return "ID EXPRESS";
+  }
+  return null;
+};
+
+const getRowValue = (row: any, keysToTry: string[], fallbackColIdx?: number) => {
+  const rowKeys = Object.keys(row).filter(k => k !== "__rowNumber");
+  if (rowKeys.length === 0) return undefined;
   
-  // 1. Try exact match (case insensitive)
-  for (const kw of keywords) {
-    const match = headers.find(h => {
-      if (h === undefined || h === null) return false;
-      const cleanHeader = String(h).trim().toLowerCase();
-      return cleanHeader === kw.toLowerCase();
-    });
-    if (match) return match;
+  for (const key of keysToTry) {
+    const foundKey = rowKeys.find(k => k.trim().toLowerCase() === key.toLowerCase());
+    if (foundKey !== undefined) return row[foundKey];
   }
-  // 2. Try partial match
-  for (const kw of keywords) {
-    const match = headers.find(h => {
-      if (h === undefined || h === null) return false;
-      const cleanHeader = String(h).trim().toLowerCase();
-      return cleanHeader.includes(kw.toLowerCase());
-    });
-    if (match) return match;
+  
+  for (const key of keysToTry) {
+    const foundKey = rowKeys.find(k => k.trim().toLowerCase().includes(key.toLowerCase()));
+    if (foundKey !== undefined) return row[foundKey];
   }
-  return "";
+  
+  if (fallbackColIdx !== undefined && fallbackColIdx < rowKeys.length) {
+    return row[rowKeys[fallbackColIdx]];
+  }
+  return undefined;
+};
+
+const parseProductString = (
+  productStr: string,
+  activeVariants: string[],
+  sizes: any[],
+  packageQty: number,
+  retailPrices: any[]
+): ParsedItem[] => {
+  if (!productStr) return [];
+  
+  const parts = productStr.split("+").map((p) => p.trim());
+  const parsedItems: ParsedItem[] = [];
+  let currentVariant = "";
+
+  for (const part of parts) {
+    const partUpper = part.toUpperCase();
+    
+    // 1. Detect variant
+    let detectedVariant = "";
+    for (const v of activeVariants) {
+      const vUpper = v.toUpperCase();
+      const cleanV = vUpper.replace("MADU", "").trim();
+      if (partUpper.includes(vUpper) || (cleanV && partUpper.includes(cleanV))) {
+        detectedVariant = v;
+        break;
+      }
+    }
+    
+    if (detectedVariant) {
+      currentVariant = detectedVariant;
+    } else if (!currentVariant) {
+      currentVariant = activeVariants.find((v) => v.toUpperCase() !== "LAINNYA") || activeVariants[0] || "Akasia";
+    }
+    
+    // 2. Detect size
+    let detectedSize: any = null;
+    
+    for (const s of sizes) {
+      const sName = s.name.toUpperCase().trim();
+      const sNameNoSpace = sName.replace(/\s+/g, "");
+      const weightGr = s.weight_grams;
+      const weightGrPattern = new RegExp(`\\b${weightGr}\\s*(g|gr|gram|grams)?\\b`, "i");
+      
+      if (
+        partUpper.includes(sName) || 
+        partUpper.includes(sNameNoSpace) ||
+        (sName.endsWith("KG") && partUpper.includes(sName.replace("KG", " KG"))) ||
+        (sName.endsWith("GR") && partUpper.includes(sName.replace("GR", " GR"))) ||
+        partUpper.match(weightGrPattern)
+      ) {
+        detectedSize = s;
+        break;
+      }
+    }
+    
+    if (!detectedSize) {
+      if (partUpper.includes("1KG") || partUpper.includes("1 KG") || partUpper.includes("1000G")) {
+        detectedSize = sizes.find((s) => s.name.includes("1 kg")) || sizes[0];
+      } else if (partUpper.includes("500") || partUpper.includes("500G")) {
+        detectedSize = sizes.find((s) => s.name.includes("500 gr")) || sizes[0];
+      } else if (partUpper.includes("250") || partUpper.includes("250G")) {
+        detectedSize = sizes.find((s) => s.name.includes("250 gr")) || sizes[0];
+      } else if (partUpper.includes("130") || partUpper.includes("130G")) {
+        detectedSize = sizes.find((s) => s.name.includes("130 gr")) || sizes[0];
+      } else if (partUpper.includes("100") || partUpper.includes("100G")) {
+        detectedSize = sizes.find((s) => s.name.includes("100 gr")) || sizes[0];
+      } else {
+        detectedSize = sizes[0];
+      }
+    }
+    
+    if (detectedSize) {
+      const sizeId = detectedSize.id;
+      const unitPrice = Number(retailPrices?.find((r) => r.size_id === sizeId && r.honey_type === currentVariant)?.price ?? 150000);
+      
+      parsedItems.push({
+        size_id: sizeId,
+        qty: packageQty,
+        unit_price: unitPrice === 0 ? 150000 : unitPrice,
+        honey_type: currentVariant,
+        size_name: detectedSize.name
+      });
+    }
+  }
+  
+  return parsedItems;
 };
 
 function Page() {
   const qc = useQueryClient();
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [sheetRows, setSheetRows] = useState<any[][]>([]);
-  const [colMapping, setColMapping] = useState({
-    date: "none",
-    tracking: "none",
-    shipping: "none",
-    name: "none",
-    phone: "none",
-    note: "none",
-    product: "none",
-    qty: "none",
-    amount: "none"
-  });
-
+  const [parsedOrders, setParsedOrders] = useState<RawRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, successes: 0, failures: 0 });
   const [logs, setLogs] = useState<string[]>([]);
@@ -147,106 +239,28 @@ function Page() {
 
   const { data: productSizes } = useQuery({
     queryKey: ["product-sizes"],
-    queryFn: async () => (await supabase.from("product_sizes").select("*")).data ?? [],
+    queryFn: async () => (await supabase.from("product_sizes").select("*").order("sort_order")).data ?? [],
   });
+
+  const { data: retailPrices } = useQuery({
+    queryKey: ["retail-prices"],
+    queryFn: async () => (await supabase.from("retail_prices").select("*")).data ?? [],
+  });
+
+  const { data: variants } = useQuery({ 
+    queryKey: ["honey-variants"], 
+    queryFn: async () => (await supabase.from("honey_variants").select("*").eq("active", true).order("name")).data ?? [] 
+  });
+
+  const activeVariants = useMemo(() => {
+    const list = (variants ?? []).map((v: any) => v.name);
+    return list.length > 0 ? list : ["Akasia", "Randu", "Karet", "Lainnya"];
+  }, [variants]);
 
   const { data: tiers } = useQuery({
     queryKey: ["reseller-tiers"],
-    queryFn: async () => (await supabase.from("reseller_tiers").select("*").order("level")).data ?? [],
+    queryFn: async () => (await supabase.from("reseller_tiers").select("*").eq("active", true).order("level")).data ?? [],
   });
-
-  // Parse Excel raw rows reactively based on sheetRows and current colMapping
-  const parsedRows = useMemo<RawRow[]>(() => {
-    if (sheetRows.length === 0) return [];
-
-    const colIndexMap: Record<string, number> = {};
-    headers.forEach((h, idx) => {
-      if (h) colIndexMap[h] = idx;
-    });
-
-    const getVal = (row: any, headerName: string): any => {
-      if (!headerName || headerName === "none") return undefined;
-      // If row is an array, get by index
-      if (Array.isArray(row)) {
-        const idx = colIndexMap[headerName];
-        return idx !== undefined ? row[idx] : undefined;
-      }
-      // If row is an object, get by key
-      if (row && typeof row === "object") {
-        return row[headerName];
-      }
-      return undefined;
-    };
-
-    return sheetRows.map((row, rowIdx) => {
-      const dateStr = colMapping.date && colMapping.date !== "none" ? String(getVal(row, colMapping.date) ?? "").trim() : "";
-      const trackingNumber = colMapping.tracking && colMapping.tracking !== "none" ? String(getVal(row, colMapping.tracking) ?? "").trim() : "";
-      const shippingFee = colMapping.shipping && colMapping.shipping !== "none" ? Number(getVal(row, colMapping.shipping) || 0) : 0;
-      const customerName = colMapping.name && colMapping.name !== "none" ? String(getVal(row, colMapping.name) ?? "").trim() : "";
-      let customerPhone = colMapping.phone && colMapping.phone !== "none" ? String(getVal(row, colMapping.phone) ?? "").trim() : "";
-      const customerNote = colMapping.note && colMapping.note !== "none" ? String(getVal(row, colMapping.note) ?? "").trim() : "";
-      const productName = colMapping.product && colMapping.product !== "none" ? String(getVal(row, colMapping.product) ?? "").trim() : "";
-      const qty = colMapping.qty && colMapping.qty !== "none" ? Number(getVal(row, colMapping.qty) || 1) : 1;
-      const amountReceived = colMapping.amount && colMapping.amount !== "none" ? Number(getVal(row, colMapping.amount) || 0) : null;
-
-      const cleanDate = parseExcelDate(dateStr);
-      
-      // Normalize Indonesian/local phone formats to prefix "0" if starting with "8"
-      if (customerPhone && !customerPhone.startsWith("0") && !customerPhone.startsWith("62") && customerPhone.startsWith("8")) {
-        customerPhone = "0" + customerPhone;
-      }
-
-      return {
-        rowNumber: rowIdx + 2,
-        originalDate: dateStr,
-        parsedDate: cleanDate,
-        trackingNumber: trackingNumber,
-        shippingFee,
-        customerName: customerName,
-        customerPhone: customerPhone,
-        customerNote: customerNote,
-        productName: productName,
-        qty,
-        amountReceived
-      };
-    });
-  }, [sheetRows, headers, colMapping]);
-
-  // Smart matching logic (Excel product text -> size_id)
-  const mappedData = useMemo(() => {
-    if (!parsedRows || !productSizes) return [];
-
-    return parsedRows.map((row) => {
-      const nameLower = row.productName.toLowerCase();
-      let matchedSize: any = null;
-
-      // 1. Weight matching
-      if (nameLower.includes("1kg") || nameLower.includes("1 kg") || nameLower.includes("1.000") || nameLower.includes("1000")) {
-        matchedSize = productSizes.find(s => s.weight_grams === 1000 || s.name.toLowerCase().includes("1kg") || s.name.toLowerCase().includes("1 kg"));
-      } else if (nameLower.includes("500") || nameLower.includes("0.5") || nameLower.includes("1/2")) {
-        matchedSize = productSizes.find(s => s.weight_grams === 500 || s.name.toLowerCase().includes("500"));
-      } else if (nameLower.includes("350") || nameLower.includes("325")) {
-        matchedSize = productSizes.find(s => s.weight_grams === 350 || s.name.toLowerCase().includes("350"));
-      }
-
-      // 2. Substring matching
-      if (!matchedSize) {
-        matchedSize = productSizes.find(s => nameLower.includes(s.name.toLowerCase()));
-      }
-
-      // 3. Ultimate fallback
-      if (!matchedSize && productSizes.length > 0) {
-        matchedSize = productSizes[0];
-      }
-
-      return {
-        ...row,
-        sizeId: matchedSize?.id || null,
-        sizeName: matchedSize?.name || "Tidak Terpetakan",
-        unitPrice: matchedSize ? Number(matchedSize.default_retail_price || 150000) : 150000
-      };
-    });
-  }, [parsedRows, productSizes]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -266,40 +280,54 @@ function Page() {
           return;
         }
 
-        // 1. Scan first 5 rows to find the actual header row (resilient to report metadata headers)
-        let headerRowIdx = 0;
-        for (let i = 0; i < Math.min(data.length, 5); i++) {
+        // 1. Scan first 10 rows to find the actual header row
+        let headerRowIdx = -1;
+        for (let i = 0; i < Math.min(data.length, 10); i++) {
           const row = data[i];
-          if (!row || !Array.isArray(row)) continue;
-          const rowText = row.map(c => String(c || "").trim().toLowerCase());
-          const hasDate = rowText.some(c => c.includes("tanggal") || c.includes("time") || c.includes("date"));
-          const hasTracking = rowText.some(c => c.includes("resi") || c.includes("tracking") || c.includes("customer") || c.includes("barang"));
-          if (hasDate || hasTracking) {
+          if (row && row.some(cell => {
+            const cellStr = String(cell || "").toLowerCase();
+            return (
+              cellStr.includes("tracking no") || 
+              cellStr.includes("no. resi") || 
+              cellStr.includes("resi") || 
+              cellStr.includes("recipient name") ||
+              cellStr.includes("penerima") ||
+              cellStr.includes("item in parcel")
+            );
+          })) {
             headerRowIdx = i;
             break;
           }
         }
 
-        const parsedHeaders = data[headerRowIdx].map((h: any) => String(h || "").trim());
-        const dataRows = data.slice(headerRowIdx + 1);
+        if (headerRowIdx === -1) {
+          toast.error("Gagal mendeteksi header tabel data di Excel. Pastikan terdapat kolom 'Tracking No', 'No. Resi' atau 'Recipient Name'.");
+          return;
+        }
 
-        setHeaders(parsedHeaders);
-        setSheetRows(dataRows);
-
-        // 2. Auto-detect and pre-map columns
-        const detected = {
-          date: detectColumnHeader(parsedHeaders, ["tanggal dibuat", "create time", "created time", "tanggal", "create_time", "date", "created"]) || "none",
-          tracking: detectColumnHeader(parsedHeaders, ["resi", "tracking no.", "tracking no", "tracking", "no_resi", "awb", "connote"]) || "none",
-          shipping: detectColumnHeader(parsedHeaders, ["ongkos kirim", "ongkir", "estimated shipping fee", "shipping fee", "shipping_fee", "biaya kirim"]) || "none",
-          name: detectColumnHeader(parsedHeaders, ["penerima", "nama penerima", "recipient name", "customer name", "nama adr", "customer", "nama"]) || "none",
-          phone: detectColumnHeader(parsedHeaders, ["no. hp penerima", "no. hp", "no hp", "nomor penerima", "recipient phone", "customer phone", "no telp", "telepon", "phone", "hp", "telp", "nomor", "contact"]) || "none",
-          note: detectColumnHeader(parsedHeaders, ["catatan", "note", "keterangan"]) || "none",
-          product: detectColumnHeader(parsedHeaders, ["produk", "item in parcel", "nama barang", "nama produk", "deskripsi produk", "deskripsi barang", "product name", "product_name", "item name", "barang", "item", "konten"]) || "none",
-          qty: detectColumnHeader(parsedHeaders, ["jumlah", "quantity", "qty", "pcs", "pack"]) || "none",
-          amount: detectColumnHeader(parsedHeaders, ["nilai cod", "cod amount", "harga produk", "amount received", "total cod", "nilai_cod", "cod", "amount", "total", "harga", "nominal"]) || "none"
-        };
+        const headers = data[headerRowIdx].map((h: any) => String(h || "").trim());
+        const rawRows: any[] = [];
         
-        setColMapping(detected);
+        for (let i = headerRowIdx + 1; i < data.length; i++) {
+          const row = data[i];
+          if (!row || row.length === 0 || row.every(cell => cell === "")) continue;
+          
+          const obj: any = {};
+          headers.forEach((header, colIdx) => {
+            if (header) {
+              obj[header] = colIdx < row.length ? row[colIdx] : "";
+            }
+          });
+          obj.__rowNumber = i + 1; // Store original row number (1-based)
+          rawRows.push(obj);
+        }
+
+        if (rawRows.length === 0) {
+          toast.error("Tidak ada baris data pesanan setelah header");
+          return;
+        }
+
+        processExcelRows(rawRows);
         toast.success(`Berhasil memuat data. Header terdeteksi di baris ${headerRowIdx + 1}.`);
       } catch (err: any) {
         console.error(err);
@@ -309,12 +337,124 @@ function Page() {
     reader.readAsBinaryString(file);
   };
 
+  const processExcelRows = (rows: any[]) => {
+    const list: RawRow[] = [];
+
+    const parseExcelNumber = (val: any) => {
+      if (val === undefined || val === null || val === "") return 0;
+      if (typeof val === "number") return Math.floor(val);
+      const str = String(val).trim();
+      const parts = str.split(".");
+      const intPart = parts[0].replace(/[^0-9-]/g, "");
+      const num = Number(intPart);
+      return isNaN(num) ? 0 : num;
+    };
+
+    for (const row of rows) {
+      const rowKeys = Object.keys(row).filter(k => k !== "__rowNumber");
+      if (rowKeys.length < 3) continue;
+
+      const getVal = (keys: string[], colIdx?: number) => getRowValue(row, keys, colIdx);
+
+      const paymentMethodRaw = String(getVal(["Pengiriman", "Sistem Pengiriman", "Metode Pembayaran", "Payment", "Tipe Bayar", "Metode Bayar"], 0) || "").trim();
+      const codCollectionRaw = String(getVal(["COD Collection(Y/N)", "COD Collection", "Is COD", "COD Collection Status"], 8) || "").trim();
+
+      let trackingNumber = String(getVal(["Tracking No.", "Resi", "No. Resi", "Nomor Resi", "Airwaybill", "Tracking", "AWB", "No. AWB"], 1) || "").trim();
+      if (trackingNumber.includes("?")) {
+        trackingNumber = trackingNumber.split("?").pop() || trackingNumber;
+      } else if (trackingNumber.includes("/")) {
+        trackingNumber = trackingNumber.split("/").pop() || trackingNumber;
+      }
+
+      const customerName = String(getVal(["Recipient Name", "Penerima", "Nama Penerima", "Nama", "Customer", "Nama Lengkap"], 2) || "").trim();
+      
+      let customerPhone = String(getVal(["No. HP", "No HP", "Telepon", "No. Telepon", "Phone", "Handphone", "No. Handphone", "Recipient Phone Number", "Recipient Phone"], 3) || "").trim();
+      if (customerPhone && !customerPhone.startsWith("0") && !customerPhone.startsWith("62") && customerPhone.startsWith("8")) {
+        customerPhone = "0" + customerPhone;
+      }
+
+      const productString = String(getVal(["Item in Parcel", "Produk", "Nama Produk", "Nama Barang", "Item", "Varian", "Nama Varian", "Item Name"], 4) || "").trim();
+      const qtyRaw = getVal(["Jumlah", "Qty", "Jumlah Produk", "Quantity", "Kuantitas", "No. of Items", "No of Items"], 5);
+      const packageQty = isNaN(Number(qtyRaw)) || !qtyRaw ? 1 : Number(qtyRaw);
+
+      const shippingRaw = getVal(["Estimated Shipping Fee", "Ongkos Kirim", "Ongkir", "Biaya Kirim", "Shipping", "Biaya Pengiriman"], 6);
+      const estimatedShipping = parseExcelNumber(shippingRaw);
+
+      const courierRaw = String(getVal(["Kurir", "Ekspedisi", "Courier", "Jasa Kirim", "Jasa Pengiriman", "Seller Courier", "Courier Name"], 7) || "").trim();
+
+      const codFeeRaw = getVal(["Biaya COD", "Fee COD", "COD Fee"], 8);
+      const biayaCod = parseExcelNumber(codFeeRaw);
+
+      const parcelValueRaw = getVal(["Parcel Value", "Harga Produk", "Harga", "Amount", "Price", "Total Harga", "Subtotal"], 9);
+      const parcelValue = parseExcelNumber(parcelValueRaw);
+
+      const codValueRaw = getVal(["COD Amount", "Nilai COD", "Total COD", "COD Value"], 10);
+      const codAmount = parseExcelNumber(codValueRaw);
+
+      const dateStr = String(getVal(["Tanggal Dibuat", "Create Time", "Created Time", "Tanggal", "Create_time", "Date", "Created"], 11) || "").trim();
+
+      if (!customerName && !trackingNumber && !productString) {
+        continue;
+      }
+
+      const isCOD = codCollectionRaw.toUpperCase() === "Y" || codCollectionRaw.toUpperCase() === "YES" || paymentMethodRaw.toUpperCase().includes("COD");
+      const paymentMethod = isCOD ? "COD" : "TRANSFER";
+
+      let expedition = detectCourier(trackingNumber);
+      if (!expedition) {
+        const cUpper = courierRaw.toUpperCase();
+        if (cUpper.includes("SPX") || cUpper.includes("SHOPEE EXPRESS")) expedition = "SPX";
+        else if (cUpper.includes("ID EXPRESS") || cUpper.startsWith("ID")) expedition = "ID EXPRESS";
+        else if (cUpper.includes("JNE")) expedition = "JNE";
+        else if (cUpper.includes("J&T") || cUpper.includes("J AND T")) expedition = "J&T";
+        else if (cUpper.includes("LION")) expedition = "LION PARCEL";
+        else if (cUpper.includes("SICEPAT")) expedition = "SICEPAT";
+        else if (cUpper.includes("ANTERAJA")) expedition = "ANTERAJA";
+        else if (cUpper.includes("SAP")) expedition = "SAP EXPRESS";
+        else expedition = courierRaw || "-";
+      }
+
+      const shippingFee = isCOD ? (estimatedShipping + biayaCod) : estimatedShipping;
+      
+      const parsedItems = parseProductString(productString, activeVariants, productSizes || [], packageQty, retailPrices || []);
+      const defaultSubtotal = parsedItems.reduce((sum: number, it: any) => sum + (it.unit_price * it.qty), 0);
+
+      let amountReceived = 0;
+      if (isCOD) {
+        amountReceived = codAmount;
+      } else {
+        amountReceived = parcelValue > 0 ? parcelValue : defaultSubtotal;
+      }
+
+      const cleanDate = parseExcelDate(dateStr);
+
+      list.push({
+        rowNumber: row.__rowNumber,
+        originalDate: dateStr,
+        parsedDate: cleanDate,
+        customerName,
+        customerPhone,
+        trackingNumber,
+        expedition,
+        paymentMethod,
+        shippingFee,
+        amountReceived,
+        productString,
+        packageQty,
+        items: parsedItems,
+        rawRow: row
+      });
+    }
+
+    setParsedOrders(list);
+  };
+
   const handleStartImport = async () => {
-    if (mappedData.length === 0) return;
+    if (parsedOrders.length === 0) return;
     
     setImporting(true);
     setLogs([]);
-    const total = mappedData.length;
+    const total = parsedOrders.length;
     setProgress({ current: 0, total, successes: 0, failures: 0 });
 
     let tierId = defaultTierId;
@@ -327,41 +467,45 @@ function Page() {
     let failures = 0;
 
     for (let i = 0; i < total; i++) {
-      const row = mappedData[i];
+      const row = parsedOrders[i];
       setProgress(p => ({ ...p, current: i + 1 }));
 
+      if (row.items.length === 0) {
+        failures++;
+        setLogs(l => [`⚠️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Gagal (Produk tidak terdeteksi dari string: "${row.productString}")`, ...l]);
+        continue;
+      }
+
       try {
-        if (!row.sizeId) {
-          throw new Error("Ukuran produk tidak terpetakan.");
-        }
-
-        const orderItems = [{
-          size_id: row.sizeId,
-          qty: row.qty,
-          unit_price: row.unitPrice
-        }];
-
-        const { data: orderId, error } = await supabase.rpc("import_historical_order", {
+        const { error } = await supabase.rpc("import_historical_order", {
           _channel: defaultChannel,
-          _tier_id: tierId,
-          _items: orderItems,
+          _tier_id: tierId || null,
+          _items: row.items.map(it => ({
+            size_id: it.size_id,
+            qty: it.qty,
+            unit_price: it.unit_price,
+            honey_type: it.honey_type
+          })),
           _shipping_fee: row.shippingFee || 0,
-          _customer_note: row.customerNote || "",
+          _customer_note: `Impor Historis: ${row.productString}`,
           _customer_name: row.customerName || "Pelanggan Historis",
           _customer_phone: row.customerPhone || "",
           _tracking_number: row.trackingNumber || "",
           _amount_received: row.amountReceived || null,
-          _created_at: row.parsedDate + "T12:00:00Z" // Prevent date shifts
+          _created_at: row.parsedDate + "T12:00:00Z", // Prevent date shifts
+          _expedition: row.expedition !== "-" ? row.expedition : null,
+          _payment_method: row.paymentMethod,
+          _transfer_bank: null
         });
 
         if (error) throw error;
         
         successes++;
-        setLogs(l => [`Row ${row.rowNumber} (${row.customerName || "No Name"}): Sukses`, ...l]);
+        setLogs(l => [`Baris ${row.rowNumber} (${row.customerName || "No Name"}): Sukses`, ...l]);
       } catch (err: any) {
         console.error(err);
         failures++;
-        setLogs(l => [`⚠️ Row ${row.rowNumber} (${row.customerName || "No Name"}): Gagal (${err.message})`, ...l]);
+        setLogs(l => [`⚠️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Gagal (${err.message})`, ...l]);
       }
 
       setProgress(p => ({ ...p, successes, failures }));
@@ -442,12 +586,12 @@ function Page() {
             <CardTitle className="text-lg flex items-center gap-2">
               <Upload className="w-5 h-5 text-honey" /> Unggah Spreadsheet
             </CardTitle>
-            <CardDescription>Pilih file Excel (.xlsx / .xls) hasil ekspor Lincah atau SPX Anda.</CardDescription>
+            <CardDescription>Pilih file Excel (.xlsx / .xls / .csv) hasil ekspor Lincah atau SPX Anda.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-xl p-8 bg-muted/20 hover:bg-muted/30 transition-colors">
             <input 
               type="file" 
-              accept=".xlsx,.xls" 
+              accept=".xlsx,.xls,.csv" 
               onChange={handleFileUpload} 
               id="excel-file-input" 
               className="hidden" 
@@ -458,112 +602,11 @@ function Page() {
                 <FileSpreadsheet className="w-8 h-8 text-honey" />
               </div>
               <span className="font-semibold text-sm">Klik untuk memilih file</span>
-              <span className="text-xs text-muted-foreground">Mendukung format kolom Tanggal Dibuat (Lincah) & Create Time (SPX)</span>
+              <span className="text-xs text-muted-foreground">Mendukung format kolom otomatis Lincah & SPX</span>
             </label>
           </CardContent>
         </Card>
       </div>
-
-      {/* Manual Column Mapping Configurator */}
-      {headers.length > 0 && (
-        <Card className="border-none shadow-sm animate-in fade-in duration-200">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Settings className="w-5 h-5 text-honey" /> Pemetaan Kolom Excel
-            </CardTitle>
-            <CardDescription>
-              Sesuaikan kolom mana dari file Excel Anda yang berisi informasi berikut (Sistem telah mencoba menebak secara otomatis).
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <div className="space-y-1.5">
-                <Label>Tanggal Pesanan</Label>
-                <Select value={colMapping.date} onValueChange={(v) => setColMapping(p => ({ ...p, date: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>No. Resi (Tracking)</Label>
-                <Select value={colMapping.tracking} onValueChange={(v) => setColMapping(p => ({ ...p, tracking: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Nama Pembeli</Label>
-                <Select value={colMapping.name} onValueChange={(v) => setColMapping(p => ({ ...p, name: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Kosongkan / Default --</SelectItem>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>No. HP Pembeli</Label>
-                <Select value={colMapping.phone} onValueChange={(v) => setColMapping(p => ({ ...p, phone: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Kosongkan / Default --</SelectItem>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Nama Barang/Produk</Label>
-                <Select value={colMapping.product} onValueChange={(v) => setColMapping(p => ({ ...p, product: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Kosongkan / Default --</SelectItem>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Kuantitas (Qty)</Label>
-                <Select value={colMapping.qty} onValueChange={(v) => setColMapping(p => ({ ...p, qty: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Total Harga / COD</Label>
-                <Select value={colMapping.amount} onValueChange={(v) => setColMapping(p => ({ ...p, amount: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Ongkos Kirim</Label>
-                <Select value={colMapping.shipping} onValueChange={(v) => setColMapping(p => ({ ...p, shipping: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Pilih kolom" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">-- Set Rp 0 --</SelectItem>
-                    {headers.filter(h => h && h.trim() !== "").map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Progress & Log Card (when importing) */}
       {(importing || progress.current > 0) && (
@@ -599,12 +642,12 @@ function Page() {
       )}
 
       {/* Preview Table Card */}
-      {mappedData.length > 0 && (
+      {parsedOrders.length > 0 && (
         <Card className="border-none shadow-sm animate-in fade-in duration-200">
           <CardHeader className="flex flex-row items-center justify-between pb-3 flex-wrap gap-2">
             <div>
               <CardTitle className="text-lg flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-honey" /> Pratinjau Pesanan ({mappedData.length})
+                <CreditCard className="w-5 h-5 text-honey" /> Pratinjau Pesanan ({parsedOrders.length})
               </CardTitle>
               <CardDescription>Periksa dan pastikan pemetaan produk dan tanggal sudah tepat sebelum mengimpor.</CardDescription>
             </div>
@@ -613,7 +656,7 @@ function Page() {
               disabled={importing}
               className="bg-honey hover:bg-honey/95 text-honey-foreground font-bold"
             >
-              {importing ? "Mengimpor..." : `Mulai Impor ${mappedData.length} Pesanan`}
+              {importing ? "Mengimpor..." : `Mulai Impor ${parsedOrders.length} Pesanan`}
             </Button>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
@@ -625,6 +668,7 @@ function Page() {
                   <TableHead>Nama Pembeli</TableHead>
                   <TableHead>No HP</TableHead>
                   <TableHead>Resi / Kurir</TableHead>
+                  <TableHead>Bayar</TableHead>
                   <TableHead>Barang di Excel</TableHead>
                   <TableHead>Ukuran Terpetakan</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
@@ -632,7 +676,7 @@ function Page() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mappedData.map((row, idx) => (
+                {parsedOrders.map((row, idx) => (
                   <TableRow key={idx}>
                     <TableCell className="font-mono text-xs text-muted-foreground">{row.rowNumber}</TableCell>
                     <TableCell className="font-semibold">{row.parsedDate}</TableCell>
@@ -640,17 +684,41 @@ function Page() {
                     <TableCell className="font-mono text-xs">{row.customerPhone || "—"}</TableCell>
                     <TableCell>
                       <div className="text-xs font-mono">{row.trackingNumber || "—"}</div>
-                      {row.shippingFee > 0 && <div className="text-[10px] text-muted-foreground">Ongkir: {formatIDR(row.shippingFee)}</div>}
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[150px] truncate" title={row.productName}>
-                      {row.productName || "—"}
+                      <div className="text-[10px] text-muted-foreground">
+                        {row.expedition && row.expedition !== "-" ? row.expedition : ""}
+                        {row.shippingFee > 0 ? ` (Ongkir: ${formatIDR(row.shippingFee)})` : ""}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${row.sizeId ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-red-500/10 text-red-600 border border-red-500/20'}`}>
-                        {row.sizeName}
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${row.paymentMethod === 'COD' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
+                        {row.paymentMethod}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right font-semibold">{row.qty} pcs</TableCell>
+                    <TableCell className="text-xs max-w-[150px] truncate" title={row.productString}>
+                      {row.productString || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {row.items.map((item, itemIdx) => (
+                          <div key={itemIdx} className="flex gap-1.5 items-center text-[10px] leading-tight">
+                            <span className="bg-honey/15 text-honey-dark dark:text-honey px-1 py-0.5 rounded text-[9px] font-bold border border-honey/20">
+                              {item.qty}x
+                            </span>
+                            <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
+                              {item.honey_type} {item.size_name || ""}
+                            </span>
+                          </div>
+                        ))}
+                        {row.items.length === 0 && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-600 border border-red-500/20">
+                            Tidak Terpetakan
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {row.items.reduce((sum, it) => sum + it.qty, 0)} pcs
+                    </TableCell>
                     <TableCell className="text-right font-mono font-semibold">
                       {row.amountReceived !== null ? formatIDR(row.amountReceived) : "—"}
                     </TableCell>
