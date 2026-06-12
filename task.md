@@ -85,7 +85,7 @@
 - [x] Integrasikan `<BeeCursor />` ke `src/components/app-layout.tsx`
 - [x] Tambahkan sakelar On/Off kustomisasi kursor lebah di `src/routes/pengaturan.profil.tsx`
 - [x] Jalankan build lokal (`npm run build`) untuk verifikasi kompilasi
-- [/] Deploy hasil terbaru ke Vercel (`app.araahoney.my.id`) dan uji coba
+- [x] Deploy hasil terbaru ke Vercel (`app.araahoney.my.id`) dan uji coba
 
 
 
