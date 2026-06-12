@@ -262,6 +262,11 @@ function Page() {
     queryFn: async () => (await supabase.from("reseller_tiers").select("*").eq("active", true).order("level")).data ?? [],
   });
 
+  const { data: fees } = useQuery({
+    queryKey: ["marketplace-fees"],
+    queryFn: async () => (await supabase.from("marketplace_fees").select("*")).data ?? [],
+  });
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -673,57 +678,75 @@ function Page() {
                   <TableHead>Ukuran Terpetakan</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Total COD/Harga</TableHead>
+                  <TableHead className="text-right">Omset Bersih</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {parsedOrders.map((row, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{row.rowNumber}</TableCell>
-                    <TableCell className="font-semibold">{row.parsedDate}</TableCell>
-                    <TableCell>{row.customerName || "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.customerPhone || "—"}</TableCell>
-                    <TableCell>
-                      <div className="text-xs font-mono">{row.trackingNumber || "—"}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {row.expedition && row.expedition !== "-" ? row.expedition : ""}
-                        {row.shippingFee > 0 ? ` (Ongkir: ${formatIDR(row.shippingFee)})` : ""}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${row.paymentMethod === 'COD' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
-                        {row.paymentMethod}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[150px] truncate" title={row.productString}>
-                      {row.productString || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {row.items.map((item, itemIdx) => (
-                          <div key={itemIdx} className="flex gap-1.5 items-center text-[10px] leading-tight">
-                            <span className="bg-honey/15 text-honey-dark dark:text-honey px-1 py-0.5 rounded text-[9px] font-bold border border-honey/20">
-                              {item.qty}x
+                {parsedOrders.map((row, idx) => {
+                  const feeObj = fees?.find(f => f.channel === defaultChannel);
+                  const feePercent = feeObj ? Number(feeObj.fee_percent || 0) : 0;
+                  
+                  const subtotal = row.items.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
+                  const adminFee = Math.round((subtotal * feePercent) / 100);
+                  const netRevenue = row.amountReceived - adminFee - row.shippingFee;
+
+                  return (
+                    <TableRow key={idx}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{row.rowNumber}</TableCell>
+                      <TableCell className="font-semibold">{row.parsedDate}</TableCell>
+                      <TableCell>{row.customerName || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{row.customerPhone || "—"}</TableCell>
+                      <TableCell>
+                        <div className="text-xs font-mono">{row.trackingNumber || "—"}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {row.expedition && row.expedition !== "-" ? row.expedition : ""}
+                          {row.shippingFee > 0 ? ` (Ongkir: ${formatIDR(row.shippingFee)})` : ""}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${row.paymentMethod === 'COD' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
+                          {row.paymentMethod}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[150px] truncate" title={row.productString}>
+                        {row.productString || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {row.items.map((item, itemIdx) => (
+                            <div key={itemIdx} className="flex gap-1.5 items-center text-[10px] leading-tight">
+                              <span className="bg-honey/15 text-honey-dark dark:text-honey px-1 py-0.5 rounded text-[9px] font-bold border border-honey/20">
+                                {item.qty}x
+                              </span>
+                              <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
+                                {item.honey_type} {item.size_name || ""}
+                              </span>
+                            </div>
+                          ))}
+                          {row.items.length === 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-600 border border-red-500/20">
+                              Tidak Terpetakan
                             </span>
-                            <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
-                              {item.honey_type} {item.size_name || ""}
-                            </span>
-                          </div>
-                        ))}
-                        {row.items.length === 0 && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-600 border border-red-500/20">
-                            Tidak Terpetakan
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {row.items.reduce((sum, it) => sum + it.qty, 0)} pcs
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-semibold">
-                      {row.amountReceived !== null ? formatIDR(row.amountReceived) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {row.items.reduce((sum, it) => sum + it.qty, 0)} pcs
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold">
+                        {row.amountReceived !== null ? formatIDR(row.amountReceived) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                        <div>{formatIDR(netRevenue)}</div>
+                        <div className="text-[9px] text-muted-foreground font-normal mt-0.5 leading-none">
+                          Gross: {formatIDR(row.amountReceived)}
+                          {adminFee > 0 && ` | Adm: ${formatIDR(adminFee)}`}
+                          {row.shippingFee > 0 && ` | Ongk: ${formatIDR(row.shippingFee)}`}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
