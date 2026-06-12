@@ -56,3 +56,36 @@
 - [x] Sesuaikan call API di `src/routes/pengaturan.whatsapp.tsx` untuk menggunakan `/api/waha-proxy`
 - [x] Verifikasi hasil build lokal (`npm run build`)
 - [x] Commit dan infokan ke Big Bos untuk dideploy ke Vercel
+
+- [x] Edit `src/routes/pengaturan.whatsapp.tsx` untuk kustomisasi template follow-up
+  - [x] Tambahkan state `followUpTemplate` dan ref `followUpTextareaRef` (atau sesuaikan helper kursor)
+  - [x] Implementasikan sinkronisasi Supabase di `useEffect` dan `handleSaveConfig`
+  - [x] Tambahkan tab header toggle ("Kirim Resi" vs "Follow Up Retur") di UI Template Pesan
+  - [x] Render input, badge placeholder, dan live preview sesuai tab aktif
+- [x] Edit `src/routes/retur.tsx` untuk mengirim pesan follow-up otomatis
+  - [x] Tambahkan useQuery `waha-config` untuk memuat data konfigurasi
+  - [x] Tambahkan fungsi helper `sendFollowUpMessage` yang mengirim pesan lewat proxy
+  - [x] Picu pengiriman pesan otomatis di blok sukses `processReturn` menggunakan `toast.promise`
+- [x] Verifikasi perubahan dengan kompilasi build
+- [x] Deploy hasil terbaru ke production (Vercel)
+
+# Task List: Pemetaan Kolom Excel Impor Riwayat
+
+- [x] Implementasikan fungsi `detectColumnHeader` untuk pencocokan kolom persis (exact match) kemudian sebagian (partial match)
+- [x] Tambahkan parameter `defval: ""` pada parser `XLSX.utils.sheet_to_json` untuk mencegah pergeseran indeks baris kosong
+- [x] Tingkatkan ketahanan fungsi helper `getVal` dengan mendukung format array dan objek secara dinamis
+- [x] Sinkronisasi kata kunci pencarian kolom untuk Lincah dan SPX
+- [x] Verifikasi kompilasi build lokal (`npm run build`)
+- [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+
+# Task List: Kursor Lebah Interaktif Premium
+
+- [x] Buat file komponen kustom `src/components/bee-cursor.tsx`
+- [x] Daftarkan `@keyframes honey-drop` di `src/styles.css`
+- [x] Integrasikan `<BeeCursor />` ke `src/components/app-layout.tsx`
+- [x] Tambahkan sakelar On/Off kustomisasi kursor lebah di `src/routes/pengaturan.profil.tsx`
+- [x] Jalankan build lokal (`npm run build`) untuk verifikasi kompilasi
+- [/] Deploy hasil terbaru ke Vercel (`app.araahoney.my.id`) dan uji coba
+
+
+

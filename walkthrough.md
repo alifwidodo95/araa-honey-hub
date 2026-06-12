@@ -189,3 +189,53 @@ Kami telah memecahkan masalah error `Failed to fetch` saat menghubungkan dashboa
    - Masukkan URL WAHA server `http://43.133.136.171:3000` (atau biarkan default) dan API Key Anda (jika ada).
    - Klik **Simpan Pengaturan** lalu **Mulai Sesi WhatsApp**.
    - Perhatikan bahwa status WhatsApp akan berputar dan browser tidak akan lagi memblokir koneksi. QR Code akan muncul secara otomatis untuk dipindai!
+
+---
+
+## 14. Sistem Follow-Up Otomatis Pesanan Retur (Selesai)
+
+Kami telah menambahkan fitur otomatisasi pesan WhatsApp follow-up ke pelanggan ketika merchant mengonfirmasi status barang retur pada dashboard.
+
+### Perubahan Kode & Fitur:
+1. **Kustomisasi Template Follow-Up di Dashboard Pengaturan**:
+   - Di [pengaturan.whatsapp.tsx](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/src/routes/pengaturan.whatsapp.tsx), kami membagi panel **Template Pesan** menjadi menggunakan tab interaktif:
+     - **Tab 1: Kirim Resi**: Template pesan share resi default.
+     - **Tab 2: Follow-Up Retur**: Template pesan retur baru yang dapat diedit secara bebas dengan placeholder dinamis (`{customer_name}`, `{expedition}`, dan `{tracking_number}`).
+   - Panel ini dilengkapi dengan tombol sisipkan tag otomatis, live preview/simulasi pesan real-time, serta sinkronisasi penyimpanan aman di database Supabase (`app_settings` key `waha_config`) dan `localStorage` lokal.
+2. **Pemicu Pesan WhatsApp Follow-Up Otomatis**:
+   - Di [retur.tsx](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/src/routes/retur.tsx), kami menambahkan query `waha-config` dan helper `sendFollowUpMessage` yang mengirimkan pesan follow-up melalui proxy server `/api/waha-proxy`.
+   - Ketika tombol **Proses Konfirmasi Retur** diklik dan transaksi retur berhasil disimpan, sistem akan secara otomatis memformat template dan mengirimkan pesan WhatsApp ke nomor HP pelanggan.
+   - Pemicuan pengiriman WhatsApp ini dibungkus menggunakan `toast.promise` sehingga status pengirimannya langsung terlihat secara real-time di UI (sedang mengirim -> berhasil terkirim / gagal terkirim).
+
+### Cara Menguji:
+1. Buka menu **Pengaturan > WhatsApp** di dashboard.
+2. Masuk ke tab **Follow-Up Retur**, edit isi pesan Anda, klik **Simpan Template**.
+3. Buka halaman **Retur**, masukkan nomor resi pesanan yang ingin diretur (harus memiliki nomor HP pelanggan yang valid).
+4. Klik **Proses Konfirmasi Retur**.
+5. Amati toast notifikasi yang berputar memproses pengiriman pesan WhatsApp secara langsung ke konsumen dan menampilkan hasilnya.
+
+---
+
+## 15. Perbaikan Deteksi & Pemetaan Kolom Excel Impor Riwayat (Selesai)
+
+Kami telah mendesain ulang dan memperbaiki logika pembacaan & pencocokan kolom Excel pada fitur **Impor Penjualan Historis** agar 100% akurat untuk berkas ekspor dari aggregator **Lincah** dan dashboard **Shopee Express (SPX)**.
+
+### Perbaikan yang Dilakukan:
+1. **Peningkatan Deteksi Baris Header (`defval: ""`):**
+   - Menambahkan opsi `defval: ""` pada `XLSX.utils.sheet_to_json` untuk menjamin seluruh baris Excel yang kosong tetap dipetakan sebagai string kosong (`""`). Hal ini mencegah terjadinya pergeseran indeks/kolom (shifted column index) ketika terdapat sel kosong di Excel.
+2. **Logika Pencocokan Kolom yang Kokoh (Robust Auto-Detection):**
+   - Mengganti fungsi `findColumnIndex` (yang sebelumnya memiliki bug pergeseran urutan pencocokan dan pengecualian regex yang agresif) dengan fungsi baru `detectColumnHeader`.
+   - Fungsi baru ini menguji kecocokan **persis (exact match)** terlebih dahulu untuk seluruh kata kunci di semua kolom sebelum mencoba kecocokan **sebagian (partial match)**. Ini menyelesaikan bug di mana kolom `Biaya COD` (ongkir kurir) tidak sengaja terdeteksi sebagai kolom `Total COD/Harga` karena urutan pembacaan parsial.
+3. **Penyelarasan Kata Kunci Format Lincah & SPX:**
+   - Memastikan kata kunci seperti `'Penerima'`, `'No. HP Penerima'`, `'Produk'`, dan `'Nilai COD'` (untuk format Lincah) serta `'Recipient Name'`, `'No. HP'`, `'Item in Parcel'`, dan `'COD Amount'` (untuk format SPX) dipetakan secara presisi dan otomatis tanpa membutuhkan penyesuaian manual dari pengguna.
+4. **Pembersihan Spasi (Trimming) & Penyesuaian No. HP:**
+   - Semua nilai sel yang dibaca dari Excel otomatis dipangkas spasi depannya/belakangnya (`trim()`).
+   - Nomor HP pembeli otomatis diformat dengan awalan `"0"` apabila terdeteksi berformat lokal (dimulai dengan angka `"8"`), menjaga konsistensi data di database.
+
+### Cara Pengujian & Status Live:
+1. **Deployment Berhasil:** Kode terbaru saat ini sudah berhasil dikompilasi dan dideploy ke production di **`https://app.araahoney.my.id`**.
+2. **Cara Menggunakan:**
+   - Masuk ke menu **Impor Riwayat** di sidebar.
+   - Unggah file Excel dari Lincah atau SPX Anda.
+   - Perhatikan pada tabel **Pratinjau Pesanan**, kolom **Nama Pembeli**, **No HP**, dan **Barang di Excel** kini langsung terisi secara otomatis dengan data yang sesuai, tidak lagi kosong (`—`).
+
