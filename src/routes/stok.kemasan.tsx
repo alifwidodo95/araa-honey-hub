@@ -46,6 +46,19 @@ function Page() {
     },
   });
 
+  const { data: variants } = useQuery({
+    queryKey: ["honey-variants"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("honey_variants").select("*").eq("active", true).order("name");
+      if (error) {
+        console.error("Error fetching honey variants:", error);
+        toast.error("Gagal memuat varian madu: " + error.message);
+        throw error;
+      }
+      return data ?? [];
+    },
+  });
+
   const [form, setForm] = useState({ item_id: "", qty: 0, total_price: 0, notes: "" });
   const [submitting, setSubmitting] = useState(false);
 
@@ -68,7 +81,7 @@ function Page() {
 
   // Add item dialog state
   const [addOpen, setAddOpen] = useState(false);
-  const [newItem, setNewItem] = useState({ type: "botol", name: "", unit: "pcs", size_id: "", min_stock: 10 });
+  const [newItem, setNewItem] = useState({ type: "botol", name: "", unit: "pcs", size_id: "", honey_type: "", min_stock: 10 });
   const addItem = async () => {
     if (!newItem.name.trim()) return toast.error("Nama item wajib diisi");
     const payload: any = {
@@ -76,12 +89,13 @@ function Page() {
       name: newItem.name.trim(),
       unit: newItem.unit || "pcs",
       size_id: newItem.size_id || null,
+      honey_type: newItem.honey_type || null,
       min_stock: Number(newItem.min_stock) || 10,
     };
     const { error } = await supabase.from("packaging_items").insert(payload);
     if (error) return toast.error(error.message);
     toast.success("Item ditambahkan");
-    setNewItem({ type: "botol", name: "", unit: "pcs", size_id: "", min_stock: 10 });
+    setNewItem({ type: "botol", name: "", unit: "pcs", size_id: "", honey_type: "", min_stock: 10 });
     setAddOpen(false);
     qc.invalidateQueries({ queryKey: ["pkg"] });
   };
@@ -143,7 +157,7 @@ function Page() {
               <div className="space-y-3">
                 <div className="space-y-1">
                   <Label>Tipe</Label>
-                  <Select value={newItem.type} onValueChange={(v) => setNewItem({ ...newItem, type: v, size_id: "" })}>
+                  <Select value={newItem.type} onValueChange={(v) => setNewItem({ ...newItem, type: v, size_id: "", honey_type: "" })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {TYPES.map((t) => <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>)}
@@ -151,15 +165,29 @@ function Page() {
                   </Select>
                 </div>
                 {needsSize && (
-                  <div className="space-y-1">
-                    <Label>Ukuran (opsional, untuk botol/stiker)</Label>
-                    <Select value={newItem.size_id} onValueChange={(v) => setNewItem({ ...newItem, size_id: v })}>
-                      <SelectTrigger><SelectValue placeholder="Pilih ukuran" /></SelectTrigger>
-                      <SelectContent>
-                        {(sizes ?? []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <>
+                    <div className="space-y-1">
+                      <Label>Ukuran (opsional, untuk botol/stiker)</Label>
+                      <Select value={newItem.size_id} onValueChange={(v) => setNewItem({ ...newItem, size_id: v })}>
+                        <SelectTrigger><SelectValue placeholder="Pilih ukuran" /></SelectTrigger>
+                        <SelectContent>
+                          {(sizes ?? []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Varian Madu (opsional, untuk botol/stiker)</Label>
+                      <Select value={newItem.honey_type || "semua"} onValueChange={(v) => setNewItem({ ...newItem, honey_type: v === "semua" ? "" : v })}>
+                        <SelectTrigger><SelectValue placeholder="Semua Varian (Umum)" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="semua">Semua Varian (Umum)</SelectItem>
+                          {(variants ?? []).map((v: any) => (
+                            <SelectItem key={v.name} value={v.name}>{v.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
                 )}
                 <div className="space-y-1"><Label>Nama Item</Label><Input value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} placeholder="contoh: Botol 300 gr" /></div>
                 <div className="space-y-1"><Label>Unit</Label><Input value={newItem.unit} onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })} placeholder="pcs / meter / roll" /></div>
@@ -181,7 +209,16 @@ function Page() {
             <TableBody>
               {(items ?? []).map((it: any) => (
                 <TableRow key={it.id} className={Number(it.current_stock) < Number(it.min_stock ?? 10) ? "bg-destructive/5" : ""}>
-                  <TableCell className="font-medium">{it.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{it.name}</span>
+                      {it.honey_type && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-honey/15 text-honey-dark dark:text-honey border border-honey/20">
+                          {it.honey_type}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="capitalize">{it.type}</TableCell>
                   <TableCell className={Number(it.current_stock) < Number(it.min_stock ?? 10) ? "text-destructive font-bold" : ""}>
                     {Number(it.current_stock).toFixed(2)}

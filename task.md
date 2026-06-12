@@ -87,5 +87,13 @@
 - [x] Jalankan build lokal (`npm run build`) untuk verifikasi kompilasi
 - [x] Deploy hasil terbaru ke Vercel (`app.araahoney.my.id`) dan uji coba
 
+# Task List: Stiker & Kemasan Beda Varian Madu (Akasia & Randu)
 
-
+- [ ] Jalankan migrasi SQL untuk menambahkan kolom `honey_type` dan memperbarui unique constraint serta RPC `create_order` & `import_historical_order`
+- [ ] Modifikasi `src/routes/stok.kemasan.tsx`:
+  - [ ] Fetch data `honey_variants`
+  - [ ] Tambahkan dropdown pilihan **Varian Madu (opsional)** di modal Tambah Item Kemasan
+  - [ ] Kirim `honey_type` pada payload saat menyisipkan item kemasan baru
+  - [ ] Tampilkan badge varian madu di samping nama item pada tabel stok
+- [ ] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [ ] Deploy ke Vercel production (`app.araahoney.my.id`)
