@@ -239,3 +239,30 @@ Kami telah mendesain ulang dan memperbaiki logika pembacaan & pencocokan kolom E
    - Unggah file Excel dari Lincah atau SPX Anda.
    - Perhatikan pada tabel **Pratinjau Pesanan**, kolom **Nama Pembeli**, **No HP**, dan **Barang di Excel** kini langsung terisi secara otomatis dengan data yang sesuai, tidak lagi kosong (`—`).
 
+---
+
+## 16. Stiker & Kemasan Beda Varian Madu (Akasia & Randu) (Selesai)
+
+Kami telah menambahkan dukungan penuh untuk stiker dan kemasan dengan varian madu yang spesifik (seperti Akasia, Randu, dll.) agar masing-masing memiliki stok, HPP rata-rata (`avg_cost`), dan harga pembelian sendiri-sendiri, serta otomatis terpotong secara sinkron saat pesanan dibuat.
+
+### Perubahan Teknis yang Dilakukan:
+1. **Skema Database & Constraints (`packaging_items`):**
+   - Menambahkan kolom `honey_type` (nullable, TEXT) pada tabel `packaging_items`.
+   - Mengganti unique constraint lama `UNIQUE(type, size_id)` menjadi `UNIQUE NULLS NOT DISTINCT (type, size_id, honey_type)` agar stiker dengan tipe dan ukuran sama tetapi beda varian madu dapat didaftarkan secara berdampingan.
+2. **Logika Pengurangan Stok & COGS/HPP (`create_order`):**
+   - Mengupdate fungsi RPC `create_order` sehingga stiker/botol yang digunakan disesuaikan secara dinamis dengan varian madu item pesanan (menggunakan pencarian filter pintar: kecocokan varian madu spesifik didahulukan, dan jika tidak ada, sistem otomatis menggunakan item umum (`honey_type IS NULL`)).
+3. **Logika COGS Impor Riwayat (`import_historical_order`):**
+   - Menyelaraskan logika penghitungan biaya COGS/HPP pada impor historis agar menggunakan varian madu spesifik untuk penghitungan stiker, botol, dan madu di dandang secara akurat.
+4. **Form Pengelolaan UI (`stok.kemasan.tsx`):**
+   - Mengambil data dari `honey_variants` secara reaktif.
+   - Menambahkan pilihan dropdown **Varian Madu (opsional)** di modal *Tambah Item Kemasan* ketika tipe "botol" atau "stiker" dipilih.
+   - Menampilkan badge berwarna madu yang menunjukkan jenis varian (misalnya: `Akasia` atau `Randu`) di samping nama item pada tabel stok.
+
+### Cara Pengujian & Status Live:
+1. **Deployment Berhasil:** Perubahan terbaru sudah live di **`https://app.araahoney.my.id/stok/kemasan`**.
+2. **Uji Coba Penggunaan:**
+   - Buka menu **Kemasan & Material Packing**.
+   - Klik **Tambah Item**, pilih tipe **Stiker**, pilih Ukuran (misal: 1 kg), lalu pilih varian madu (misal: **Akasia**), masukkan nama "Stiker Akasia 1 kg", lalu Simpan.
+   - Lakukan hal yang sama untuk membuat "Stiker Randu 1 kg" dengan memilih varian **Randu**.
+   - Di tabel, stiker-stiker tersebut akan muncul dengan badge varian masing-masing. Catat stok baru saat Anda membeli stiker tersebut.
+   - Ketika ada order baru dari halaman Penjualan atau diimpor dari Excel yang berisi varian Akasia 1 kg, sistem akan memotong stok stiker Akasia secara otomatis, menjaga HPP dan laba-rugi riil!
