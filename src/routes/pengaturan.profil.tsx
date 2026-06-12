@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { User, Lock, Trash2, Upload } from "lucide-react";
+import { User, Lock, Trash2, Upload, Sparkles } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,23 @@ function Page() {
   // Delete Account dialog open/close
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+
+  // Bee Cursor customization state
+  const [beeCursorEnabled, setBeeCursorEnabled] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("bee-cursor-enabled") !== "false";
+    }
+    return true;
+  });
+
+  const handleToggleBeeCursor = (checked: boolean) => {
+    setBeeCursorEnabled(checked);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("bee-cursor-enabled", String(checked));
+      window.dispatchEvent(new Event("bee-cursor-toggle"));
+    }
+    toast.success(checked ? "Kursor Lebah Madu diaktifkan! 🐝" : "Kursor kembali ke standar.");
+  };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -290,6 +308,34 @@ function Page() {
                 Perbarui Password
               </Button>
             </form>
+          </CardContent>
+        </Card>
+
+        {/* SECTION: CUSTOMIZATION */}
+        <Card className="border-none shadow-md bg-card animate-fade-in">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              Kustomisasi Tampilan
+            </CardTitle>
+            <CardDescription>Sesuaikan preferensi visual untuk kenyamanan Anda bekerja.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 rounded-xl border border-muted-foreground/10 bg-muted/5">
+              <div className="space-y-1 pr-4">
+                <Label className="text-sm font-semibold flex items-center gap-1.5 cursor-pointer" htmlFor="bee-cursor-toggle">
+                  Kursor Lebah Madu 🐝
+                </Label>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Mengaktifkan efek lebah terbang yang manis mengikuti gerakan mouse di seluruh website, serta meninggalkan jejak madu berkilau.
+                </p>
+              </div>
+              <Switch 
+                id="bee-cursor-toggle"
+                checked={beeCursorEnabled} 
+                onCheckedChange={handleToggleBeeCursor} 
+              />
+            </div>
           </CardContent>
         </Card>
 

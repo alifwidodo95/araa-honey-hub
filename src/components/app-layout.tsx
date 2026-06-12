@@ -3,6 +3,7 @@ import { type ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useDarkMode } from "@/lib/theme";
 import { useQuery } from "@tanstack/react-query";
+import { BeeCursor } from "./bee-cursor";
 import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
@@ -265,6 +266,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </header>
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-background/50">{children}</div>
       </main>
+      <BeeCursor />
     </div>
   );
 }
