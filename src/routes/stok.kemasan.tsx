@@ -222,13 +222,33 @@ function Page() {
                     </div>
                   </TableCell>
                   <TableCell className="capitalize">{it.type}</TableCell>
-                  <TableCell className={Number(it.current_stock) < Number(it.min_stock ?? 10) ? "text-destructive font-bold" : ""}>
-                    {Number(it.current_stock).toFixed(2)}
+                  <TableCell>
+                    <Input
+                      key={`${it.id}-${it.current_stock}`}
+                      type="number"
+                      step="0.01"
+                      defaultValue={parseFloat(Number(it.current_stock).toFixed(2))}
+                      onBlur={async (e) => {
+                        const val = Number(e.target.value);
+                        if (val === Number(it.current_stock)) return;
+                        const { error } = await supabase
+                          .from("packaging_items")
+                          .update({ current_stock: val } as any)
+                          .eq("id", it.id);
+                        if (error) toast.error("Gagal memperbarui stok: " + error.message);
+                        else {
+                          toast.success(`Stok ${it.name} disesuaikan ke ${val}`);
+                          qc.invalidateQueries({ queryKey: ["pkg"] });
+                        }
+                      }}
+                      className={`w-24 h-8 text-center font-bold ${Number(it.current_stock) < Number(it.min_stock ?? 10) ? "text-destructive border-destructive/50" : ""}`}
+                    />
                   </TableCell>
                   <TableCell>{it.unit}</TableCell>
                   <TableCell>{formatIDR(it.avg_cost)}</TableCell>
                   <TableCell>
                     <Input
+                      key={`${it.id}-${it.min_stock}`}
                       type="number"
                       defaultValue={it.min_stock ?? 10}
                       onBlur={async (e) => {
