@@ -108,6 +108,7 @@ function Page() {
   };
 
   const needsSize = newItem.type === "botol" || newItem.type === "stiker";
+  const needsHoneyType = newItem.type === "botol" || newItem.type === "stiker" || newItem.type === "segel";
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -165,31 +166,31 @@ function Page() {
                   </Select>
                 </div>
                 {needsSize && (
-                  <>
-                    <div className="space-y-1">
-                      <Label>Ukuran (opsional, untuk botol/stiker)</Label>
-                      <Select value={newItem.size_id} onValueChange={(v) => setNewItem({ ...newItem, size_id: v })}>
-                        <SelectTrigger><SelectValue placeholder="Pilih ukuran" /></SelectTrigger>
-                        <SelectContent>
-                          {(sizes ?? [])
-                            .filter((s: any) => !(newItem.type === "botol" && s.name === "130 gr"))
-                            .map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Varian Madu (opsional, untuk botol/stiker)</Label>
-                      <Select value={newItem.honey_type || "semua"} onValueChange={(v) => setNewItem({ ...newItem, honey_type: v === "semua" ? "" : v })}>
-                        <SelectTrigger><SelectValue placeholder="Semua Varian (Umum)" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="semua">Semua Varian (Umum)</SelectItem>
-                          {(variants ?? []).map((v: any) => (
-                            <SelectItem key={v.name} value={v.name}>{v.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
+                  <div className="space-y-1">
+                    <Label>Ukuran (opsional, untuk botol/stiker)</Label>
+                    <Select value={newItem.size_id} onValueChange={(v) => setNewItem({ ...newItem, size_id: v })}>
+                      <SelectTrigger><SelectValue placeholder="Pilih ukuran" /></SelectTrigger>
+                      <SelectContent>
+                        {(sizes ?? [])
+                          .filter((s: any) => !(newItem.type === "botol" && s.name === "130 gr"))
+                          .map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {needsHoneyType && (
+                  <div className="space-y-1">
+                    <Label>Varian Madu (opsional)</Label>
+                    <Select value={newItem.honey_type || "semua"} onValueChange={(v) => setNewItem({ ...newItem, honey_type: v === "semua" ? "" : v })}>
+                      <SelectTrigger><SelectValue placeholder="Semua Varian (Umum)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="semua">Semua Varian (Umum)</SelectItem>
+                        {(variants ?? []).map((v: any) => (
+                          <SelectItem key={v.name} value={v.name}>{v.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
                 <div className="space-y-1"><Label>Nama Item</Label><Input value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} placeholder="contoh: Botol 300 gr" /></div>
                 <div className="space-y-1"><Label>Unit</Label><Input value={newItem.unit} onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })} placeholder="pcs / meter / roll" /></div>
