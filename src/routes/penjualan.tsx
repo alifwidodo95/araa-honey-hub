@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, Plus, Pencil, Loader2, Upload, Search, X } from "lucide-react";
+import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import {
@@ -36,6 +36,24 @@ const detectCourier = (resi: string) => {
   }
   return null;
 };
+
+const toLocalISOString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+function formatDateIndo(dateStr: string) {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  const year = parts[0];
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  return `${day} ${months[monthIdx]} ${year}`;
+}
 
 const getRowValue = (row: any, keysToTry: string[], fallbackColIdx?: number) => {
   const rowKeys = Object.keys(row);
@@ -207,6 +225,40 @@ function Page() {
   const [pageSize, setPageSize] = useState(10);
   const [searchVal, setSearchVal] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [rangeOption, setRangeOption] = useState<"today" | "yesterday" | "7days" | "30days" | "90days" | "180days" | "365days" | "custom">("30days");
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return toLocalISOString(d);
+  });
+  const [endDate, setEndDate] = useState(() => toLocalISOString(new Date()));
+
+  // Sync dates when range option changes
+  useEffect(() => {
+    if (rangeOption === "custom") return;
+    const end = new Date();
+    const start = new Date();
+    
+    if (rangeOption === "today") {
+      // keep start and end as today
+    } else if (rangeOption === "yesterday") {
+      start.setDate(end.getDate() - 1);
+      end.setDate(end.getDate() - 1);
+    } else if (rangeOption === "7days") {
+      start.setDate(end.getDate() - 7);
+    } else if (rangeOption === "30days") {
+      start.setDate(end.getDate() - 30);
+    } else if (rangeOption === "90days") {
+      start.setDate(end.getDate() - 90);
+    } else if (rangeOption === "180days") {
+      start.setDate(end.getDate() - 180);
+    } else if (rangeOption === "365days") {
+      start.setDate(end.getDate() - 365);
+    }
+    
+    setStartDate(toLocalISOString(start));
+    setEndDate(toLocalISOString(end));
+  }, [rangeOption]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -216,15 +268,24 @@ function Page() {
     return () => clearTimeout(timer);
   }, [searchVal]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate]);
+
   const { data: ordersData } = useQuery({
-    queryKey: ["orders-recent", currentPage, pageSize, searchQuery],
+    queryKey: ["orders-recent", currentPage, pageSize, searchQuery, startDate, endDate],
     queryFn: async () => {
       const from = (currentPage - 1) * pageSize;
       const to = from + pageSize - 1;
       
+      const startIso = `${startDate}T00:00:00Z`;
+      const endIso = `${endDate}T23:59:59Z`;
+
       let query = supabase
         .from("orders")
-        .select("*, order_items(*, product_sizes(*))", { count: "exact" });
+        .select("*, order_items(*, product_sizes(*))", { count: "exact" })
+        .gte("created_at", startIso)
+        .lte("created_at", endIso);
 
       if (searchQuery.trim()) {
         const cleanQuery = searchQuery.trim();
@@ -991,6 +1052,99 @@ function Page() {
           )}
         </CardHeader>
         <CardContent>
+          {/* Date Range Filter Panel */}
+          <div className="flex flex-wrap items-center gap-2 mb-4 bg-slate-50/50 dark:bg-slate-900/20 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+            <div className="flex flex-wrap bg-muted p-1 rounded-lg border gap-1">
+              <Button
+                variant={rangeOption === "today" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("today")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "today" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                Hari Ini
+              </Button>
+              <Button
+                variant={rangeOption === "yesterday" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("yesterday")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "yesterday" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                Kemarin
+              </Button>
+              <Button
+                variant={rangeOption === "7days" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("7days")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "7days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                7 Hari
+              </Button>
+              <Button
+                variant={rangeOption === "30days" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("30days")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "30days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                1 Bulan
+              </Button>
+              <Button
+                variant={rangeOption === "90days" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("90days")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "90days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                3 Bulan
+              </Button>
+              <Button
+                variant={rangeOption === "180days" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("180days")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "180days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                6 Bulan
+              </Button>
+              <Button
+                variant={rangeOption === "365days" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("365days")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "365days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                1 Tahun
+              </Button>
+              <Button
+                variant={rangeOption === "custom" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setRangeOption("custom")}
+                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "custom" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
+              >
+                Kustom
+              </Button>
+            </div>
+
+            {rangeOption === "custom" && (
+              <div className="flex items-center gap-2 bg-muted/40 p-1 rounded-lg border border-border/80">
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="h-8 w-32 sm:w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-honey"
+                />
+                <span className="text-xs font-medium text-muted-foreground px-0.5">s/d</span>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="h-8 w-32 sm:w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-honey"
+                />
+              </div>
+            )}
+            
+            <div className="text-xs text-honey-dark dark:text-honey font-semibold ml-auto px-2 flex items-center gap-1.5 py-1.5 sm:py-0">
+              <CalendarDays className="w-3.5 h-3.5" />
+              <span>Periode: {formatDateIndo(startDate)} s/d {formatDateIndo(endDate)}</span>
+            </div>
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
