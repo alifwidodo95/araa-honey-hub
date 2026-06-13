@@ -115,3 +115,10 @@
 - [x] Modifikasi `src/routes/stok.kemasan.tsx` untuk menampilkan pilihan Varian Madu pada tipe `segel`
 - [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
 - [x] Commit dan push perubahan ke GitHub untuk memicu auto-deployment di Vercel
+
+# Task List: Perbaikan Konfigurasi SUPABASE_SERVICE_ROLE_KEY & Akun Staf
+
+- [x] Identifikasi error SUPABASE_SERVICE_ROLE_KEY yang hilang di dashboard Vercel
+- [x] Daftarkan SUPABASE_SERVICE_ROLE_KEY di Vercel menggunakan set-vercel-env.js API script
+- [x] Tambahkan SUPABASE_SERVICE_ROLE_KEY ke berkas .env lokal
+- [x] Commit dan push pembaruan dokumentasi ke GitHub untuk memicu redeployment Vercel

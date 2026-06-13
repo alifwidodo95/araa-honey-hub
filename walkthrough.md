@@ -297,3 +297,17 @@ Kami telah menambahkan dukungan penuh agar segel kemasan dapat dikonfigurasi sec
    - Sistem akan mencari item segel menggunakan query pencarian fallback: didahulukan yang sesuai dengan `honey_type` pesanan, dan jika tidak ada akan menggunakan segel umum (`honey_type IS NULL` - contohnya "Segel Emas").
 3. **Perbaikan Keamanan Pengembalian Stok Retur:**
    - Memperbarui fungsi `process_order_return` dan `delete_order_return` agar pengembalian dan penarikan stok untuk `botol`, `stiker`, dan `segel` dicari menggunakan kecocokan ID baris spesifik varian madu (menggunakan subquery pencarian fallback). Hal ini mencegah bug double-restoration stok pada item ukuran sejenis yang memiliki beda varian madu.
+
+---
+
+## 19. Konfigurasi SUPABASE_SERVICE_ROLE_KEY & Akun Staf (Selesai)
+
+Kami telah mendaftarkan variabel `SUPABASE_SERVICE_ROLE_KEY` pada platform deployment Vercel agar fitur pembuatan akun staf dan pembacaan peran (roles) dapat berjalan normal.
+
+### Perubahan Teknis yang Dilakukan:
+1. **Pendaftaran Environment Variable ke Vercel:**
+   - Menggunakan skrip internal `set-vercel-env.js` untuk mengirim `SUPABASE_SERVICE_ROLE_KEY` secara aman ke API Vercel dengan nilai kunci rahasia (`sb_secret_...`) yang diberikan oleh Big Bos.
+2. **Pembaruan Berkas Konfigurasi Lokal:**
+   - Menambahkan variabel `SUPABASE_SERVICE_ROLE_KEY` pada file [.env](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/.env) lokal untuk menjaga keselarasan environment antara lokal dan produksi.
+3. **Pemicuan Deployment Ulang:**
+   - Melakukan commit dan push ke GitHub untuk memaksa Vercel melakukan build/deploy ulang agar serverless functions memuat variabel environment baru tersebut secara efektif.
