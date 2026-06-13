@@ -22,7 +22,7 @@ import {
 
 export const Route = createFileRoute("/meta-ads")({
   component: () => (
-    <RequireAuth ownerOnly>
+    <RequireAuth requiredPermission="meta_ads">
       <MetaAdsPage />
     </RequireAuth>
   ),

@@ -34,7 +34,7 @@ const navOwnerOnly = [
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { role, user, signOut } = useAuth();
+  const { role, user, hasPermission, signOut } = useAuth();
   const navigate = useNavigate();
   const { dark, toggle } = useDarkMode();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -114,7 +114,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const avatarLetter = displayName.charAt(0).toUpperCase();
   const avatarUrl = profile?.avatar_url;
 
-  const items = role === "owner" ? [...navStaff, ...navOwnerOnly] : navStaff;
+  const getPermissionKey = (to: string) => {
+    if (to === "/dashboard") return "dashboard";
+    if (to.startsWith("/stok/")) return "stok";
+    return to.replace(/^\//, "").replace(/\//g, "_");
+  };
+
+  const allItems = [...navStaff, ...navOwnerOnly];
+  const items = allItems.filter((item) => hasPermission(getPermissionKey(item.to)));
 
   const handleLogout = async () => {
     await signOut();

@@ -311,3 +311,38 @@ Kami telah mendaftarkan variabel `SUPABASE_SERVICE_ROLE_KEY` pada platform deplo
    - Menambahkan variabel `SUPABASE_SERVICE_ROLE_KEY` pada file [.env](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/.env) lokal untuk menjaga keselarasan environment antara lokal dan produksi.
 3. **Pemicuan Deployment Ulang:**
    - Melakukan commit dan push ke GitHub untuk memaksa Vercel melakukan build/deploy ulang agar serverless functions memuat variabel environment baru tersebut secara efektif.
+
+---
+
+## 20. Custom Role & Permission Builder / RBAC Dinamis (Selesai)
+
+Kami telah mengimplementasikan sistem kontrol akses berbasis peran (RBAC) yang dinamis, memungkinkan Owner untuk membuat peran kustom sendiri (seperti *Finance, Gudang, Admin CS*) dan mengonfigurasi akses menu/halaman bagi masing-masing peran tersebut melalui antarmuka berbasis centang (checkbox).
+
+### Perubahan Teknis yang Dilakukan:
+1. **Migrasi Database & Fungsi Supabase (`supabase/migrations/20260613140500_rbac_dynamic_roles.sql`):**
+   - Mengubah tipe data kolom `role` di tabel `user_roles` dari tipe `app_role` (enum) menjadi `TEXT` agar dapat menyimpan nama peran kustom apa pun.
+   - Re-implementasi fungsi `has_role(UUID, TEXT)` dan `current_role_label()` untuk mendukung pencocokan string dinamis.
+   - Menyisipkan nilai awal konfigurasi default `'role_permissions'` di `public.app_settings` untuk peran `owner` dan `staff`.
+2. **Konteks Autentikasi Frontend (`src/lib/auth-context.tsx`):**
+   - Mengubah tipe `Role` menjadi `string | null` untuk mendukung string kustom.
+   - Memuat konfigurasi `'role_permissions'` dari database saat inisialisasi sesi, dan menyediakan fungsi helper `hasPermission(permissionName: string): boolean`.
+3. **Pengecekan Akses Halaman (`src/components/require-auth.tsx`):**
+   - Menambahkan parameter `requiredPermission?: string` untuk membatasi akses route langsung. Jika pengguna tidak memiliki izin, otomatis dialihkan ke `/dashboard`.
+4. **Navigasi Sidebar Dinamis (`src/components/app-layout.tsx`):**
+   - Melakukan penyaringan tautan navigasi sidebar berdasarkan `hasPermission(getPermissionKey(item.to))` secara real-time. Menu yang tidak diizinkan disembunyikan sepenuhnya.
+5. **Dashboard & Halaman Operasional:**
+   - Halaman dashboard (`src/routes/dashboard.tsx`) kini membatasi tampilan Omzet dan Grafik laba/rugi berdasarkan `hasPermission("keuangan")`.
+   - Seluruh route halaman (`import-riwayat.tsx`, `keuangan.tsx`, `meta-ads.tsx`, `pengaturan.*.tsx`) telah dimigrasikan dari `ownerOnly` menjadi `requiredPermission` masing-masing.
+6. **Panel Staf & RBAC Builder (`src/routes/pengaturan.staf.tsx`):**
+   - **Dropdown Peran Dinamis:** Dropdown role pada form pembuatan akun baru dimuat secara dinamis dari daftar peran yang terkonfigurasi.
+   - **Inline Edit Role:** Kolom role pada tabel "Daftar Pengguna" diubah menjadi dropdown pemilihan langsung agar Owner bisa menukar peran pengguna secara instan.
+   - **RBAC Builder Card:** Ditambahkan panel manajemen peran di mana Owner dapat membuat peran baru (misal: *Gudang*), mencentang hak akses spesifik dari 13 halaman/fitur, menyimpan konfigurasi secara langsung ke database, atau menghapus peran kustom jika sudah tidak digunakan.
+
+### Cara Pengujian:
+1. Masuk sebagai **Owner**.
+2. Buka menu **Manajemen Akun Staf** (`/pengaturan/staf`).
+3. Di bagian bawah ("Buat Peran Baru"), ketik nama peran kustom: **gudang** lalu klik **Tambah Role**.
+4. Di panel edit hak akses peran "gudang", centang hanya akses **Dashboard Utama** dan **Manajemen Stok (Bahan Baku & Kemasan)**, lalu klik **Simpan Hak Akses**.
+5. Pada tabel "Daftar Pengguna", ubah role salah satu akun staf menjadi **gudang**.
+6. Login menggunakan akun staf tersebut di browser penyamaran (incognito). Pastikan sidebar dan dashboard hanya menampilkan fitur dashboard dan stok, sedangkan menu keuangan dan admin lainnya tersembunyi sepenuhnya.
+

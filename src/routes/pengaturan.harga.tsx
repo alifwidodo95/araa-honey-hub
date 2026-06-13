@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/pengaturan/harga")({ component: () => <RequireAuth ownerOnly><Page /></RequireAuth> });
+export const Route = createFileRoute("/pengaturan/harga")({ component: () => <RequireAuth requiredPermission="pengaturan_harga"><Page /></RequireAuth> });
 
 function Page() {
   const qc = useQueryClient();

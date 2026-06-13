@@ -23,7 +23,7 @@ import {
   Banknote
 } from "lucide-react";
 
-export const Route = createFileRoute("/keuangan")({ component: () => <RequireAuth ownerOnly><Page /></RequireAuth> });
+export const Route = createFileRoute("/keuangan")({ component: () => <RequireAuth requiredPermission="keuangan"><Page /></RequireAuth> });
 
 const toLocalISOString = (date: Date) => {
   const year = date.getFullYear();

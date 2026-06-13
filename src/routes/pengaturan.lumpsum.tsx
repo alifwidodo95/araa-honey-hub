@@ -13,7 +13,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 
-export const Route = createFileRoute("/pengaturan/lumpsum")({ component: () => <RequireAuth ownerOnly><Page /></RequireAuth> });
+export const Route = createFileRoute("/pengaturan/lumpsum")({ component: () => <RequireAuth requiredPermission="pengaturan_lumpsum"><Page /></RequireAuth> });
 
 function Page() {
   const qc = useQueryClient();

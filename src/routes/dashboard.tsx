@@ -11,7 +11,7 @@ import { AlertTriangle } from "lucide-react";
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
 
 function DashboardPage() {
-  const { role } = useAuth();
+  const { role, hasPermission } = useAuth();
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: alerts } = useQuery({
@@ -95,7 +95,7 @@ function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard label="Saldo Madu Dandang" value={`${Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg`} />
         <MetricCard label="Order Hari Ini" value={String(ordersToday?.length ?? 0)} />
-        {role === "owner" ? (
+        {hasPermission("keuangan") ? (
           <>
             <MetricCard label="Omzet Hari Ini" value={formatIDR(omzetToday)} />
             <MetricCard label="Pendapatan Bersih" value={formatIDR(netToday)} accent />
@@ -108,7 +108,7 @@ function DashboardPage() {
         )}
       </div>
 
-      {role === "owner" && (
+      {hasPermission("keuangan") && (
         <Card>
           <CardHeader><CardTitle>Tren Pendapatan & Laba (14 hari)</CardTitle></CardHeader>
           <CardContent className="h-72">

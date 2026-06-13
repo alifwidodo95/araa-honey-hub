@@ -18,7 +18,7 @@ import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/import-riwayat")({
   component: () => (
-    <RequireAuth ownerOnly>
+    <RequireAuth requiredPermission="import_riwayat">
       <Page />
     </RequireAuth>
   )

@@ -122,3 +122,17 @@
 - [x] Daftarkan SUPABASE_SERVICE_ROLE_KEY di Vercel menggunakan set-vercel-env.js API script
 - [x] Tambahkan SUPABASE_SERVICE_ROLE_KEY ke berkas .env lokal
 - [x] Commit dan push pembaruan dokumentasi ke GitHub untuk memicu redeployment Vercel
+
+# Task List: Custom Role & Permission Builder (RBAC Dinamis)
+
+- [x] Buat file migrasi database `supabase/migrations/20260613140500_rbac_dynamic_roles.sql` untuk memperbarui tipe kolom user_roles.role ke TEXT, has_role, current_role_label, dan default permissions
+- [x] Terapkan migrasi SQL tersebut ke database Supabase pribadi
+- [x] Modifikasi `src/lib/auth-context.tsx` untuk mendukung dynamic Role string, memuat permission, dan menyediakan hasPermission helper
+- [x] Modifikasi `src/components/require-auth.tsx` untuk validasi `requiredPermission`
+- [x] Modifikasi `src/components/app-layout.tsx` untuk memfilter tautan navigasi berdasarkan permission
+- [x] Modifikasi `src/routes/dashboard.tsx` untuk memfilter Omzet & Grafik keuangan menggunakan hasPermission("keuangan")
+- [x] Modifikasi seluruh route halaman admin lainnya agar menggunakan requiredPermission yang tepat
+- [x] Modifikasi `src/routes/pengaturan.staf.tsx` untuk dropdown role dinamis, inline role edit/swap, dan Panel RBAC Permission Builder (tambah role, centang izin, simpan ke database)
+- [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [x] Update walkthrough.md dengan dokumentasi fitur RBAC baru
+
