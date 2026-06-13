@@ -163,3 +163,84 @@
     opacity: 0;
   }
 }
+
+/* Animated Honeycomb Background & Glowing Lights */
+.login-honeycomb-bg {
+  position: relative;
+  overflow: hidden;
+  background-color: #0d0803; /* Rich dark amber base */
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.15) 0%, rgba(0, 0, 0, 0) 80%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 0 L56 16.16 L56 48.5 L28 64.66 L0 48.5 L0 16.16 Z M28 97 L56 80.84 L56 48.5 L28 64.66 L0 48.5 L0 80.84 Z' fill='%23fbbf24' fill-opacity='0.04' fill-rule='evenodd' stroke='%23fbbf24' stroke-opacity='0.02' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+/* Floating Honey Glow Spots */
+.honey-glow-spot {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0) 70%);
+  filter: blur(50px);
+  pointer-events: none;
+  animation: pulse-glow 10s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-glow {
+  0% {
+    transform: scale(0.9) translate(0px, 0px);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.1) translate(40px, -30px);
+    opacity: 1.0;
+  }
+}
+
+/* Floating Honey Bees */
+.floating-bee {
+  position: absolute;
+  font-size: 28px;
+  pointer-events: none;
+  animation: hover-bee 5s ease-in-out infinite alternate;
+  opacity: 0.8;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35));
+  z-index: 1;
+}
+
+@keyframes hover-bee {
+  0% {
+    transform: translateY(0) rotate(5deg) scaleX(1);
+  }
+  50% {
+    transform: translateY(-12px) rotate(-5deg) scaleX(1);
+  }
+  100% {
+    transform: translateY(6px) rotate(10deg) scaleX(-1);
+  }
+}
+
+/* Honey Drop Animation */
+.falling-honey-drip {
+  position: absolute;
+  width: 3px;
+  height: 15px;
+  background: linear-gradient(to bottom, #fbbf24, rgba(251, 191, 36, 0));
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  pointer-events: none;
+  animation: honey-drop-fall 14s linear infinite;
+  opacity: 0.25;
+}
+
+@keyframes honey-drop-fall {
+  0% {
+    transform: translateY(-50px) scaleY(1);
+  }
+  90% {
+    transform: translateY(calc(100vh + 50px)) scaleY(1);
+  }
+  100% {
+    transform: translateY(calc(100vh + 50px)) scaleY(0.5);
+  }
+}
+
