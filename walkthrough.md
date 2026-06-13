@@ -266,3 +266,18 @@ Kami telah menambahkan dukungan penuh untuk stiker dan kemasan dengan varian mad
    - Lakukan hal yang sama untuk membuat "Stiker Randu 1 kg" dengan memilih varian **Randu**.
    - Di tabel, stiker-stiker tersebut akan muncul dengan badge varian masing-masing. Catat stok baru saat Anda membeli stiker tersebut.
    - Ketika ada order baru dari halaman Penjualan atau diimpor dari Excel yang berisi varian Akasia 1 kg, sistem akan memotong stok stiker Akasia secara otomatis, menjaga HPP dan laba-rugi riil!
+
+---
+
+## 17. Format Desimal Stok & Edit Stok Manual (Selesai)
+
+Kami telah menghapus angka desimal `.00` di belakang stok barang satuan dan menambahkan input edit stok manual secara langsung di tabel stok.
+
+### Perubahan Teknis yang Dilakukan:
+1. **Pembersihan Desimal `.00` di Tampilan:**
+   - Di [stok.kemasan.tsx](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/src/routes/stok.kemasan.tsx), kami memformat nilai default stok menggunakan `parseFloat(Number(it.current_stock).toFixed(2))`. Ini akan membuang desimal nol yang tidak diperlukan (misalnya `462.00` menjadi `462`), tetapi jika ada desimal yang tidak bulat (misalnya `15.5` meter bubble wrap) akan tetap dipertahankan.
+2. **Fitur Edit Stok Manual Secara Langsung (Inline Edit):**
+   - Mengubah kolom **Stok** di tabel menjadi input teks numerik yang dapat diketik secara manual.
+   - Ketika Big Bos mengubah angka stok lalu mengklik di luar kotak input (event `onBlur`), sistem akan langsung memicu pembaruan ke database Supabase pada tabel `packaging_items` untuk mengubah nilai `current_stock` secara riil.
+   - Menambahkan notifikasi toast sukses instan yang memberi tahu bahwa stok telah disesuaikan.
+   - Menggunakan key React yang dinamis (`key={${it.id}-${it.current_stock}}`) agar input otomatis memuat nilai terbaru dari server setelah data di-refresh/invalidate.
