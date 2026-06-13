@@ -105,3 +105,13 @@
 - [x] Hubungkan input edit stok dengan update database Supabase `packaging_items` pada event `onBlur`
 - [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
 - [x] Commit dan push perubahan ke GitHub (`git push`) untuk trigger auto-deployment Vercel
+
+# Task List: Segel Varian Madu (Segel Hitam vs Segel Emas)
+
+- [x] Buat file migrasi database `supabase/migrations/20260613132500_variant_aware_seals.sql` untuk memperbarui fungsi `create_order`, `import_historical_order`, `process_order_return`, dan `delete_order_return`
+- [x] Cari segel secara dinamis per item pesanan berdasarkan varian madunya di seluruh RPC
+- [x] Perbaiki pemulihan stok botol dan stiker spesifik varian saat transaksi retur diproses/dibatalkan
+- [x] Terapkan migrasi SQL tersebut ke database Supabase pribadi
+- [x] Modifikasi `src/routes/stok.kemasan.tsx` untuk menampilkan pilihan Varian Madu pada tipe `segel`
+- [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [x] Commit dan push perubahan ke GitHub untuk memicu auto-deployment di Vercel

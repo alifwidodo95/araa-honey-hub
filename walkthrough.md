@@ -281,3 +281,19 @@ Kami telah menghapus angka desimal `.00` di belakang stok barang satuan dan mena
    - Ketika Big Bos mengubah angka stok lalu mengklik di luar kotak input (event `onBlur`), sistem akan langsung memicu pembaruan ke database Supabase pada tabel `packaging_items` untuk mengubah nilai `current_stock` secara riil.
    - Menambahkan notifikasi toast sukses instan yang memberi tahu bahwa stok telah disesuaikan.
    - Menggunakan key React yang dinamis (`key={${it.id}-${it.current_stock}}`) agar input otomatis memuat nilai terbaru dari server setelah data di-refresh/invalidate.
+
+---
+
+## 18. Segel Varian Madu (Segel Hitam vs Segel Emas) (Selesai)
+
+Kami telah menambahkan dukungan penuh agar segel kemasan dapat dikonfigurasi secara spesifik per varian madu (misalnya Segel Hitam untuk madu Akasia, dan Segel Emas untuk Umum/Randu/Karet). Stok segel akan otomatis terpotong secara dinamis dan dipulihkan secara aman saat pesanan dibuat/diretur.
+
+### Perubahan Teknis yang Dilakukan:
+1. **Dinamisasi Form Tambah Item ([stok.kemasan.tsx](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/src/routes/stok.kemasan.tsx)):**
+   - Menambahkan helper `needsHoneyType` yang mengevaluasi apakah tipe item adalah `botol`, `stiker`, atau `segel`.
+   - Mengaktifkan dropdown **Varian Madu (opsional)** saat menambah item bertipe `segel`, sehingga pengguna dapat mendaftarkan segel spesifik varian madu (seperti "Segel Hitam" untuk "Akasia").
+2. **Pencarian Segel Berdasarkan Varian Madu di Database:**
+   - Memperbarui fungsi database `create_order` dan `import_historical_order` agar pencarian `id` segel dipindahkan ke dalam looping item pesanan.
+   - Sistem akan mencari item segel menggunakan query pencarian fallback: didahulukan yang sesuai dengan `honey_type` pesanan, dan jika tidak ada akan menggunakan segel umum (`honey_type IS NULL` - contohnya "Segel Emas").
+3. **Perbaikan Keamanan Pengembalian Stok Retur:**
+   - Memperbarui fungsi `process_order_return` dan `delete_order_return` agar pengembalian dan penarikan stok untuk `botol`, `stiker`, dan `segel` dicari menggunakan kecocokan ID baris spesifik varian madu (menggunakan subquery pencarian fallback). Hal ini mencegah bug double-restoration stok pada item ukuran sejenis yang memiliki beda varian madu.
