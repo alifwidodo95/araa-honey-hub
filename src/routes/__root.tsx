@@ -13,7 +13,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Araa Honey — Manajemen Bisnis" },
       { name: "description", content: "Sistem manajemen operasional terintegrasi Araa Honey" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { 
+        rel: "icon", 
+        type: "image/png", 
+        href: "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/avatars/b2ef75dc-8ebc-43e5-84fb-ca8998b9f96f/avatar.png" 
+      }
+    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,
