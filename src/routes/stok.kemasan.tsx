@@ -171,7 +171,9 @@ function Page() {
                       <Select value={newItem.size_id} onValueChange={(v) => setNewItem({ ...newItem, size_id: v })}>
                         <SelectTrigger><SelectValue placeholder="Pilih ukuran" /></SelectTrigger>
                         <SelectContent>
-                          {(sizes ?? []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                          {(sizes ?? [])
+                            .filter((s: any) => !(newItem.type === "botol" && s.name === "130 gr"))
+                            .map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
