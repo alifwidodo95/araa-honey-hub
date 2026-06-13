@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { createStaffAccount } from "@/lib/admin.functions";
+import { createStaffAccount, deleteStaffAccount } from "@/lib/admin.functions";
+import { useAuth } from "@/lib/auth-context";
 import { useServerFn } from "@tanstack/react-start";
 import { Shield, ShieldAlert, Plus, Trash2, Key, Check } from "lucide-react";
 
@@ -34,6 +35,8 @@ const ALL_PERMISSIONS = [
 function Page() {
   const qc = useQueryClient();
   const createStaff = useServerFn(createStaffAccount);
+  const deleteStaff = useServerFn(deleteStaffAccount);
+  const { user } = useAuth();
 
   // Fetch role permissions settings
   const { data: rolePermissionsSetting, refetch: refetchPermissions } = useQuery({
@@ -264,6 +267,7 @@ function Page() {
                   <TableHead>Nama</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -312,6 +316,30 @@ function Page() {
                             <option key={r} value={r}>{r}</option>
                           ))}
                         </select>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {p.id === user?.id ? (
+                        <span className="text-xs text-muted-foreground italic">Akun Anda</span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={async () => {
+                            if (confirm(`Apakah Anda yakin ingin menghapus akun ${p.email}? Tindakan ini akan menghapus akun secara permanen.`)) {
+                              try {
+                                await deleteStaff({ data: { userIdToDelete: p.id } });
+                                toast.success(`Akun ${p.email} berhasil dihapus.`);
+                                qc.invalidateQueries({ queryKey: ["staff"] });
+                              } catch (err: any) {
+                                toast.error(err.message ?? "Gagal menghapus akun");
+                              }
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>

@@ -6,7 +6,7 @@ const CreateStaffSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(72),
   full_name: z.string().min(1).max(120),
-  role: z.enum(["staff", "owner"]),
+  role: z.string().min(1).max(50),
 });
 
 export const createStaffAccount = createServerFn({ method: "POST" })
@@ -32,6 +32,31 @@ export const createStaffAccount = createServerFn({ method: "POST" })
     return { ok: true, user_id: uid };
   });
 
+const DeleteStaffSchema = z.object({
+  userIdToDelete: z.string().uuid(),
+});
+
+export const deleteStaffAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => DeleteStaffSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    // verify caller is owner
+    const { data: roles } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
+    if (!roles?.some((r: any) => r.role === "owner")) {
+      throw new Error("Hanya owner yang dapat menghapus akun");
+    }
+
+    if (data.userIdToDelete === context.userId) {
+      throw new Error("Anda tidak dapat menghapus akun Anda sendiri");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userIdToDelete);
+    if (error) throw new Error(error.message);
+
+    return { ok: true };
+  });
+
 export const bootstrapFirstOwner = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -41,3 +66,4 @@ export const bootstrapFirstOwner = createServerFn({ method: "POST" })
     await supabaseAdmin.from("user_roles").insert({ user_id: context.userId, role: "owner" });
     return { ok: true, promoted: true };
   });
+
