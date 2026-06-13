@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "../lib/auth-context";
 import { Toaster } from "../components/ui/sonner";
+import { logoBase64 } from "../lib/logo-base64";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
@@ -17,8 +18,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { 
         rel: "icon", 
-        type: "image/png", 
-        href: "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/avatars/b2ef75dc-8ebc-43e5-84fb-ca8998b9f96f/avatar.png" 
+        type: "image/jpeg", 
+        href: logoBase64 
       }
     ],
   }),
