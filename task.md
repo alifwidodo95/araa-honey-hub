@@ -97,3 +97,11 @@
   - [x] Tampilkan badge varian madu di samping nama item pada tabel stok
 - [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
 - [x] Deploy ke Vercel production (`app.araahoney.my.id`)
+
+# Task List: Format Desimal Stok & Edit Stok Manual
+
+- [x] Sembunyikan desimal .00 yang tidak diperlukan dengan `parseFloat(Number(val).toFixed(2))`
+- [x] Buat input edit stok manual secara inline pada kolom Stok
+- [x] Hubungkan input edit stok dengan update database Supabase `packaging_items` pada event `onBlur`
+- [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [x] Commit dan push perubahan ke GitHub (`git push`) untuk trigger auto-deployment Vercel
