@@ -20,8 +20,10 @@ import {
   Target,
   Truck,
   CreditCard,
-  Banknote
+  Banknote,
+  ShoppingBag
 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/keuangan")({ component: () => <RequireAuth requiredPermission="keuangan"><Page /></RequireAuth> });
 
@@ -142,6 +144,32 @@ function Page() {
     },
   });
 
+  const { data: honeyPurchases } = useQuery({
+    queryKey: ["fin-honey-purchases", startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("raw_material_lots")
+        .select("*")
+        .gte("received_at", startDate)
+        .lte("received_at", endDate);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: pkgPurchases } = useQuery({
+    queryKey: ["fin-pkg-purchases", startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("packaging_purchases")
+        .select("*, packaging_items(name, type, unit)")
+        .gte("purchased_at", startDate)
+        .lte("purchased_at", endDate);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const gross = (orders ?? []).reduce((s, o: any) => s + Number(o.amount_received !== null ? o.amount_received : o.subtotal_gross), 0);
   const platformFee = (orders ?? []).reduce((s, o: any) => s + Number(o.marketplace_fee) + Number(o.shipping_fee), 0);
   const cogs = (orders ?? []).reduce((s, o: any) => s + Number(o.cogs_total), 0);
@@ -149,6 +177,48 @@ function Page() {
     .filter((e: any) => e.category !== "packaging_purchase")
     .reduce((s, e: any) => s + Number(e.amount), 0);
   const netProfit = (orders ?? []).reduce((s, o: any) => s + Number(o.net_revenue), 0) - cogs - opex;
+
+  const rawHoneyTotal = (honeyPurchases ?? []).reduce((s, h: any) => s + Number(h.price_total), 0);
+  const packagingTotal = (pkgPurchases ?? []).reduce((s, p: any) => s + Number(p.total_price), 0);
+  const totalStockPurchases = rawHoneyTotal + packagingTotal;
+
+  // Build unified purchase history list
+  const unifiedPurchases: Array<{
+    id: string;
+    date: string;
+    name: string;
+    category: "honey" | "packaging";
+    amount: number;
+    note: string;
+  }> = [];
+
+  (honeyPurchases ?? []).forEach((h: any) => {
+    const totalKg = Number(h.jerigen_qty) * Number(h.kg_per_jerigen || 50);
+    unifiedPurchases.push({
+      id: h.id,
+      date: h.received_at,
+      name: `Madu ${h.honey_type || "Lainnya"} (${h.jerigen_qty} Jerigen - ${totalKg} kg)`,
+      category: "honey",
+      amount: Number(h.price_total),
+      note: h.notes || "",
+    });
+  });
+
+  (pkgPurchases ?? []).forEach((p: any) => {
+    const itemName = p.packaging_items?.name || "Kemasan";
+    const unit = p.packaging_items?.unit || "pcs";
+    unifiedPurchases.push({
+      id: p.id,
+      date: p.purchased_at,
+      name: `${itemName} (${p.qty} ${unit})`,
+      category: "packaging",
+      amount: Number(p.total_price),
+      note: p.notes || "",
+    });
+  });
+
+  // Sort by date descending
+  unifiedPurchases.sort((a, b) => b.date.localeCompare(a.date));
 
   let codTotal = 0;
   let codCount = 0;
@@ -513,6 +583,68 @@ function Page() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-2xl border-muted/50 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden mt-6">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-muted/20 gap-4">
+          <div className="space-y-1">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <ShoppingBag className="w-4.5 h-4.5 text-honey" />
+              Aliran Belanja Stok & Aset (Tidak Memotong Laba)
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Total pembelian bahan baku madu dan kemasan yang masuk ke stok sebagai aset (tidak memotong Laba Bersih secara langsung).
+            </p>
+          </div>
+          <div className="bg-honey/5 px-4 py-2.5 rounded-xl border border-honey/15 text-right min-w-[200px]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Total Belanja Aset</span>
+            <span className="text-lg font-black text-honey-dark dark:text-honey">{formatIDR(totalStockPurchases)}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {unifiedPurchases.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              Tidak ada riwayat belanja stok pada periode ini.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[120px] font-bold">Tanggal</TableHead>
+                    <TableHead className="w-[120px] font-bold">Kategori</TableHead>
+                    <TableHead className="font-bold">Item Detail</TableHead>
+                    <TableHead className="w-[150px] font-bold text-right">Nominal</TableHead>
+                    <TableHead className="font-bold">Catatan</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unifiedPurchases.map((item) => (
+                    <TableRow key={item.id} className="transition-colors hover:bg-muted/30">
+                      <TableCell className="font-medium">{formatDateIndo(item.date)}</TableCell>
+                      <TableCell>
+                        {item.category === "honey" ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                            Bahan Baku
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                            Kemasan
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-semibold">{item.name}</TableCell>
+                      <TableCell className="text-right font-bold text-foreground">{formatIDR(item.amount)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[250px] truncate" title={item.note}>
+                        {item.note || "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
