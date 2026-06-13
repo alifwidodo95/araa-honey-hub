@@ -1053,95 +1053,50 @@ function Page() {
         </CardHeader>
         <CardContent>
           {/* Date Range Filter Panel */}
-          <div className="flex flex-wrap items-center gap-2 mb-4 bg-slate-50/50 dark:bg-slate-900/20 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex flex-wrap bg-muted p-1 rounded-lg border gap-1">
-              <Button
-                variant={rangeOption === "today" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("today")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "today" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                Hari Ini
-              </Button>
-              <Button
-                variant={rangeOption === "yesterday" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("yesterday")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "yesterday" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                Kemarin
-              </Button>
-              <Button
-                variant={rangeOption === "7days" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("7days")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "7days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                7 Hari
-              </Button>
-              <Button
-                variant={rangeOption === "30days" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("30days")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "30days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                1 Bulan
-              </Button>
-              <Button
-                variant={rangeOption === "90days" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("90days")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "90days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                3 Bulan
-              </Button>
-              <Button
-                variant={rangeOption === "180days" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("180days")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "180days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                6 Bulan
-              </Button>
-              <Button
-                variant={rangeOption === "365days" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("365days")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "365days" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                1 Tahun
-              </Button>
-              <Button
-                variant={rangeOption === "custom" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRangeOption("custom")}
-                className={`text-xs h-8 px-2.5 sm:px-3 ${rangeOption === "custom" ? "bg-background shadow-xs font-semibold text-honey-dark dark:text-honey" : ""}`}
-              >
-                Kustom
-              </Button>
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4 bg-slate-50/50 dark:bg-slate-900/20 p-3 rounded-xl border border-slate-100 dark:border-slate-800/60">
+            {/* Left side: Custom date pickers if 'custom' range is chosen */}
+            <div>
+              {rangeOption === "custom" && (
+                <div className="flex items-center gap-2 bg-muted/40 p-1 rounded-lg border border-border/80">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="h-8 w-32 sm:w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-honey"
+                  />
+                  <span className="text-xs font-medium text-muted-foreground px-0.5">s/d</span>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="h-8 w-32 sm:w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-honey"
+                  />
+                </div>
+              )}
             </div>
 
-            {rangeOption === "custom" && (
-              <div className="flex items-center gap-2 bg-muted/40 p-1 rounded-lg border border-border/80">
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="h-8 w-32 sm:w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-honey"
-                />
-                <span className="text-xs font-medium text-muted-foreground px-0.5">s/d</span>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="h-8 w-32 sm:w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-honey"
-                />
+            {/* Right side: Dropdown (above) and Period text (below) */}
+            <div className="flex flex-col items-end gap-1.5 ml-auto">
+              <Select value={rangeOption} onValueChange={(val: any) => setRangeOption(val)}>
+                <SelectTrigger className="w-[180px] h-8 text-xs border-muted-foreground/30 focus:ring-honey font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hari Ini</SelectItem>
+                  <SelectItem value="yesterday">Kemarin</SelectItem>
+                  <SelectItem value="7days">7 Hari Terakhir</SelectItem>
+                  <SelectItem value="30days">1 Bulan Terakhir</SelectItem>
+                  <SelectItem value="90days">3 Bulan Terakhir</SelectItem>
+                  <SelectItem value="180days">6 Bulan Terakhir</SelectItem>
+                  <SelectItem value="365days">1 Tahun Terakhir</SelectItem>
+                  <SelectItem value="custom">Kustom Tanggal</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <div className="text-[11px] text-honey-dark dark:text-honey font-bold flex items-center gap-1 mt-0.5 select-none">
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Periode: {formatDateIndo(startDate)} s/d {formatDateIndo(endDate)}</span>
               </div>
-            )}
-            
-            <div className="text-xs text-honey-dark dark:text-honey font-semibold ml-auto px-2 flex items-center gap-1.5 py-1.5 sm:py-0">
-              <CalendarDays className="w-3.5 h-3.5" />
-              <span>Periode: {formatDateIndo(startDate)} s/d {formatDateIndo(endDate)}</span>
             </div>
           </div>
 
