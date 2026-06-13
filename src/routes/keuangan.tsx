@@ -145,7 +145,9 @@ function Page() {
   const gross = (orders ?? []).reduce((s, o: any) => s + Number(o.amount_received !== null ? o.amount_received : o.subtotal_gross), 0);
   const platformFee = (orders ?? []).reduce((s, o: any) => s + Number(o.marketplace_fee) + Number(o.shipping_fee), 0);
   const cogs = (orders ?? []).reduce((s, o: any) => s + Number(o.cogs_total), 0);
-  const opex = (biz ?? []).reduce((s, e: any) => s + Number(e.amount), 0);
+  const opex = (biz ?? [])
+    .filter((e: any) => e.category !== "packaging_purchase")
+    .reduce((s, e: any) => s + Number(e.amount), 0);
   const netProfit = (orders ?? []).reduce((s, o: any) => s + Number(o.net_revenue), 0) - cogs - opex;
 
   let codTotal = 0;
