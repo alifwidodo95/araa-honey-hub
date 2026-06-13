@@ -29,6 +29,7 @@ import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumps
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
+import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 
 const ReturRoute = ReturRouteImport.update({
@@ -131,6 +132,11 @@ const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   path: '/api/telegram-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSyncMetaAdsRoute = ApiCronSyncMetaAdsRouteImport.update({
+  id: '/api/cron/sync-meta-ads',
+  path: '/api/cron/sync-meta-ads',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronSendResiRoute = ApiCronSendResiRouteImport.update({
   id: '/api/cron/send-resi',
   path: '/api/cron/send-resi',
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
+  '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -182,6 +189,7 @@ export interface FileRoutesByTo {
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
+  '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -206,6 +214,7 @@ export interface FileRoutesById {
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
+  '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
+    | '/api/cron/sync-meta-ads'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
+    | '/api/cron/sync-meta-ads'
   id:
     | '__root__'
     | '/'
@@ -277,6 +288,7 @@ export interface FileRouteTypes {
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
+    | '/api/cron/sync-meta-ads'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -301,6 +313,7 @@ export interface RootRouteChildren {
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
+  ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -445,6 +458,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/sync-meta-ads': {
+      id: '/api/cron/sync-meta-ads'
+      path: '/api/cron/sync-meta-ads'
+      fullPath: '/api/cron/sync-meta-ads'
+      preLoaderRoute: typeof ApiCronSyncMetaAdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/send-resi': {
       id: '/api/cron/send-resi'
       path: '/api/cron/send-resi'
@@ -477,6 +497,7 @@ const rootRouteChildren: RootRouteChildren = {
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
+  ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
