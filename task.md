@@ -136,3 +136,12 @@
 - [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
 - [x] Update walkthrough.md dengan dokumentasi fitur RBAC baru
 
+# Task List: Fitur Komentar Iklan & AI Auto-Reply
+
+- [x] Jalankan migrasi SQL untuk membuat tabel `meta_comments`, `meta_posts` dan registrasi RBAC permission `meta-comments`
+- [x] Buat API server route `/api/webhooks/meta-comments` untuk menerima dan membalas komentar Meta Graph API
+- [x] Integrasikan OpenAI API dengan system prompt dinamis menggunakan data harga dari database dan settingan custom prompt
+- [x] Buat API server route `/api/meta/sync-comments` untuk sinkronisasi komentar manual
+- [x] Update `src/components/app-layout.tsx` untuk menambahkan tautan "Komentar Iklan" ke sidebar
+- [x] Buat page route `src/routes/meta-comments.tsx` dengan 3 tab (Facebook, Instagram, Pengaturan AI)
+- [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi

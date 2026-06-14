@@ -26,6 +26,7 @@ const navOwnerOnly = [
   { to: "/keuangan", label: "Keuangan", icon: TrendingUp },
   { to: "/pengeluaran-pribadi", label: "Pengeluaran Pribadi", icon: Wallet },
   { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone }, // Added Meta Ads Manager
+  { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
   { to: "/import-riwayat", label: "Impor Riwayat", icon: Database },
   { to: "/pengaturan/whatsapp", label: "Integrasi WhatsApp", icon: MessageSquare },
   { to: "/pengaturan/harga", label: "Pengaturan Harga", icon: Settings },

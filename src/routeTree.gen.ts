@@ -13,6 +13,7 @@ import { Route as ReturRouteImport } from './routes/retur'
 import { Route as PenjualanRouteImport } from './routes/penjualan'
 import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pribadi'
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
+import { Route as MetaCommentsRouteImport } from './routes/meta-comments'
 import { Route as MetaAdsRouteImport } from './routes/meta-ads'
 import { Route as KeuanganRouteImport } from './routes/keuangan'
 import { Route as ImportRiwayatRouteImport } from './routes/import-riwayat'
@@ -29,6 +30,9 @@ import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumps
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
+import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
+import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-comments'
+import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply-comment'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 
@@ -50,6 +54,11 @@ const PengeluaranPribadiRoute = PengeluaranPribadiRouteImport.update({
 const PengeluaranRoute = PengeluaranRouteImport.update({
   id: '/pengeluaran',
   path: '/pengeluaran',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetaCommentsRoute = MetaCommentsRouteImport.update({
+  id: '/meta-comments',
+  path: '/meta-comments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MetaAdsRoute = MetaAdsRouteImport.update({
@@ -132,6 +141,21 @@ const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   path: '/api/telegram-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksMetaCommentsRoute = ApiWebhooksMetaCommentsRouteImport.update({
+  id: '/api/webhooks/meta-comments',
+  path: '/api/webhooks/meta-comments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMetaSyncCommentsRoute = ApiMetaSyncCommentsRouteImport.update({
+  id: '/api/meta/sync-comments',
+  path: '/api/meta/sync-comments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMetaReplyCommentRoute = ApiMetaReplyCommentRouteImport.update({
+  id: '/api/meta/reply-comment',
+  path: '/api/meta/reply-comment',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronSyncMetaAdsRoute = ApiCronSyncMetaAdsRouteImport.update({
   id: '/api/cron/sync-meta-ads',
   path: '/api/cron/sync-meta-ads',
@@ -150,6 +174,7 @@ export interface FileRoutesByFullPath {
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/meta-ads': typeof MetaAdsRoute
+  '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
@@ -166,6 +191,9 @@ export interface FileRoutesByFullPath {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
+  '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
+  '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -174,6 +202,7 @@ export interface FileRoutesByTo {
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/meta-ads': typeof MetaAdsRoute
+  '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
@@ -190,6 +219,9 @@ export interface FileRoutesByTo {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
+  '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
+  '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -199,6 +231,7 @@ export interface FileRoutesById {
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/meta-ads': typeof MetaAdsRoute
+  '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
@@ -215,6 +248,9 @@ export interface FileRoutesById {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
+  '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
+  '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -225,6 +261,7 @@ export interface FileRouteTypes {
     | '/import-riwayat'
     | '/keuangan'
     | '/meta-ads'
+    | '/meta-comments'
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
@@ -241,6 +278,9 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/meta/reply-comment'
+    | '/api/meta/sync-comments'
+    | '/api/webhooks/meta-comments'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -249,6 +289,7 @@ export interface FileRouteTypes {
     | '/import-riwayat'
     | '/keuangan'
     | '/meta-ads'
+    | '/meta-comments'
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
@@ -265,6 +306,9 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/meta/reply-comment'
+    | '/api/meta/sync-comments'
+    | '/api/webhooks/meta-comments'
   id:
     | '__root__'
     | '/'
@@ -273,6 +317,7 @@ export interface FileRouteTypes {
     | '/import-riwayat'
     | '/keuangan'
     | '/meta-ads'
+    | '/meta-comments'
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
@@ -289,6 +334,9 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/meta/reply-comment'
+    | '/api/meta/sync-comments'
+    | '/api/webhooks/meta-comments'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -298,6 +346,7 @@ export interface RootRouteChildren {
   ImportRiwayatRoute: typeof ImportRiwayatRoute
   KeuanganRoute: typeof KeuanganRoute
   MetaAdsRoute: typeof MetaAdsRoute
+  MetaCommentsRoute: typeof MetaCommentsRoute
   PengeluaranRoute: typeof PengeluaranRoute
   PengeluaranPribadiRoute: typeof PengeluaranPribadiRoute
   PenjualanRoute: typeof PenjualanRoute
@@ -314,6 +363,9 @@ export interface RootRouteChildren {
   StokPindahWadahRoute: typeof StokPindahWadahRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
+  ApiMetaReplyCommentRoute: typeof ApiMetaReplyCommentRoute
+  ApiMetaSyncCommentsRoute: typeof ApiMetaSyncCommentsRoute
+  ApiWebhooksMetaCommentsRoute: typeof ApiWebhooksMetaCommentsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -344,6 +396,13 @@ declare module '@tanstack/react-router' {
       path: '/pengeluaran'
       fullPath: '/pengeluaran'
       preLoaderRoute: typeof PengeluaranRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/meta-comments': {
+      id: '/meta-comments'
+      path: '/meta-comments'
+      fullPath: '/meta-comments'
+      preLoaderRoute: typeof MetaCommentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/meta-ads': {
@@ -458,6 +517,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/meta-comments': {
+      id: '/api/webhooks/meta-comments'
+      path: '/api/webhooks/meta-comments'
+      fullPath: '/api/webhooks/meta-comments'
+      preLoaderRoute: typeof ApiWebhooksMetaCommentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/meta/sync-comments': {
+      id: '/api/meta/sync-comments'
+      path: '/api/meta/sync-comments'
+      fullPath: '/api/meta/sync-comments'
+      preLoaderRoute: typeof ApiMetaSyncCommentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/meta/reply-comment': {
+      id: '/api/meta/reply-comment'
+      path: '/api/meta/reply-comment'
+      fullPath: '/api/meta/reply-comment'
+      preLoaderRoute: typeof ApiMetaReplyCommentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/sync-meta-ads': {
       id: '/api/cron/sync-meta-ads'
       path: '/api/cron/sync-meta-ads'
@@ -482,6 +562,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImportRiwayatRoute: ImportRiwayatRoute,
   KeuanganRoute: KeuanganRoute,
   MetaAdsRoute: MetaAdsRoute,
+  MetaCommentsRoute: MetaCommentsRoute,
   PengeluaranRoute: PengeluaranRoute,
   PengeluaranPribadiRoute: PengeluaranPribadiRoute,
   PenjualanRoute: PenjualanRoute,
@@ -498,6 +579,9 @@ const rootRouteChildren: RootRouteChildren = {
   StokPindahWadahRoute: StokPindahWadahRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
+  ApiMetaReplyCommentRoute: ApiMetaReplyCommentRoute,
+  ApiMetaSyncCommentsRoute: ApiMetaSyncCommentsRoute,
+  ApiWebhooksMetaCommentsRoute: ApiWebhooksMetaCommentsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
