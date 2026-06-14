@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
 
