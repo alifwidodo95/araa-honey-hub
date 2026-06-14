@@ -190,6 +190,33 @@ function MetaCommentsPage() {
     }
   };
 
+  const [batchReplying, setBatchReplying] = useState(false);
+
+  // Handle Batch AI Reply Action
+  const handleReplyAllUnreplied = async () => {
+    setBatchReplying(true);
+    const channelName = activeTab === "facebook" ? "facebook" : "instagram";
+    const toastId = toast.loading(`Mulai membalas semua komentar ${activeTab === "facebook" ? "Facebook" : "Instagram"} secara otomatis...`);
+    try {
+      const res = await fetch("/api/meta/reply-all-unreplied", { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: channelName })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Sukses! Berhasil membalas ${data.count || 0} komentar menggunakan AI.`, { id: toastId, duration: 5000 });
+        refetchComments();
+      } else {
+        throw new Error(data.error || "Gagal memproses balasan massal.");
+      }
+    } catch (err: any) {
+      toast.error("Gagal membalas massal: " + err.message, { id: toastId });
+    } finally {
+      setBatchReplying(false);
+    }
+  };
+
   const [subscribing, setSubscribing] = useState(false);
 
   // Handle Subscribe Webhook Action
