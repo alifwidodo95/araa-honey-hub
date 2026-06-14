@@ -32,6 +32,7 @@ import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
 import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
 import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-comments'
+import { Route as ApiMetaSubscribePageRouteImport } from './routes/api.meta.subscribe-page'
 import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply-comment'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
@@ -151,6 +152,11 @@ const ApiMetaSyncCommentsRoute = ApiMetaSyncCommentsRouteImport.update({
   path: '/api/meta/sync-comments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMetaSubscribePageRoute = ApiMetaSubscribePageRouteImport.update({
+  id: '/api/meta/subscribe-page',
+  path: '/api/meta/subscribe-page',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMetaReplyCommentRoute = ApiMetaReplyCommentRouteImport.update({
   id: '/api/meta/reply-comment',
   path: '/api/meta/reply-comment',
@@ -192,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
+  '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
 }
@@ -220,6 +227,7 @@ export interface FileRoutesByTo {
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
+  '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
 }
@@ -249,6 +257,7 @@ export interface FileRoutesById {
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
+  '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
 }
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-comment'
+    | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
   fileRoutesByTo: FileRoutesByTo
@@ -307,6 +317,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-comment'
+    | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
   id:
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-comment'
+    | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
   fileRoutesById: FileRoutesById
@@ -364,6 +376,7 @@ export interface RootRouteChildren {
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
   ApiMetaReplyCommentRoute: typeof ApiMetaReplyCommentRoute
+  ApiMetaSubscribePageRoute: typeof ApiMetaSubscribePageRoute
   ApiMetaSyncCommentsRoute: typeof ApiMetaSyncCommentsRoute
   ApiWebhooksMetaCommentsRoute: typeof ApiWebhooksMetaCommentsRoute
 }
@@ -531,6 +544,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMetaSyncCommentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/meta/subscribe-page': {
+      id: '/api/meta/subscribe-page'
+      path: '/api/meta/subscribe-page'
+      fullPath: '/api/meta/subscribe-page'
+      preLoaderRoute: typeof ApiMetaSubscribePageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/meta/reply-comment': {
       id: '/api/meta/reply-comment'
       path: '/api/meta/reply-comment'
@@ -580,6 +600,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
   ApiMetaReplyCommentRoute: ApiMetaReplyCommentRoute,
+  ApiMetaSubscribePageRoute: ApiMetaSubscribePageRoute,
   ApiMetaSyncCommentsRoute: ApiMetaSyncCommentsRoute,
   ApiWebhooksMetaCommentsRoute: ApiWebhooksMetaCommentsRoute,
 }

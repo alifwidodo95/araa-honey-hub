@@ -190,6 +190,32 @@ function MetaCommentsPage() {
     }
   };
 
+  const [subscribing, setSubscribing] = useState(false);
+
+  // Handle Subscribe Webhook Action
+  const handleSubscribePage = async () => {
+    setSubscribing(true);
+    const toastId = toast.loading("Menghubungkan halaman Facebook ke Webhook Meta...");
+    try {
+      const res = await fetch("/api/meta/subscribe-page", { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userAccessToken: pageAccessToken })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "Halaman berhasil terhubung ke Webhook!", { id: toastId });
+        refetchSettings();
+      } else {
+        throw new Error(data.error || "Gagal menghubungkan halaman.");
+      }
+    } catch (err: any) {
+      toast.error("Gagal menghubungkan Webhook: " + err.message, { id: toastId, duration: 6000 });
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
   // Handle Manual Reply Action
   const handleSendManualReply = async (commentId: string, channel: 'facebook' | 'instagram') => {
     const text = quickReplies[commentId]?.trim();
@@ -631,6 +657,18 @@ function MetaCommentsPage() {
                     className="text-sm font-mono focus-visible:ring-amber-500"
                   />
                 </div>
+
+                <div className="flex pt-2">
+                  <Button 
+                    onClick={handleSubscribePage} 
+                    disabled={subscribing}
+                    variant="outline"
+                    className="border-blue-200 text-blue-700 bg-blue-50/30 hover:bg-blue-50 hover:text-blue-800 font-semibold"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${subscribing ? "animate-spin" : ""}`} />
+                    Hubungkan Webhook Halaman
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -684,7 +722,7 @@ function MetaCommentsPage() {
                   />
                 </div>
 
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-end items-center pt-2">
                   <Button 
                     onClick={() => saveSettingsMutation.mutate()} 
                     disabled={saveSettingsMutation.isPending}
