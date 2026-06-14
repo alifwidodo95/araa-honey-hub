@@ -46,9 +46,9 @@ export const Route = createFileRoute('/api/meta/sync-comments')({
           if (facebook_page_id) {
             try {
               console.log(`[Meta Sync] Fetching FB Page posts for page ${facebook_page_id}...`);
-              // Fetch last 15 published posts
+              // Fetch last 25 promotable posts (includes both published and unpublished ads/dark posts)
               const fbPostsRes = await fetch(
-                `https://graph.facebook.com/v20.0/${facebook_page_id}/published_posts?fields=id,message,permalink_url,created_time&limit=15`,
+                `https://graph.facebook.com/v20.0/${facebook_page_id}/promotable_posts?fields=id,message,permalink_url,created_time&limit=25`,
                 {
                   headers: { 'Authorization': `Bearer ${page_access_token}` }
                 }
