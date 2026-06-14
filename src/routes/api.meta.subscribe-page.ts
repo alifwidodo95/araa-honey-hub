@@ -86,6 +86,20 @@ export const Route = createFileRoute('/api/meta/subscribe-page')({
               "INSERT INTO app_settings (key, value) VALUES ('meta_ai_settings', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
               [aiConfig]
             );
+
+            // Proactively update the Meta Ads Config token with this fresh User Access Token
+            try {
+              const adsConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'meta_ads_config'");
+              const adsConfig = adsConfigRes.rows[0]?.value || {};
+              adsConfig.token = userAccessToken;
+              await pool.query(
+                "INSERT INTO app_settings (key, value) VALUES ('meta_ads_config', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                [adsConfig]
+              );
+              console.log('[Meta Subscribe] Proactively updated Meta Ads Token in database.');
+            } catch (adsErr) {
+              console.error('[Meta Subscribe] Failed to proactively update Meta Ads Token:', adsErr);
+            }
           }
 
           if (!pageAccessTokenToUse) {
