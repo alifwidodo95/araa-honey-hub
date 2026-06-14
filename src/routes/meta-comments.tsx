@@ -397,34 +397,48 @@ function MetaCommentsPage() {
           <div className="lg:col-span-2 space-y-4">
             
             {/* Filter Sub-header */}
-            <div className="flex items-center justify-between bg-white p-4 rounded-xl border shadow-sm">
-              <span className="text-sm font-semibold text-slate-800">Filter Status:</span>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => setReplyFilter("unreplied")} 
-                  variant={replyFilter === "unreplied" ? "default" : "outline"}
-                  size="sm"
-                  className={replyFilter === "unreplied" ? "bg-amber-500 hover:bg-amber-600" : ""}
-                >
-                  Belum Dibalas
-                </Button>
-                <Button 
-                  onClick={() => setReplyFilter("replied")} 
-                  variant={replyFilter === "replied" ? "default" : "outline"}
-                  size="sm"
-                  className={replyFilter === "replied" ? "bg-amber-500 hover:bg-amber-600" : ""}
-                >
-                  Sudah Dibalas
-                </Button>
-                <Button 
-                  onClick={() => setReplyFilter("all")} 
-                  variant={replyFilter === "all" ? "default" : "outline"}
-                  size="sm"
-                  className={replyFilter === "all" ? "bg-amber-500 hover:bg-amber-600" : ""}
-                >
-                  Semua
-                </Button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-xl border shadow-sm gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-800">Filter Status:</span>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => setReplyFilter("unreplied")} 
+                    variant={replyFilter === "unreplied" ? "default" : "outline"}
+                    size="sm"
+                    className={replyFilter === "unreplied" ? "bg-amber-500 hover:bg-amber-600" : ""}
+                  >
+                    Belum Dibalas
+                  </Button>
+                  <Button 
+                    onClick={() => setReplyFilter("replied")} 
+                    variant={replyFilter === "replied" ? "default" : "outline"}
+                    size="sm"
+                    className={replyFilter === "replied" ? "bg-amber-500 hover:bg-amber-600" : ""}
+                  >
+                    Sudah Dibalas
+                  </Button>
+                  <Button 
+                    onClick={() => setReplyFilter("all")} 
+                    variant={replyFilter === "all" ? "default" : "outline"}
+                    size="sm"
+                    className={replyFilter === "all" ? "bg-amber-500 hover:bg-amber-600" : ""}
+                  >
+                    Semua
+                  </Button>
+                </div>
               </div>
+
+              {/* Batch AI Auto-Reply Button */}
+              {replyFilter === "unreplied" && filteredComments.length > 0 && (
+                <Button 
+                  onClick={handleReplyAllUnreplied}
+                  disabled={batchReplying}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg shrink-0"
+                >
+                  <Bot className={`h-3.5 w-3.5 ${batchReplying ? "animate-spin" : ""}`} />
+                  Balas Semua ({filteredComments.length}) dgn AI
+                </Button>
+              )}
             </div>
 
             {/* Comments Array Rendering */}

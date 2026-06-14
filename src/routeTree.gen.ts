@@ -34,6 +34,7 @@ import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhoo
 import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-comments'
 import { Route as ApiMetaSubscribePageRouteImport } from './routes/api.meta.subscribe-page'
 import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply-comment'
+import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.reply-all-unreplied'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 
@@ -162,6 +163,12 @@ const ApiMetaReplyCommentRoute = ApiMetaReplyCommentRouteImport.update({
   path: '/api/meta/reply-comment',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMetaReplyAllUnrepliedRoute =
+  ApiMetaReplyAllUnrepliedRouteImport.update({
+    id: '/api/meta/reply-all-unreplied',
+    path: '/api/meta/reply-all-unreplied',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCronSyncMetaAdsRoute = ApiCronSyncMetaAdsRouteImport.update({
   id: '/api/cron/sync-meta-ads',
   path: '/api/cron/sync-meta-ads',
@@ -197,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
@@ -226,6 +234,7 @@ export interface FileRoutesByTo {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
@@ -256,6 +265,7 @@ export interface FileRoutesById {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/meta/reply-all-unreplied'
     | '/api/meta/reply-comment'
     | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/meta/reply-all-unreplied'
     | '/api/meta/reply-comment'
     | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
@@ -345,6 +357,7 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/meta/reply-all-unreplied'
     | '/api/meta/reply-comment'
     | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
@@ -375,6 +388,7 @@ export interface RootRouteChildren {
   StokPindahWadahRoute: typeof StokPindahWadahRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
+  ApiMetaReplyAllUnrepliedRoute: typeof ApiMetaReplyAllUnrepliedRoute
   ApiMetaReplyCommentRoute: typeof ApiMetaReplyCommentRoute
   ApiMetaSubscribePageRoute: typeof ApiMetaSubscribePageRoute
   ApiMetaSyncCommentsRoute: typeof ApiMetaSyncCommentsRoute
@@ -558,6 +572,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMetaReplyCommentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/meta/reply-all-unreplied': {
+      id: '/api/meta/reply-all-unreplied'
+      path: '/api/meta/reply-all-unreplied'
+      fullPath: '/api/meta/reply-all-unreplied'
+      preLoaderRoute: typeof ApiMetaReplyAllUnrepliedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/sync-meta-ads': {
       id: '/api/cron/sync-meta-ads'
       path: '/api/cron/sync-meta-ads'
@@ -599,6 +620,7 @@ const rootRouteChildren: RootRouteChildren = {
   StokPindahWadahRoute: StokPindahWadahRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
+  ApiMetaReplyAllUnrepliedRoute: ApiMetaReplyAllUnrepliedRoute,
   ApiMetaReplyCommentRoute: ApiMetaReplyCommentRoute,
   ApiMetaSubscribePageRoute: ApiMetaSubscribePageRoute,
   ApiMetaSyncCommentsRoute: ApiMetaSyncCommentsRoute,
