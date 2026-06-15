@@ -404,6 +404,21 @@ function Page() {
     if (!editingOrder) return;
     setSaving(true);
     try {
+      const cleanEditResi = editResi ? editResi.trim() : "";
+      if (cleanEditResi && cleanEditResi !== (editingOrder.tracking_number || "").trim()) {
+        const { data: existing, error: checkError } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("tracking_number", cleanEditResi)
+          .maybeSingle();
+        if (checkError) {
+          console.error("Gagal memvalidasi nomor resi:", checkError);
+        } else if (existing) {
+          setSaving(false);
+          return toast.error(`Nomor resi ${cleanEditResi} sudah digunakan oleh pesanan lain!`);
+        }
+      }
+
       const subtotalGross = Number(editingOrder.subtotal_gross);
       const marketplaceFee = Number(editingOrder.marketplace_fee);
       const finalAmount = editAmount === "" ? null : Number(editAmount);
@@ -484,6 +499,26 @@ function Page() {
     if (!items.length) return toast.error("Tambahkan item pesanan");
     if (channel === "reseller" && !tierId) return toast.error("Pilih tier reseller");
     setSubmitting(true);
+
+    if (trackingNumber.trim()) {
+      const cleanResi = trackingNumber.trim();
+      try {
+        const { data: existing, error: checkError } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("tracking_number", cleanResi)
+          .maybeSingle();
+        if (checkError) {
+          console.error("Gagal memvalidasi nomor resi:", checkError);
+        } else if (existing) {
+          setSubmitting(false);
+          return toast.error(`Nomor resi ${cleanResi} sudah terdaftar di sistem!`);
+        }
+      } catch (err) {
+        console.error("Gagal memvalidasi nomor resi:", err);
+      }
+    }
+
     const { error } = await supabase.rpc("create_order", {
       _channel: channel,
       _tier_id: (channel === "reseller" ? tierId : null) as any,
@@ -734,9 +769,47 @@ function Page() {
     let successCount = 0;
     const failures: { name: string; tracking: string; msg: string }[] = [];
 
+    // Bulk check duplicate resi
+    const duplicateResis = new Set<string>();
+    try {
+      const trackingNumbers = importedOrders
+        .map(o => o.trackingNumber?.trim())
+        .filter(t => t !== "" && t !== undefined && t !== null);
+
+      if (trackingNumbers.length > 0) {
+        const chunkSize = 500;
+        for (let chunkIdx = 0; chunkIdx < trackingNumbers.length; chunkIdx += chunkSize) {
+          const chunk = trackingNumbers.slice(chunkIdx, chunkIdx + chunkSize);
+          const { data, error } = await supabase
+            .from("orders")
+            .select("tracking_number")
+            .in("tracking_number", chunk);
+          if (!error && data) {
+            data.forEach(row => {
+              if (row.tracking_number) {
+                duplicateResis.add(row.tracking_number.trim());
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Gagal melakukan pengecekan nomor resi duplikat:", e);
+    }
+
     for (let i = 0; i < importedOrders.length; i++) {
       const order = importedOrders[i];
       setImportProgress({ current: i + 1, total: importedOrders.length });
+
+      const resiClean = order.trackingNumber?.trim();
+      if (resiClean && duplicateResis.has(resiClean)) {
+        failures.push({
+          name: order.customerName || "Tanpa Nama",
+          tracking: order.trackingNumber || "Tanpa Resi",
+          msg: "Dilewati: Nomor resi sudah terdaftar di sistem"
+        });
+        continue;
+      }
 
       if (order.items.length === 0) {
         failures.push({
@@ -1669,17 +1742,22 @@ function Page() {
 
               {importResults.failed.length > 0 && (
                 <div className="flex-1 flex flex-col min-h-0 space-y-2">
-                  <h4 className="text-xs font-bold text-destructive uppercase tracking-wide">Daftar Baris Gagal ({importResults.failed.length}):</h4>
-                  <div className="flex-1 overflow-y-auto border border-destructive/20 rounded-lg p-2 max-h-[35vh] bg-destructive/5 space-y-1.5">
-                    {importResults.failed.map((f, i) => (
-                      <div key={i} className="text-[11px] p-2 bg-background border border-destructive/10 rounded-md space-y-0.5">
-                        <div className="flex justify-between font-semibold text-slate-800">
-                          <span>{f.name} (Resi: {f.tracking})</span>
-                          <span className="text-destructive uppercase text-[9px] font-bold">Gagal</span>
+                  <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Daftar Baris Gagal / Dilewati ({importResults.failed.length}):</h4>
+                  <div className="flex-1 overflow-y-auto border border-border rounded-lg p-2 max-h-[35vh] bg-slate-50/50 dark:bg-slate-950/20 space-y-1.5">
+                    {importResults.failed.map((f, i) => {
+                      const isSkipped = f.msg.startsWith("Dilewati:");
+                      return (
+                        <div key={i} className={`text-[11px] p-2 bg-background border rounded-md space-y-0.5 ${isSkipped ? "border-amber-200 dark:border-amber-950/40" : "border-destructive/10"}`}>
+                          <div className="flex justify-between font-semibold text-slate-800 dark:text-slate-200">
+                            <span>{f.name} (Resi: {f.tracking})</span>
+                            <span className={`uppercase text-[9px] font-bold px-1.5 py-0.5 rounded ${isSkipped ? "bg-amber-100 text-amber-800 dark:bg-amber-950/20" : "bg-red-100 text-red-800 dark:bg-red-950/20"}`}>
+                              {isSkipped ? "Dilewati" : "Gagal"}
+                            </span>
+                          </div>
+                          <div className="text-muted-foreground font-mono leading-tight">{f.msg}</div>
                         </div>
-                        <div className="text-muted-foreground font-mono leading-tight">{f.msg}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

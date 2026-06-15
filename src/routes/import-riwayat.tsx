@@ -232,7 +232,7 @@ function Page() {
   const qc = useQueryClient();
   const [parsedOrders, setParsedOrders] = useState<RawRow[]>([]);
   const [importing, setImporting] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, successes: 0, failures: 0 });
+  const [progress, setProgress] = useState({ current: 0, total: 0, successes: 0, failures: 0, skipped: 0 });
   const [logs, setLogs] = useState<string[]>([]);
   const [defaultChannel, setDefaultChannel] = useState<string>("whatsapp");
   const [defaultTierId, setDefaultTierId] = useState<string>("");
@@ -460,7 +460,7 @@ function Page() {
     setImporting(true);
     setLogs([]);
     const total = parsedOrders.length;
-    setProgress({ current: 0, total, successes: 0, failures: 0 });
+    setProgress({ current: 0, total, successes: 0, failures: 0, skipped: 0 });
 
     let tierId = defaultTierId;
     if (!tierId && tiers && tiers.length > 0) {
@@ -470,14 +470,52 @@ function Page() {
 
     let successes = 0;
     let failures = 0;
+    let skipped = 0;
+
+    // Bulk check duplicate resi
+    const duplicateResis = new Set<string>();
+    try {
+      const trackingNumbers = parsedOrders
+        .map(o => o.trackingNumber?.trim())
+        .filter(t => t !== "" && t !== undefined && t !== null);
+
+      if (trackingNumbers.length > 0) {
+        const chunkSize = 500;
+        for (let chunkIdx = 0; chunkIdx < trackingNumbers.length; chunkIdx += chunkSize) {
+          const chunk = trackingNumbers.slice(chunkIdx, chunkIdx + chunkSize);
+          const { data, error } = await supabase
+            .from("orders")
+            .select("tracking_number")
+            .in("tracking_number", chunk);
+          if (!error && data) {
+            data.forEach(row => {
+              if (row.tracking_number) {
+                duplicateResis.add(row.tracking_number.trim());
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Gagal melakukan pengecekan nomor resi duplikat:", e);
+    }
 
     for (let i = 0; i < total; i++) {
       const row = parsedOrders[i];
       setProgress(p => ({ ...p, current: i + 1 }));
 
+      const resiClean = row.trackingNumber?.trim();
+      if (resiClean && duplicateResis.has(resiClean)) {
+        skipped++;
+        setLogs(l => [`⏭️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Dilewati (Resi ${resiClean} sudah terdaftar)`, ...l]);
+        setProgress(p => ({ ...p, successes, failures, skipped }));
+        continue;
+      }
+
       if (row.items.length === 0) {
         failures++;
         setLogs(l => [`⚠️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Gagal (Produk tidak terdeteksi dari string: "${row.productString}")`, ...l]);
+        setProgress(p => ({ ...p, successes, failures, skipped }));
         continue;
       }
 
@@ -513,11 +551,11 @@ function Page() {
         setLogs(l => [`⚠️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Gagal (${err.message})`, ...l]);
       }
 
-      setProgress(p => ({ ...p, successes, failures }));
+      setProgress(p => ({ ...p, successes, failures, skipped }));
     }
 
     setImporting(false);
-    toast.success(`Proses Impor Selesai! ${successes} Sukses, ${failures} Gagal.`);
+    toast.success(`Proses Impor Selesai! ${successes} Sukses, ${skipped} Dilewati, ${failures} Gagal.`);
     qc.invalidateQueries({ queryKey: ["biz-expenses"] });
     qc.invalidateQueries({ queryKey: ["fin-biz"] });
     qc.invalidateQueries({ queryKey: ["orders"] });
@@ -622,7 +660,7 @@ function Page() {
               {importing ? "Sedang Mengimpor Data..." : "Proses Impor Selesai"}
             </CardTitle>
             <CardDescription>
-              Kemajuan: {progress.current} dari {progress.total} transaksi ({progress.successes} sukses, {progress.failures} gagal)
+              Kemajuan: {progress.current} dari {progress.total} transaksi ({progress.successes} sukses, {progress.skipped} dilewati, {progress.failures} gagal)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -636,11 +674,19 @@ function Page() {
 
             {/* Logs Area */}
             <div className="h-[150px] overflow-y-auto border bg-slate-50 dark:bg-slate-900 rounded-lg p-3 font-mono text-xs space-y-1">
-              {logs.map((log, idx) => (
-                <div key={idx} className={log.includes("Gagal") ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}>
-                  {log}
-                </div>
-              ))}
+              {logs.map((log, idx) => {
+                let colorClass = "text-emerald-600 dark:text-emerald-400";
+                if (log.includes("Gagal")) {
+                  colorClass = "text-destructive";
+                } else if (log.includes("Dilewati")) {
+                  colorClass = "text-amber-600 dark:text-amber-400";
+                }
+                return (
+                  <div key={idx} className={colorClass}>
+                    {log}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
