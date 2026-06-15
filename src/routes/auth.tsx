@@ -100,7 +100,7 @@ function AuthPage() {
           const oy = r * gap + (Math.random() - 0.5) * 6;
 
           const ratio = ox / width;
-          const bandIndex = Math.min(bandsCount - 1, Math.floor(ratio * bandsCount));
+          const bandIndex = Math.max(0, Math.min(bandsCount - 1, Math.floor(ratio * bandsCount)));
 
           particleBands[bandIndex].push({
             x: ox,
