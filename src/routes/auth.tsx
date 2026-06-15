@@ -41,7 +41,7 @@ function AuthPage() {
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
-    const mouse = { x: -1000, y: -1000, radius: 170 };
+    const mouse = { x: -1000, y: -1000, radius: 150 };
 
     const handleMouseMove = (e: MouseEvent) => {
       mouse.x = e.clientX;
@@ -53,63 +53,88 @@ function AuthPage() {
       mouse.y = -1000;
     };
 
+    // Color bands matching the Google Antigravity visual spectrum (Blue -> Purple -> Red -> Orange -> Yellow)
+    const bandsCount = 20;
+    const bandColors = Array.from({ length: bandsCount }, (_, idx) => {
+      const ratio = idx / (bandsCount - 1);
+      let hue = 0;
+      if (ratio < 0.25) {
+        // Indigo / Blue
+        hue = 225 + (ratio / 0.25) * 35;
+      } else if (ratio < 0.55) {
+        // Purple / Magenta / Pink
+        hue = 260 + ((ratio - 0.25) / 0.3) * 85;
+      } else if (ratio < 0.8) {
+        // Red / Orange
+        hue = (345 + ((ratio - 0.55) / 0.25) * 45) % 360;
+      } else {
+        // Gold / Yellow
+        hue = 30 + ((ratio - 0.8) / 0.2) * 22;
+      }
+      // Bright colors on light background
+      return `hsla(${hue}, 86%, 56%, 0.75)`;
+    });
+
+    interface Particle {
+      x: number;
+      y: number;
+      ox: number; // original grid coordinate
+      oy: number;
+      vx: number;
+      vy: number;
+      size: number;
+    }
+
+    let particleBands: Particle[][] = [];
+
+    const populateGrid = () => {
+      particleBands = Array.from({ length: bandsCount }, () => []);
+      const gap = 24; // Spacing of the grid dashes
+      const cols = Math.ceil(width / gap);
+      const rows = Math.ceil(height / gap);
+
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          // Add organic offset to grid to look natural and not overly rigid
+          const ox = c * gap + (Math.random() - 0.5) * 6;
+          const oy = r * gap + (Math.random() - 0.5) * 6;
+
+          const ratio = ox / width;
+          const bandIndex = Math.min(bandsCount - 1, Math.floor(ratio * bandsCount));
+
+          particleBands[bandIndex].push({
+            x: ox,
+            y: oy,
+            ox,
+            oy,
+            vx: 0,
+            vy: 0,
+            size: Math.random() * 4 + 7 // Length of each dash (7px to 11px)
+          });
+        }
+      }
+    };
+
+    populateGrid();
+
     const handleResize = () => {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
+      populateGrid();
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseleave", handleMouseLeave);
     window.addEventListener("resize", handleResize);
 
-    // Create particles
-    const particleCount = Math.min(220, Math.floor((width * height) / 7000));
-    const particles: Array<{
-      x: number;
-      y: number;
-      ox: number; // original position
-      oy: number;
-      vx: number;
-      vy: number;
-      size: number;
-      color: string;
-      alpha: number;
-      angle: number;
-      speed: number;
-    }> = [];
-
-    const colors = [
-      "rgba(245, 158, 11, 0.45)",  // Amber/Gold (Araa Honey brand)
-      "rgba(59, 130, 246, 0.35)",  // Clean Indigo/Blue (Antigravity look)
-      "rgba(148, 163, 184, 0.25)"  // Slate/Muted Grey
-    ];
-
-    for (let i = 0; i < particleCount; i++) {
-      const x = Math.random() * width;
-      const y = Math.random() * height;
-      particles.push({
-        x,
-        y,
-        ox: x,
-        oy: y,
-        vx: (Math.random() - 0.5) * 0.8,
-        vy: (Math.random() - 0.5) * 0.8,
-        size: Math.random() * 3.5 + 1.5,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        alpha: Math.random() * 0.4 + 0.2,
-        angle: Math.random() * Math.PI * 2,
-        speed: Math.random() * 0.02 + 0.005
-      });
-    }
-
     const animate = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Draw subtle grid (Google Antigravity theme)
-      ctx.strokeStyle = "rgba(226, 232, 240, 0.25)";
+      // Draw subtle technical grid (faint look)
+      ctx.strokeStyle = "rgba(226, 232, 240, 0.2)";
       ctx.lineWidth = 1;
-      const gridSize = 100;
+      const gridSize = 120;
       for (let x = 0; x < width; x += gridSize) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -123,77 +148,64 @@ function AuthPage() {
         ctx.stroke();
       }
 
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
+      // Render the particles with custom line style
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
 
-        // 1. Ambient wave drift (organic weightless motion)
-        p.angle += p.speed;
-        p.vx += Math.sin(p.angle) * 0.015;
-        p.vy += Math.cos(p.angle) * 0.015;
-
-        // 2. Mouse Repulsion Acceleration
-        const dx = p.x - mouse.x;
-        const dy = p.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < mouse.radius) {
-          const force = (mouse.radius - dist) / mouse.radius;
-          // Fluid force pushing particles away
-          const strength = 0.85;
-          p.vx += (dx / dist) * force * strength;
-          p.vy += (dy / dist) * force * strength;
-        }
-
-        // 3. Elastic Spring force back to home position (creates rubber-like return)
-        const homeDx = p.ox - p.x;
-        const homeDy = p.oy - p.y;
-        const springFactor = 0.0035; // Soft bouncy float
-        p.vx += homeDx * springFactor;
-        p.vy += homeDy * springFactor;
-
-        // 4. Apply Damping (Friction)
-        const friction = 0.94;
-        p.vx *= friction;
-        p.vy *= friction;
-
-        // 5. Speed cap to prevent extreme velocities
-        const currentSpeed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-        const maxSpeed = 7;
-        if (currentSpeed > maxSpeed) {
-          p.vx = (p.vx / currentSpeed) * maxSpeed;
-          p.vy = (p.vy / currentSpeed) * maxSpeed;
-        }
-
-        // 6. Update position
-        p.x += p.vx;
-        p.y += p.vy;
-
-        // Wrap boundaries in case they go wild
-        if (p.x < -20) p.x = width + 20;
-        if (p.x > width + 20) p.x = -20;
-        if (p.y < -20) p.y = height + 20;
-        if (p.y > height + 20) p.y = -20;
-
-        // Draw particle
+      for (let b = 0; b < bandsCount; b++) {
+        ctx.strokeStyle = bandColors[b];
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.fill();
+        
+        const bandParticles = particleBands[b];
+        const len = bandParticles.length;
 
-        // Connect close particles with soft, responsive network lines
-        for (let j = i + 1; j < particles.length; j++) {
-          const p2 = particles[j];
-          const ldx = p.x - p2.x;
-          const ldy = p.y - p2.y;
-          const ldist = Math.sqrt(ldx * ldx + ldy * ldy);
-          if (ldist < 125) {
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(203, 213, 225, ${0.16 * (1 - ldist / 125)})`;
-            ctx.stroke();
+        for (let i = 0; i < len; i++) {
+          const p = bandParticles[i];
+
+          // 1. Mouse Attraction/Repulsion (Push away fluidly)
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < mouse.radius) {
+            const force = (mouse.radius - dist) / mouse.radius;
+            // Bending force away from cursor
+            const push = force * force * 3.8;
+            p.vx += (dx / dist) * push;
+            p.vy += (dy / dist) * push;
           }
+
+          // 2. Spring-mass return physics to keep grid alignment
+          const homeDx = p.ox - p.x;
+          const homeDy = p.oy - p.y;
+          p.vx += homeDx * 0.045; // Spring force coefficient
+          p.vy += homeDy * 0.045;
+
+          // 3. Apply damping (friction) for smooth sliding
+          p.vx *= 0.83;
+          p.vy *= 0.83;
+
+          // 4. Update coordinates
+          p.x += p.vx;
+          p.y += p.vy;
+
+          // 5. Draw the tilted dash (pointing bottom-left to top-right at 45 degrees)
+          const baseLength = p.size;
+          // Apply velocity stretching effect
+          const stretchX = p.vx * 0.65;
+          const stretchY = p.vy * 0.65;
+
+          // Rotated vector dx/dy (cos 45 = 0.707, sin 45 = 0.707)
+          const halfLen = baseLength * 0.5;
+          const rx = halfLen * 0.707;
+          const ry = halfLen * 0.707;
+
+          // Bottom-left to top-right
+          ctx.moveTo(p.x - rx - stretchX, p.y + ry - stretchY);
+          ctx.lineTo(p.x + rx + stretchX, p.y - ry + stretchY);
         }
+
+        ctx.stroke();
       }
 
       animationId = requestAnimationFrame(animate);
