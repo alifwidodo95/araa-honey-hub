@@ -73,6 +73,7 @@ function MetaAdsPage() {
   const [dateRange, setDateRange] = useState("7d"); // 1d, 7d, 30d
   const [isSimulation, setIsSimulation] = useState(true);
   const [syncingToDb, setSyncingToDb] = useState(false);
+  const [showAllAccounts, setShowAllAccounts] = useState(false);
 
   // Simulation State
   const [simulatedCampaigns, setSimulatedCampaigns] = useState(MOCK_CAMPAIGNS);
@@ -393,8 +394,17 @@ function MetaAdsPage() {
   // Determine Accounts to list
   const adAccounts = useMemo(() => {
     if (isSimulation) return MOCK_ACCOUNTS;
+    const dbAcc = config?.defaultAccountId || "";
+    if (dbAcc && realAccounts && !showAllAccounts) {
+      const matched = realAccounts.filter((acc: any) => 
+        acc.id === dbAcc || 
+        acc.account_id === dbAcc || 
+        `act_${acc.account_id}` === dbAcc
+      );
+      if (matched.length > 0) return matched;
+    }
     return realAccounts || [];
-  }, [isSimulation, realAccounts]);
+  }, [isSimulation, realAccounts, config?.defaultAccountId, showAllAccounts]);
 
   // Set default account when accounts list loaded
   useEffect(() => {
@@ -679,7 +689,18 @@ function MetaAdsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Account Selector */}
         <div className="bg-card p-4 rounded-lg border shadow-sm space-y-1.5">
-          <Label>Pilih Akun Iklan (BM)</Label>
+          <div className="flex justify-between items-center">
+            <Label>Pilih Akun Iklan (BM)</Label>
+            {!isSimulation && realAccounts && realAccounts.length > 1 && config?.defaultAccountId && (
+              <button 
+                type="button"
+                onClick={() => setShowAllAccounts(prev => !prev)}
+                className="text-[10px] text-primary hover:underline font-medium"
+              >
+                {showAllAccounts ? "Sembunyikan Akun Lain" : "Tampilkan Semua Akun"}
+              </button>
+            )}
+          </div>
           <Select 
             value={selectedAccount} 
             onValueChange={setSelectedAccount}
