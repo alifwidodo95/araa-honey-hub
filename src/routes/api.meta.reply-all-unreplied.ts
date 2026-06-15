@@ -102,10 +102,14 @@ ${system_instruction}
             });
           }
 
-          console.log(`[Batch Reply] Starting batch reply for ${unrepliedComments.length} unreplied ${channel} comments...`);
+          const maxBatchSize = 10;
+          const commentsToProcess = unrepliedComments.slice(0, maxBatchSize);
+          console.log(`[Batch Reply] Processing ${commentsToProcess.length} out of ${unrepliedComments.length} unreplied ${channel} comments sequentially...`);
 
-          // Process in parallel to avoid Vercel 10s timeout
-          const replyPromises = unrepliedComments.map(async (comment) => {
+          const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+          const results = [];
+
+          for (const comment of commentsToProcess) {
             try {
               // 1. Call OpenAI
               const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -164,23 +168,32 @@ ${system_instruction}
                 WHERE id = $2
               `, [replyText, comment.id]);
 
-              return { id: comment.id, success: true };
+              results.push({ id: comment.id, success: true });
+              
+              // Small delay between replies to prevent Facebook spam filter block
+              await sleep(300);
             } catch (err: any) {
               console.error(`[Batch Reply Error] Failed for comment ${comment.id}:`, err.message);
-              return { id: comment.id, success: false, error: err.message };
+              results.push({ id: comment.id, success: false, error: err.message });
             }
-          });
+          }
 
-          const results = await Promise.all(replyPromises);
           const succeeded = results.filter(r => r.success).length;
           const failed = results.filter(r => !r.success);
 
           await pool.end();
 
+          const remainingCount = unrepliedComments.length - succeeded;
+          let message = `Berhasil membalas ${succeeded} komentar menggunakan AI.`;
+          if (remainingCount > 0) {
+            message += ` Masih ada ${remainingCount} komentar tersisa. Silakan klik tombol kembali untuk memproses batch berikutnya.`;
+          }
+
           return new Response(JSON.stringify({ 
             success: true, 
             count: succeeded,
             total: unrepliedComments.length,
+            message: message,
             failed: failed
           }), {
             status: 200,
