@@ -41,7 +41,7 @@ function AuthPage() {
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
-    const mouse = { x: -1000, y: -1000, radius: 140 };
+    const mouse = { x: -1000, y: -1000, radius: 170 };
 
     const handleMouseMove = (e: MouseEvent) => {
       mouse.x = e.clientX;
@@ -64,7 +64,7 @@ function AuthPage() {
     window.addEventListener("resize", handleResize);
 
     // Create particles
-    const particleCount = Math.min(100, Math.floor((width * height) / 15000));
+    const particleCount = Math.min(220, Math.floor((width * height) / 7000));
     const particles: Array<{
       x: number;
       y: number;
@@ -80,9 +80,9 @@ function AuthPage() {
     }> = [];
 
     const colors = [
-      "rgba(245, 158, 11, 0.35)",  // Amber/Gold (Araa Honey brand)
-      "rgba(59, 130, 246, 0.3)",   // Clean Indigo/Blue (Antigravity look)
-      "rgba(148, 163, 184, 0.2)"    // Slate/Muted Grey
+      "rgba(245, 158, 11, 0.45)",  // Amber/Gold (Araa Honey brand)
+      "rgba(59, 130, 246, 0.35)",  // Clean Indigo/Blue (Antigravity look)
+      "rgba(148, 163, 184, 0.25)"  // Slate/Muted Grey
     ];
 
     for (let i = 0; i < particleCount; i++) {
@@ -93,13 +93,13 @@ function AuthPage() {
         y,
         ox: x,
         oy: y,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        size: Math.random() * 3 + 1.5,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: (Math.random() - 0.5) * 0.8,
+        size: Math.random() * 3.5 + 1.5,
         color: colors[Math.floor(Math.random() * colors.length)],
         alpha: Math.random() * 0.4 + 0.2,
         angle: Math.random() * Math.PI * 2,
-        speed: Math.random() * 0.02 + 0.01
+        speed: Math.random() * 0.02 + 0.005
       });
     }
 
@@ -126,39 +126,53 @@ function AuthPage() {
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
 
-        // Drift wave motion
+        // 1. Ambient wave drift (organic weightless motion)
         p.angle += p.speed;
-        p.x += Math.sin(p.angle) * 0.1;
-        p.y += Math.cos(p.angle) * 0.1;
+        p.vx += Math.sin(p.angle) * 0.015;
+        p.vy += Math.cos(p.angle) * 0.015;
 
-        // Apply velocity
-        p.x += p.vx;
-        p.y += p.vy;
-
-        // Interaction with mouse (repulsion)
+        // 2. Mouse Repulsion Acceleration
         const dx = p.x - mouse.x;
         const dy = p.y - mouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < mouse.radius) {
           const force = (mouse.radius - dist) / mouse.radius;
-          const forceX = (dx / dist) * force * 4.5;
-          const forceY = (dy / dist) * force * 4.5;
-          p.x += forceX;
-          p.y += forceY;
-        } else {
-          // Slow spring-back return to original position
-          const hx = p.ox - p.x;
-          const hy = p.oy - p.y;
-          p.x += hx * 0.015;
-          p.y += hy * 0.015;
+          // Fluid force pushing particles away
+          const strength = 0.85;
+          p.vx += (dx / dist) * force * strength;
+          p.vy += (dy / dist) * force * strength;
         }
 
-        // Wrap around bounds
-        if (p.x < -10) p.x = width + 10;
-        if (p.x > width + 10) p.x = -10;
-        if (p.y < -10) p.y = height + 10;
-        if (p.y > height + 10) p.y = -10;
+        // 3. Elastic Spring force back to home position (creates rubber-like return)
+        const homeDx = p.ox - p.x;
+        const homeDy = p.oy - p.y;
+        const springFactor = 0.0035; // Soft bouncy float
+        p.vx += homeDx * springFactor;
+        p.vy += homeDy * springFactor;
+
+        // 4. Apply Damping (Friction)
+        const friction = 0.94;
+        p.vx *= friction;
+        p.vy *= friction;
+
+        // 5. Speed cap to prevent extreme velocities
+        const currentSpeed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        const maxSpeed = 7;
+        if (currentSpeed > maxSpeed) {
+          p.vx = (p.vx / currentSpeed) * maxSpeed;
+          p.vy = (p.vy / currentSpeed) * maxSpeed;
+        }
+
+        // 6. Update position
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Wrap boundaries in case they go wild
+        if (p.x < -20) p.x = width + 20;
+        if (p.x > width + 20) p.x = -20;
+        if (p.y < -20) p.y = height + 20;
+        if (p.y > height + 20) p.y = -20;
 
         // Draw particle
         ctx.beginPath();
@@ -166,17 +180,17 @@ function AuthPage() {
         ctx.fillStyle = p.color;
         ctx.fill();
 
-        // Connect close particles with very faint lines
+        // Connect close particles with soft, responsive network lines
         for (let j = i + 1; j < particles.length; j++) {
           const p2 = particles[j];
           const ldx = p.x - p2.x;
           const ldy = p.y - p2.y;
           const ldist = Math.sqrt(ldx * ldx + ldy * ldy);
-          if (ldist < 110) {
+          if (ldist < 125) {
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(203, 213, 225, ${0.12 * (1 - ldist / 110)})`;
+            ctx.strokeStyle = `rgba(203, 213, 225, ${0.16 * (1 - ldist / 125)})`;
             ctx.stroke();
           }
         }
