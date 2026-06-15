@@ -171,8 +171,9 @@ function AuthPage() {
             const force = (mouse.radius - dist) / mouse.radius;
             // Bending force away from cursor
             const push = force * force * 3.8;
-            p.vx += (dx / dist) * push;
-            p.vy += (dy / dist) * push;
+            const safeDist = dist > 0.5 ? dist : 0.5; // Avoid division by zero / NaN coordinate corruption
+            p.vx += (dx / safeDist) * push;
+            p.vy += (dy / safeDist) * push;
           }
 
           // 2. Spring-mass return physics to keep grid alignment
