@@ -405,11 +405,11 @@ function Page() {
     setSaving(true);
     try {
       const cleanEditResi = editResi ? editResi.trim() : "";
-      if (cleanEditResi && cleanEditResi !== (editingOrder.tracking_number || "").trim()) {
+      if (cleanEditResi && cleanEditResi.toUpperCase() !== (editingOrder.tracking_number || "").trim().toUpperCase()) {
         const { data: existing, error: checkError } = await supabase
           .from("orders")
           .select("id")
-          .eq("tracking_number", cleanEditResi)
+          .ilike("tracking_number", cleanEditResi)
           .maybeSingle();
         if (checkError) {
           console.error("Gagal memvalidasi nomor resi:", checkError);
@@ -506,7 +506,7 @@ function Page() {
         const { data: existing, error: checkError } = await supabase
           .from("orders")
           .select("id")
-          .eq("tracking_number", cleanResi)
+          .ilike("tracking_number", cleanResi)
           .maybeSingle();
         if (checkError) {
           console.error("Gagal memvalidasi nomor resi:", checkError);
@@ -780,14 +780,22 @@ function Page() {
         const chunkSize = 500;
         for (let chunkIdx = 0; chunkIdx < trackingNumbers.length; chunkIdx += chunkSize) {
           const chunk = trackingNumbers.slice(chunkIdx, chunkIdx + chunkSize);
+          
+          // Query raw, uppercase, and lowercase values for robust case-insensitivity
+          const queryList = Array.from(new Set([
+            ...chunk,
+            ...chunk.map(c => c.toUpperCase()),
+            ...chunk.map(c => c.toLowerCase())
+          ]));
+
           const { data, error } = await supabase
             .from("orders")
             .select("tracking_number")
-            .in("tracking_number", chunk);
+            .in("tracking_number", queryList);
           if (!error && data) {
             data.forEach(row => {
               if (row.tracking_number) {
-                duplicateResis.add(row.tracking_number.trim());
+                duplicateResis.add(row.tracking_number.trim().toUpperCase());
               }
             });
           }
@@ -801,14 +809,18 @@ function Page() {
       const order = importedOrders[i];
       setImportProgress({ current: i + 1, total: importedOrders.length });
 
-      const resiClean = order.trackingNumber?.trim();
-      if (resiClean && duplicateResis.has(resiClean)) {
-        failures.push({
-          name: order.customerName || "Tanpa Nama",
-          tracking: order.trackingNumber || "Tanpa Resi",
-          msg: "Dilewati: Nomor resi sudah terdaftar di sistem"
-        });
-        continue;
+      const resiClean = order.trackingNumber?.trim().toUpperCase();
+      if (resiClean) {
+        if (duplicateResis.has(resiClean)) {
+          failures.push({
+            name: order.customerName || "Tanpa Nama",
+            tracking: order.trackingNumber || "Tanpa Resi",
+            msg: "Dilewati: Nomor resi sudah terdaftar di sistem"
+          });
+          continue;
+        }
+        // Add to Set to prevent duplicate imports within the same Excel sheet
+        duplicateResis.add(resiClean);
       }
 
       if (order.items.length === 0) {

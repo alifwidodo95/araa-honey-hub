@@ -483,14 +483,22 @@ function Page() {
         const chunkSize = 500;
         for (let chunkIdx = 0; chunkIdx < trackingNumbers.length; chunkIdx += chunkSize) {
           const chunk = trackingNumbers.slice(chunkIdx, chunkIdx + chunkSize);
+
+          // Query raw, uppercase, and lowercase values for robust case-insensitivity
+          const queryList = Array.from(new Set([
+            ...chunk,
+            ...chunk.map(c => c.toUpperCase()),
+            ...chunk.map(c => c.toLowerCase())
+          ]));
+
           const { data, error } = await supabase
             .from("orders")
             .select("tracking_number")
-            .in("tracking_number", chunk);
+            .in("tracking_number", queryList);
           if (!error && data) {
             data.forEach(row => {
               if (row.tracking_number) {
-                duplicateResis.add(row.tracking_number.trim());
+                duplicateResis.add(row.tracking_number.trim().toUpperCase());
               }
             });
           }
@@ -504,12 +512,16 @@ function Page() {
       const row = parsedOrders[i];
       setProgress(p => ({ ...p, current: i + 1 }));
 
-      const resiClean = row.trackingNumber?.trim();
-      if (resiClean && duplicateResis.has(resiClean)) {
-        skipped++;
-        setLogs(l => [`⏭️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Dilewati (Resi ${resiClean} sudah terdaftar)`, ...l]);
-        setProgress(p => ({ ...p, successes, failures, skipped }));
-        continue;
+      const resiClean = row.trackingNumber?.trim().toUpperCase();
+      if (resiClean) {
+        if (duplicateResis.has(resiClean)) {
+          skipped++;
+          setLogs(l => [`⏭️ Baris ${row.rowNumber} (${row.customerName || "No Name"}): Dilewati (Resi ${row.trackingNumber?.trim()} sudah terdaftar)`, ...l]);
+          setProgress(p => ({ ...p, successes, failures, skipped }));
+          continue;
+        }
+        // Add to Set to prevent duplicate imports within the same Excel sheet
+        duplicateResis.add(resiClean);
       }
 
       if (row.items.length === 0) {
