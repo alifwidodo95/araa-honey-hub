@@ -237,8 +237,16 @@ function MetaCommentsPage() {
         // Refresh comments list so UI updates in real-time
         await refetchComments();
 
-        // If no comments were processed, break to prevent infinite loop
+        // If no comments were processed and there are failures, throw the specific error
         if (count === 0) {
+          const failedErrors = data.failed || [];
+          if (failedErrors.length > 0) {
+            const firstError = failedErrors[0].error || "";
+            if (firstError.includes("code\":368") || firstError.includes("spam") || firstError.includes("membatasi seberapa sering")) {
+              throw new Error("Halaman Facebook Anda sedang dibatasi sementara oleh Meta karena dinilai terlalu sering berkomentar (Spam Filter/Rate Limit). Silakan coba lagi beberapa saat lagi.");
+            }
+            throw new Error(firstError || "Gagal memproses komentar.");
+          }
           break;
         }
 
