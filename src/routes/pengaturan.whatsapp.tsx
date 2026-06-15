@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
-  XCircle
+  XCircle, Trash2
 } from "lucide-react";
 
 export const Route = createFileRoute("/pengaturan/whatsapp")({
@@ -262,6 +262,32 @@ function WhatsAppPage() {
       refetchPending();
     } catch (err: any) {
       toast.error(err.message || "Gagal melewatkan pesanan.");
+    }
+  };
+
+  // Clear/Cancel all orders from the WhatsApp queue
+  const handleClearAllQueue = async () => {
+    if (!pendingOrders || pendingOrders.length === 0) return;
+    const count = pendingOrders.length;
+    if (!confirm(`Apakah Anda yakin ingin mengeluarkan SEMUA (${count}) pesanan dari antrean pengiriman WhatsApp?`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ 
+          resi_shared_via_wa: true, 
+          wa_share_error: "Dibersihkan massal dari antrean" 
+        })
+        .eq("channel", "whatsapp")
+        .not("tracking_number", "is", null)
+        .eq("resi_shared_via_wa", false);
+
+      if (error) throw error;
+      
+      toast.success(`Berhasil mengeluarkan ${count} pesanan dari antrean.`);
+      refetchPending();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membersihkan antrean.");
     }
   };
 
@@ -1007,6 +1033,15 @@ function WhatsAppPage() {
               </div>
 
               <div className="flex gap-2">
+                {pendingOrders && pendingOrders.length > 0 && !queueActive && (
+                  <Button 
+                    onClick={handleClearAllQueue} 
+                    variant="outline"
+                    className="text-destructive border-destructive/20 hover:bg-destructive/10"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Hapus Semua Antrean
+                  </Button>
+                )}
                 <Button 
                   onClick={toggleQueue} 
                   disabled={!pendingOrders || pendingOrders.length === 0 || sessionStatus !== "WORKING"}
@@ -1085,9 +1120,9 @@ function WhatsAppPage() {
                               className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                               disabled={queueActive && idx === queueIndex}
                               onClick={() => handleSkipOrder(o.id)}
-                              title="Lewatkan antrean"
+                              title="Hapus dari antrean"
                             >
-                              <XCircle className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </TableCell>
                         </TableRow>
