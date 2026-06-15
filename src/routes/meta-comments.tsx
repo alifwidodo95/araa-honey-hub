@@ -196,22 +196,61 @@ function MetaCommentsPage() {
   const handleReplyAllUnreplied = async () => {
     setBatchReplying(true);
     const channelName = activeTab === "facebook" ? "facebook" : "instagram";
-    const toastId = toast.loading(`Mulai membalas semua komentar ${activeTab === "facebook" ? "Facebook" : "Instagram"} secara otomatis...`);
+    
+    // Count unreplied comments for this channel in current state
+    const targetComments = comments.filter(c => c.channel === channelName && !c.replied);
+    const totalToProcess = targetComments.length;
+    
+    if (totalToProcess === 0) {
+      toast.info("Tidak ada komentar yang perlu dibalas.");
+      setBatchReplying(false);
+      return;
+    }
+
+    const toastId = toast.loading(`[1/${Math.ceil(totalToProcess / 10)}] Memulai membalas massal...`);
+    let processedCount = 0;
+    let loopCount = 0;
+    const maxLoops = 40; // Safety batch loop limit
+
     try {
-      const res = await fetch("/api/meta/reply-all-unreplied", { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: channelName })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(`Sukses! Berhasil membalas ${data.count || 0} komentar menggunakan AI.`, { id: toastId, duration: 5000 });
-        refetchComments();
-      } else {
-        throw new Error(data.error || "Gagal memproses balasan massal.");
+      while (processedCount < totalToProcess && loopCount < maxLoops) {
+        loopCount++;
+        const currentBatch = Math.ceil(processedCount / 10) + 1;
+        const totalBatches = Math.ceil(totalToProcess / 10);
+        
+        toast.loading(`[Batch ${currentBatch}/${totalBatches}] Membalas komentar ${processedCount + 1} s/d ${Math.min(processedCount + 10, totalToProcess)}...`, { id: toastId });
+
+        const res = await fetch("/api/meta/reply-all-unreplied", { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: channelName })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Gagal memproses balasan massal.");
+        }
+
+        const count = data.count || 0;
+        processedCount += count;
+        
+        // Refresh comments list so UI updates in real-time
+        await refetchComments();
+
+        // If no comments were processed, break to prevent infinite loop
+        if (count === 0) {
+          break;
+        }
+
+        // Wait 1.2 seconds between batch requests to prevent Facebook spam block
+        if (processedCount < totalToProcess) {
+          await new Promise(r => setTimeout(r, 1200));
+        }
       }
+
+      toast.success(`Sukses! Berhasil membalas ${processedCount} komentar menggunakan AI secara berurutan.`, { id: toastId, duration: 6000 });
     } catch (err: any) {
-      toast.error("Gagal membalas massal: " + err.message, { id: toastId });
+      toast.error("Terjadi kendala saat membalas massal: " + err.message, { id: toastId });
     } finally {
       setBatchReplying(false);
     }

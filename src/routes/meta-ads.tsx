@@ -19,6 +19,7 @@ import {
   TrendingUp, Users, MousePointerClick, Percent, Target, CirclePlay, CirclePause, Eye,
   Database
 } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 
 export const Route = createFileRoute("/meta-ads")({
   component: () => (
@@ -64,6 +65,49 @@ const MOCK_ADS = [
   { id: "ad_6", adset_id: "as_5", name: "Ad 01 - Promo Diskon 15% Retargeting", status: "ACTIVE", spend: 560000, impressions: 45000, clicks: 1350, conversions: 58, preview_url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=120" },
   { id: "ad_7", adset_id: "as_6", name: "Ad 01 - Social Proof Review 5 Stars", status: "PAUSED", spend: 280000, impressions: 32000, clicks: 960, conversions: 24, preview_url: "https://images.unsplash.com/photo-1560769629-975ec94e6a86?w=120" }
 ];
+
+// Helper function to format date to Indonesian format
+function formatDateIndo(dateStr: string) {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  const year = parts[0];
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  return `${day} ${months[monthIdx]} ${year}`;
+}
+
+const CustomProfitabilityTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-background/95 backdrop-blur-md border border-border/80 p-3.5 rounded-xl shadow-xl space-y-2 text-xs font-semibold">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+          {formatDateIndo(label)}
+        </p>
+        {payload.map((pld: any) => {
+          let dotColor = "bg-blue-500";
+          if (pld.name === "Omzet Riil") dotColor = "bg-emerald-500";
+          else if (pld.name === "Biaya Iklan") dotColor = "bg-amber-500";
+          else if (pld.name === "Laba Bersih") dotColor = pld.value >= 0 ? "bg-sky-500" : "bg-red-500";
+
+          return (
+            <div key={pld.name} className="flex items-center justify-between gap-6">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+                {pld.name}
+              </span>
+              <span className={`font-bold ${pld.name === "Laba Bersih" && pld.value < 0 ? "text-red-500" : "text-foreground"}`}>
+                {formatIDR(pld.value)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  return null;
+};
 
 function MetaAdsPage() {
   const qc = useQueryClient();
@@ -230,12 +274,43 @@ function MetaAdsPage() {
       const endIso = `${dateRangeBounds.end}T23:59:59Z`;
       return (await supabase
         .from("orders")
-        .select("net_revenue")
+        .select("net_revenue, cogs_total, created_at")
         .eq("returned", false)
         .gte("created_at", startIso)
         .lte("created_at", endIso)
       ).data ?? [];
     }
+  });
+
+  const { data: dbExpenses } = useQuery({
+    queryKey: ["meta-db-expenses", dateRangeBounds],
+    queryFn: async () => {
+      return (await supabase
+        .from("expenses_business")
+        .select("amount, occurred_on")
+        .eq("category", "meta_ads")
+        .gte("occurred_on", dateRangeBounds.start)
+        .lte("occurred_on", dateRangeBounds.end)
+      ).data ?? [];
+    }
+  });
+
+  const { data: dailyInsights } = useQuery({
+    queryKey: ["meta-daily-insights", selectedAccount, dateRange, activeToken],
+    queryFn: async () => {
+      if (typeof window === 'undefined') return [];
+      if (!activeToken || !selectedAccount || isSimulation) return [];
+      
+      let datePreset = "last_7d";
+      if (dateRange === "1d") datePreset = "today";
+      else if (dateRange === "30d") datePreset = "last_30d";
+
+      const res = await fetch(`https://graph.facebook.com/v19.0/${selectedAccount}/insights?date_preset=${datePreset}&time_increment=1&fields=spend,date_start&access_token=${activeToken}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message);
+      return json.data || [];
+    },
+    enabled: !isSimulation && !!activeToken && !!selectedAccount
   });
 
   const totalRealRevenue = useMemo(() => {
@@ -585,6 +660,114 @@ function MetaAdsPage() {
     return summaryMetrics.spend > 0 ? totalRealRevenue / summaryMetrics.spend : 0;
   }, [totalRealRevenue, summaryMetrics.spend]);
 
+  // Generate list of dates in the range
+  const dateList = useMemo(() => {
+    const dates: string[] = [];
+    const curr = new Date(dateRangeBounds.start);
+    const end = new Date(dateRangeBounds.end);
+    while (curr <= end) {
+      dates.push(curr.toISOString().slice(0, 10));
+      curr.setDate(curr.getDate() + 1);
+    }
+    return dates;
+  }, [dateRangeBounds]);
+
+  const totalCogs = useMemo(() => {
+    if (isSimulation) {
+      return summaryMetrics.conversions * 60000;
+    } else {
+      return (dbOrders ?? []).reduce((sum, o: any) => sum + Number(o.cogs_total || 0), 0);
+    }
+  }, [isSimulation, summaryMetrics.conversions, dbOrders]);
+
+  const totalRevenue = useMemo(() => {
+    if (isSimulation) {
+      return summaryMetrics.conversions * 150000;
+    } else {
+      return totalRealRevenue;
+    }
+  }, [isSimulation, summaryMetrics.conversions, totalRealRevenue]);
+
+  const totalNetProfit = useMemo(() => {
+    return totalRevenue - summaryMetrics.spend - totalCogs;
+  }, [totalRevenue, summaryMetrics.spend, totalCogs]);
+
+  const totalRoas = useMemo(() => {
+    const spend = summaryMetrics.spend;
+    return spend > 0 ? totalRevenue / spend : 0;
+  }, [totalRevenue, summaryMetrics.spend]);
+
+  const chartData = useMemo(() => {
+    if (isSimulation) {
+      const daysCount = dateList.length;
+      const totalSpend = summaryMetrics.spend;
+      const totalConversions = summaryMetrics.conversions;
+
+      return dateList.map((d, index) => {
+        // Create a smooth curve pattern for simulation
+        const multiplier = 0.7 + 0.5 * Math.sin((index / Math.max(1, daysCount - 1)) * Math.PI * 1.5);
+        const daySpend = Math.round((totalSpend / Math.max(1, daysCount)) * multiplier);
+        const dayConversions = Math.round((totalConversions / Math.max(1, daysCount)) * multiplier);
+        const dayRevenue = dayConversions * 150000;
+        const dayCogs = dayConversions * 60000;
+        const dayNetProfit = dayRevenue - daySpend - dayCogs;
+        const dayRoas = daySpend > 0 ? Number((dayRevenue / daySpend).toFixed(2)) : 0;
+
+        return {
+          date: d,
+          revenue: dayRevenue,
+          spend: daySpend,
+          cogs: dayCogs,
+          netProfit: dayNetProfit,
+          roas: dayRoas
+        };
+      });
+    } else {
+      // Live Mode
+      const insightsMap = new Map<string, number>();
+      (dailyInsights || []).forEach((item: any) => {
+        insightsMap.set(item.date_start, Number(item.spend || 0));
+      });
+
+      const expensesMap = new Map<string, number>();
+      (dbExpenses || []).forEach((item: any) => {
+        expensesMap.set(item.occurred_on, Number(item.amount || 0));
+      });
+
+      const ordersMap = new Map<string, { revenue: number; cogs: number }>();
+      (dbOrders || []).forEach((o: any) => {
+        const dateStr = o.created_at.slice(0, 10);
+        const current = ordersMap.get(dateStr) || { revenue: 0, cogs: 0 };
+        ordersMap.set(dateStr, {
+          revenue: current.revenue + Number(o.net_revenue || 0),
+          cogs: current.cogs + Number(o.cogs_total || 0)
+        });
+      });
+
+      return dateList.map((d) => {
+        // Priority for spend: Meta API -> Supabase expenses_business -> 0
+        const spend = insightsMap.get(d) !== undefined 
+          ? insightsMap.get(d)! 
+          : (expensesMap.get(d) !== undefined ? expensesMap.get(d)! : 0);
+
+        const orderData = ordersMap.get(d) || { revenue: 0, cogs: 0 };
+        const revenue = orderData.revenue;
+        const cogs = orderData.cogs;
+        const netProfit = revenue - spend - cogs;
+        const roas = spend > 0 ? Number((revenue / spend).toFixed(2)) : 0;
+
+        return {
+          date: d,
+          revenue,
+          spend,
+          cogs,
+          netProfit,
+          roas
+        };
+      });
+    }
+  }, [isSimulation, dateList, summaryMetrics, dailyInsights, dbExpenses, dbOrders]);
+
   // Loading/Error states
   const loadingData = loadingConfig || loadingAccounts || loadingAdData;
   const isSyncing = fetchingAccounts || fetchingAdData;
@@ -764,7 +947,7 @@ function MetaAdsPage() {
       </div>
 
       {/* Performance KPIs Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <KpiCard 
           title="Total Biaya Iklan" 
           value={formatIDR(summaryMetrics.spend)} 
@@ -809,12 +992,110 @@ function MetaAdsPage() {
         />
         <KpiCard 
           title="ROAS Riil (Database)" 
-          value={realRoas > 0 ? `${realRoas.toFixed(2)}x` : "—"} 
+          value={totalRoas > 0 ? `${totalRoas.toFixed(2)}x` : "—"} 
           icon={<TrendingUp className="w-4 h-4 text-violet-500" />} 
           description={`Estimasi Pixel: ${summaryMetrics.roas > 0 ? `${summaryMetrics.roas.toFixed(2)}x` : "—"}`}
           accent
         />
+        <KpiCard 
+          title="Laba Bersih (Real-time)" 
+          value={formatIDR(totalNetProfit)} 
+          icon={<TrendingUp className="w-4 h-4 text-emerald-500" />} 
+          description="Omzet Riil - HPP - Biaya Iklan"
+          accent
+        />
       </div>
+
+      {/* Real-time Profitability Chart Card */}
+      <Card className="rounded-2xl border border-border/80 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-muted/20">
+          <div className="space-y-1">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <TrendingUp className="w-4.5 h-4.5 text-honey" />
+              Grafik Profitabilitas Iklan (Real-time)
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Perbandingan harian antara Omzet Riil, Biaya Iklan (Spend), dan Laba Bersih</p>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6 h-80 pt-8">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#10B981" stopOpacity={0.0}/>
+                </linearGradient>
+                <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0.0}/>
+                </linearGradient>
+                <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted/30" />
+              <XAxis 
+                dataKey="date" 
+                fontSize={11} 
+                tickLine={false} 
+                axisLine={false}
+                dy={10}
+                className="fill-muted-foreground/75 font-medium"
+                tickFormatter={(v) => {
+                  const parts = v.split("-");
+                  if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+                  return v;
+                }}
+              />
+              <YAxis 
+                fontSize={11} 
+                tickLine={false} 
+                axisLine={false}
+                dx={-10}
+                className="fill-muted-foreground/75 font-medium"
+                tickFormatter={(v) => {
+                  if (Math.abs(v) >= 1000000) return `${(v/1000000).toFixed(1)}M`;
+                  if (Math.abs(v) >= 1000) return `${(v/1000).toFixed(0)}rb`;
+                  return v;
+                }}
+              />
+              <RechartsTooltip content={<CustomProfitabilityTooltip />} cursor={{ stroke: 'rgba(0, 0, 0, 0.15)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+              <Legend verticalAlign="top" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} />
+              <Area 
+                type="monotone"
+                dataKey="revenue" 
+                name="Omzet Riil"
+                stroke="#10B981" 
+                fill="url(#revGrad)" 
+                strokeWidth={2.5}
+                dot={{ stroke: '#10B981', strokeWidth: 1.5, fill: 'var(--background)', r: 3 }}
+                activeDot={{ stroke: '#10B981', strokeWidth: 2, fill: '#10B981', r: 5 }}
+              />
+              <Area 
+                type="monotone"
+                dataKey="spend" 
+                name="Biaya Iklan"
+                stroke="#F59E0B" 
+                fill="url(#spendGrad)" 
+                strokeWidth={2.5}
+                dot={{ stroke: '#F59E0B', strokeWidth: 1.5, fill: 'var(--background)', r: 3 }}
+                activeDot={{ stroke: '#F59E0B', strokeWidth: 2, fill: '#F59E0B', r: 5 }}
+              />
+              <Area 
+                type="monotone"
+                dataKey="netProfit" 
+                name="Laba Bersih"
+                stroke="#3B82F6" 
+                fill="url(#profitGrad)" 
+                strokeWidth={2.5}
+                dot={{ stroke: '#3B82F6', strokeWidth: 1.5, fill: 'var(--background)', r: 3 }}
+                activeDot={{ stroke: '#3B82F6', strokeWidth: 2, fill: '#3B82F6', r: 5 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       {/* Ads Manager Workspace Tabs */}
       <Card className="shadow-sm">
