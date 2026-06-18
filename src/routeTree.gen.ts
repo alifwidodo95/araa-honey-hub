@@ -39,6 +39,7 @@ import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply
 import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.reply-all-unreplied'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
+import { Route as ApiBiteshipSearchAreaRouteImport } from './routes/api.biteship.search-area'
 
 const WhatsappAiRoute = WhatsappAiRouteImport.update({
   id: '/whatsapp-ai',
@@ -191,6 +192,11 @@ const ApiCronSendResiRoute = ApiCronSendResiRouteImport.update({
   path: '/api/cron/send-resi',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiBiteshipSearchAreaRoute = ApiBiteshipSearchAreaRouteImport.update({
+  id: '/api/biteship/search-area',
+  path: '/api/biteship/search-area',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -247,6 +254,7 @@ export interface FileRoutesByTo {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -280,6 +288,7 @@ export interface FileRoutesById {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -314,6 +323,7 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/biteship/search-area'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-all-unreplied'
@@ -346,6 +356,7 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/biteship/search-area'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-all-unreplied'
@@ -378,6 +389,7 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/biteship/search-area'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-all-unreplied'
@@ -411,6 +423,7 @@ export interface RootRouteChildren {
   StokBahanBakuRoute: typeof StokBahanBakuRoute
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
+  ApiBiteshipSearchAreaRoute: typeof ApiBiteshipSearchAreaRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
   ApiMetaReplyAllUnrepliedRoute: typeof ApiMetaReplyAllUnrepliedRoute
@@ -633,6 +646,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSendResiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/biteship/search-area': {
+      id: '/api/biteship/search-area'
+      path: '/api/biteship/search-area'
+      fullPath: '/api/biteship/search-area'
+      preLoaderRoute: typeof ApiBiteshipSearchAreaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -659,6 +679,7 @@ const rootRouteChildren: RootRouteChildren = {
   StokBahanBakuRoute: StokBahanBakuRoute,
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
+  ApiBiteshipSearchAreaRoute: ApiBiteshipSearchAreaRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
   ApiMetaReplyAllUnrepliedRoute: ApiMetaReplyAllUnrepliedRoute,

@@ -62,7 +62,9 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
             system_prompt: systemPrompt, 
             is_active: isActive,
             waha_url: customWahaUrl,
-            waha_api_key: customWahaApiKey
+            waha_api_key: customWahaApiKey,
+            biteship_origin_area_id: biteshipOriginAreaId,
+            biteship_origin_name: biteshipOriginName
           } = settings;
 
           if (!isActive || !deepseekApiKey) {
@@ -210,8 +212,147 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
             VALUES ($1, $2, $3, $4, $5, 'incoming', now())
           `, [userId, chatId, customerPhone, customerName, incomingLoggedText]);
 
-          // Compile final system instruction (directly use systemPrompt to remain product-agnostic)
-          const finalSystemInstruction = systemPrompt || '';
+          // 4.5. Check if user is asking about shipping cost via Biteship API
+          let biteshipRatesText = '';
+          const lowercaseInput = (processedInputText || '').toLowerCase();
+          const asksForOngkir = 
+            lowercaseInput.includes('ongkir') || 
+            lowercaseInput.includes('ongkos kirim') || 
+            lowercaseInput.includes('tarif kirim') || 
+            lowercaseInput.includes('biaya kirim') || 
+            lowercaseInput.includes('kirim ke') || 
+            lowercaseInput.includes('ongkos ke');
+
+          if (asksForOngkir && process.env.BITESHIP_API_KEY && biteshipOriginAreaId) {
+            console.log('[WA Webhook] Asks for ongkir. Extracting location...');
+            try {
+              let extractedLocation = '';
+              
+              if (openaiApiKey) {
+                const extractionRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openaiApiKey}`
+                  },
+                  body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                      {
+                        role: 'system',
+                        content: 'Tugas Anda adalah mengekstrak nama KECAMATAN dan KABUPATEN/KOTA tujuan pengiriman dari chat pelanggan WhatsApp. Jawab HANYA dengan nama kecamatan dan kabupaten/kota tersebut (Contoh: "Blimbing, Malang" atau "Dawe, Kudus"). Jika tidak ada lokasi spesifik yang disebutkan, balas dengan kata "NONE".'
+                      },
+                      {
+                        role: 'user',
+                        content: processedInputText
+                      }
+                    ],
+                    max_tokens: 30,
+                    temperature: 0.1
+                  })
+                });
+
+                if (extractionRes.ok) {
+                  const extractionData = await extractionRes.json() as any;
+                  const locationText = (extractionData.choices?.[0]?.message?.content || '').trim();
+                  if (locationText && locationText.toUpperCase() !== 'NONE') {
+                    extractedLocation = locationText;
+                    console.log(`[WA Webhook] Extracted location for ongkir: "${extractedLocation}"`);
+                  }
+                }
+              }
+
+              if (extractedLocation) {
+                const biteshipKey = process.env.BITESHIP_API_KEY;
+                
+                // 1. Search destination area ID on Biteship Maps
+                const searchAreaRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(extractedLocation)}`, {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${biteshipKey}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+
+                if (searchAreaRes.ok) {
+                  const searchAreaData = await searchAreaRes.json() as any;
+                  const areas = searchAreaData.areas || [];
+                  if (areas.length > 0) {
+                    const destinationAreaId = areas[0].id;
+                    const destinationAreaName = `${areas[0].name}, ${areas[0].administrative_division_level_2}, ${areas[0].administrative_division_level_1}`;
+                    console.log(`[WA Webhook] Found Biteship Area ID: "${destinationAreaId}" for "${destinationAreaName}"`);
+
+                    // 2. Fetch rates from Biteship Rates API
+                    const ratesRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${biteshipKey}`,
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({
+                        origin_area_id: biteshipOriginAreaId,
+                        destination_area_id: destinationAreaId,
+                        items: [
+                          {
+                            name: 'Paket Jualan',
+                            value: 50000,
+                            weight: 1000, // default 1kg
+                            quantity: 1
+                          }
+                        ]
+                      })
+                    });
+
+                    if (ratesRes.ok) {
+                      const ratesData = await ratesRes.json() as any;
+                      const pricing = ratesData.pricing || [];
+                      
+                      if (pricing.length > 0) {
+                        biteshipRatesText = `\n\n[INFORMASI ONGKIR LIVE VIA BITESHIP]
+Gudang Asal: ${biteshipOriginName || 'Gudang Utama'}
+Kecamatan Tujuan: ${destinationAreaName}
+Berat Paket: 1 kg
+
+Daftar Tarif Kurir:`;
+                        
+                        const popularCouriers = ['jne', 'jnt', 'sicepat', 'spx', 'tiki', 'pos'];
+                        const added = new Set<string>();
+
+                        for (const priceObj of pricing) {
+                          const code = priceObj.company.toLowerCase();
+                          if (popularCouriers.includes(code)) {
+                            const name = priceObj.company.toUpperCase();
+                            const service = priceObj.type;
+                            const cost = priceObj.price;
+                            const etd = priceObj.duration;
+                            const keyStr = `${code}-${service}`;
+                            if (!added.has(keyStr) && added.size < 5) {
+                              biteshipRatesText += `\n- ${name} ${service.toUpperCase()}: Rp ${Number(cost).toLocaleString('id-ID')} (Estimasi ${etd})`;
+                              added.add(keyStr);
+                            }
+                          }
+                        }
+                        
+                        biteshipRatesText += `\n\nCatatan: Beritahukan ongkir ini kepada pelanggan dengan sopan.`;
+                        console.log('[WA Webhook] Injected Biteship Rates:', biteshipRatesText);
+                      }
+                    } else {
+                      console.error('[WA Webhook] Biteship Rates API failed:', await ratesRes.text());
+                    }
+                  } else {
+                    console.log(`[WA Webhook] No matching Biteship area found for "${extractedLocation}"`);
+                  }
+                } else {
+                  console.error('[WA Webhook] Biteship Maps API failed:', await searchAreaRes.text());
+                }
+              }
+            } catch (biteshipErr) {
+              console.error('[WA Webhook] Biteship rates lookup exception:', biteshipErr);
+            }
+          }
+
+          // Compile final system instruction (directly use systemPrompt to remain product-agnostic, with live shipping rates if any)
+          const finalSystemInstruction = `${systemPrompt || ''}${biteshipRatesText}`;
 
           // 5. Ask DeepSeek for the response
           console.log(`[WA Webhook] Querying DeepSeek V3 for ${chatId}...`);

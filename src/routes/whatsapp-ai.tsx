@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
-  Play, Pause, QrCode, AlertTriangle, XCircle
+  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -33,6 +33,8 @@ interface WhatsAppAiSettings {
   waha_url: string | null;
   waha_session: string;
   waha_api_key: string | null;
+  biteship_origin_area_id?: string | null;
+  biteship_origin_name?: string | null;
 }
 
 interface ChatLog {
@@ -58,6 +60,14 @@ function WhatsAppAiPage() {
   const [wahaSession, setWahaSession] = useState("default");
   const [wahaApiKey, setWahaApiKey] = useState("");
   const [showToken, setShowToken] = useState(false);
+
+  // Biteship Origin States
+  const [originAreaId, setOriginAreaId] = useState("");
+  const [originAreaName, setOriginAreaName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   // WAHA Session Status & QR States
   const [sessionStatus, setSessionStatus] = useState<string>("DISCONNECTED");
@@ -284,6 +294,9 @@ function WhatsAppAiPage() {
       setWahaUrl(rawSettings.waha_url || "");
       setWahaSession(rawSettings.waha_session || "default");
       setWahaApiKey(rawSettings.waha_api_key || "");
+      setOriginAreaId(rawSettings.biteship_origin_area_id || "");
+      setOriginAreaName(rawSettings.biteship_origin_name || "");
+      setSearchQuery(rawSettings.biteship_origin_name || "");
     }
   }, [rawSettings]);
 
@@ -349,6 +362,8 @@ function WhatsAppAiPage() {
           waha_url: wahaUrl.trim() || null,
           waha_session: wahaSession.trim(),
           waha_api_key: wahaApiKey.trim() || null,
+          biteship_origin_area_id: originAreaId.trim() || null,
+          biteship_origin_name: originAreaName.trim() || null,
           updated_at: new Date().toISOString()
         });
       if (error) throw error;
@@ -361,6 +376,54 @@ function WhatsAppAiPage() {
       toast.error("Gagal menyimpan: " + err.message);
     }
   });
+
+  // Debounce search area Biteship
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    // If the searchQuery is exactly the currently selected originAreaName, don't trigger search
+    if (searchQuery === originAreaName) {
+      return;
+    }
+
+    setIsSearching(true);
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/biteship/search-area?input=${encodeURIComponent(searchQuery)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.areas || []);
+        }
+      } catch (err) {
+        console.error("Gagal mencari area Biteship:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 600); // 600ms debounce
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, originAreaName]);
+
+  const handleQueryChange = (val: string) => {
+    setSearchQuery(val);
+    if (!val.trim()) {
+      setOriginAreaId("");
+      setOriginAreaName("");
+      setSearchResults([]);
+    }
+  };
+
+  const handleSelectArea = (area: any) => {
+    const fullName = `${area.name}, ${area.administrative_division_level_2}, ${area.administrative_division_level_1}`;
+    setOriginAreaId(area.id);
+    setOriginAreaName(fullName);
+    setSearchQuery(fullName);
+    setSearchResults([]);
+    setShowDropdown(false);
+    toast.success(`Gudang keberangkatan dipilih: ${fullName}`);
+  };
 
   // Send Manual Reply via WAHA Proxy and log to DB
   const handleSendManualReply = async () => {
@@ -683,6 +746,82 @@ function WhatsAppAiPage() {
                   <p className="text-xs text-muted-foreground">
                     Tulis aturan main, gaya bahasa, jam kerja, kontak alternatif, dan kebijakan retur. AI akan patuh penuh pada instruksi ini.
                   </p>
+                </div>
+
+                {/* Biteship Origin Warehouse Settings */}
+                <div className="space-y-3 border-t pt-6">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-amber-500" />
+                    <Label className="text-sm font-bold text-slate-800">Gudang Keberangkatan (Biteship Origin)</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Tentukan lokasi kecamatan dan kabupaten/kota asal pengiriman untuk hitung ongkir otomatis lewat Biteship.
+                  </p>
+
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      placeholder="Cari kecamatan / kabupaten asal (misal: Blimbing, Malang)"
+                      value={searchQuery}
+                      onChange={(e) => handleQueryChange(e.target.value)}
+                      onFocus={() => setShowDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                      className="pr-10"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {isSearching ? (
+                        <RefreshCw className="h-4 w-4 animate-spin text-slate-400" />
+                      ) : searchQuery && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            handleQueryChange("");
+                            setShowDropdown(false);
+                          }}
+                          className="text-slate-400 hover:text-slate-600"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {showDropdown && searchResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto divide-y divide-slate-100">
+                        {searchResults.map((area: any) => (
+                          <button
+                            key={area.id}
+                            type="button"
+                            onClick={() => handleSelectArea(area)}
+                            className="w-full text-left px-4 py-2.5 hover:bg-amber-50/50 transition-colors text-sm flex flex-col gap-0.5"
+                          >
+                            <span className="font-medium text-slate-800">
+                              Kec. {area.name}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {area.administrative_division_level_2}, {area.administrative_division_level_1} {area.postal_code ? `(${area.postal_code})` : ''}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {showDropdown && searchQuery && !isSearching && searchResults.length === 0 && searchQuery !== originAreaName && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-4 text-center text-sm text-slate-500">
+                        Tidak ditemukan lokasi yang cocok. Coba kata kunci lain.
+                      </div>
+                    )}
+                  </div>
+
+                  {originAreaId && (
+                    <div className="flex items-center gap-2 mt-2 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+                      <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div className="text-xs">
+                        <span className="font-semibold text-emerald-800">Gudang Asal Terpilih:</span>{" "}
+                        <span className="text-emerald-700">{originAreaName}</span>{" "}
+                        <span className="text-slate-400 font-mono text-[10px]">({originAreaId})</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* WAHA Server Configuration (Optional Overrides) */}
