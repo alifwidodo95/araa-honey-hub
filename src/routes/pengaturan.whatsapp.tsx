@@ -352,7 +352,7 @@ function WhatsAppPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions`,
+          url: `${wahaUrl}/api/sessions/start`,
           method: "POST",
           headers: getWahaHeaders(),
           body: { name: sessionName }
@@ -361,42 +361,10 @@ function WhatsAppPage() {
       const data = await safeJson(res);
       
       if (!res.ok) {
-        // If session already exists, start it directly
-        if (data.message && data.message.includes("already exists")) {
-          const startRes = await fetch("/api/waha-proxy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              url: `${wahaUrl}/api/sessions/${sessionName}/start`,
-              method: "POST",
-              headers: getWahaHeaders()
-            })
-          });
-          const startData = await safeJson(startRes);
-          if (!startRes.ok) {
-            throw new Error(startData.message || "Gagal memulai sesi yang sudah ada.");
-          }
-          toast.success("Sesi yang sudah ada sedang dimulai...");
-        } else {
-          throw new Error(data.message || "Gagal menyalakan sesi.");
-        }
-      } else {
-        // Sesi baru berhasil didaftarkan (201 Created), sekarang harus kita jalankan (start) secara eksplisit!
-        const startRes = await fetch("/api/waha-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: `${wahaUrl}/api/sessions/${sessionName}/start`,
-            method: "POST",
-            headers: getWahaHeaders()
-          })
-        });
-        const startData = await safeJson(startRes);
-        if (!startRes.ok) {
-          throw new Error(startData.message || "Sesi baru didaftarkan, tetapi gagal dijalankan.");
-        }
-        toast.success("Sesi baru berhasil didaftarkan dan sedang dimulai...");
+        throw new Error(data.message || "Gagal menyalakan sesi WhatsApp.");
       }
+      
+      toast.success("Sesi WhatsApp sedang dimulai...");
       
       // Poll status for a bit
       setTimeout(() => checkSessionStatus(true), 2000);
@@ -418,13 +386,17 @@ function WhatsAppPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions/${sessionName}`,
-          method: "DELETE",
-          headers: getWahaHeaders()
+          url: `${wahaUrl}/api/sessions/stop`,
+          method: "POST",
+          headers: getWahaHeaders(),
+          body: { name: sessionName }
         })
       });
-      if (!res.ok) throw new Error("Gagal menghentikan sesi.");
-      toast.success("Sesi dihentikan.");
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error(data.message || "Gagal menghentikan sesi.");
+      }
+      toast.success("Sesi berhasil dihentikan.");
       setSessionStatus("STOPPED");
     } catch (err: any) {
       toast.error(err.message || "Gagal menghentikan sesi.");
