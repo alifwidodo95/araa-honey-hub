@@ -76,6 +76,54 @@ function WhatsAppAiPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // 1. Fetch User Profile
+  const { data: userProfile } = useQuery({
+    queryKey: ["current-user-profile"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user;
+    }
+  });
+
+  // Fetch global WAHA Config from app_settings
+  const { data: globalWahaConfig } = useQuery({
+    queryKey: ["global-waha-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "waha_config")
+        .maybeSingle();
+      if (error) {
+        console.error("Gagal memuat konfigurasi global WAHA:", error);
+        throw error;
+      }
+      return data?.value as any || {};
+    }
+  });
+
+  const userId = userProfile?.id;
+
+  // 2. Fetch AI Settings
+  const { data: rawSettings, refetch: refetchSettings, isLoading: loadingSettings } = useQuery<WhatsAppAiSettings | null>({
+    queryKey: ["whatsapp-ai-settings", userId],
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from("whatsapp_ai_settings")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Gagal memuat setelan WA AI:", error);
+        throw error;
+      }
+      return data as WhatsAppAiSettings | null;
+    },
+    enabled: !!userId
+  });
+
   const getWahaHeaders = () => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const keyToUse = wahaApiKey.trim() || globalWahaConfig?.apiKey || "";
@@ -254,54 +302,6 @@ function WhatsAppAiPage() {
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // 1. Fetch User Profile
-  const { data: userProfile } = useQuery({
-    queryKey: ["current-user-profile"],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      return user;
-    }
-  });
-
-  // Fetch global WAHA Config from app_settings
-  const { data: globalWahaConfig } = useQuery({
-    queryKey: ["global-waha-config"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "waha_config")
-        .maybeSingle();
-      if (error) {
-        console.error("Gagal memuat konfigurasi global WAHA:", error);
-        throw error;
-      }
-      return data?.value as any || {};
-    }
-  });
-
-  const userId = userProfile?.id;
-
-  // 2. Fetch AI Settings
-  const { data: rawSettings, refetch: refetchSettings, isLoading: loadingSettings } = useQuery<WhatsAppAiSettings | null>({
-    queryKey: ["whatsapp-ai-settings", userId],
-    queryFn: async () => {
-      if (!userId) return null;
-      const { data, error } = await supabase
-        .from("whatsapp_ai_settings")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Gagal memuat setelan WA AI:", error);
-        throw error;
-      }
-      return data as WhatsAppAiSettings | null;
-    },
-    enabled: !!userId
-  });
 
   // Sync settings to state
   useEffect(() => {
