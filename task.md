@@ -145,3 +145,13 @@
 - [x] Update `src/components/app-layout.tsx` untuk menambahkan tautan "Komentar Iklan" ke sidebar
 - [x] Buat page route `src/routes/meta-comments.tsx` dengan 3 tab (Facebook, Instagram, Pengaturan AI)
 - [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+
+# Task List: Optimalisasi Sinkronisasi Komentar FB & Ad Creatives (Paging Komentar Lengkap)
+
+- [x] Tingkatkan limit Ad Creatives ke 150 dan feed posts ke 50 di `api.meta.sync-comments.ts`
+- [x] Implementasikan pagination penarikan seluruh komentar secara lengkap menggunakan `filter=stream` dan `order=reverse_chronological` di `api.meta.sync-comments.ts`
+- [x] Tambahkan pengecekan duplikasi pintar (smart stop) untuk mempercepat proses sinkronisasi komentar lama
+- [x] Jalankan build lokal (`npm run build`) untuk memastikan tidak ada kesalahan kompilasi
+- [x] Lakukan verifikasi manual menggunakan script pengetesan sync lokal
+- [x] Buat walkthrough untuk merangkum hasil kerja dan verifikasi perbaikan komentar
+

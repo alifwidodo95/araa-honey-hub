@@ -346,3 +346,20 @@ Kami telah mengimplementasikan sistem kontrol akses berbasis peran (RBAC) yang d
 5. Pada tabel "Daftar Pengguna", ubah role salah satu akun staf menjadi **gudang**.
 6. Login menggunakan akun staf tersebut di browser penyamaran (incognito). Pastikan sidebar dan dashboard hanya menampilkan fitur dashboard dan stok, sedangkan menu keuangan dan admin lainnya tersembunyi sepenuhnya.
 
+---
+
+## 21. Optimalisasi Sinkronisasi Komentar FB & Ad Creatives (Paging Komentar Lengkap) (Selesai)
+
+Kami telah merombak total sistem sinkronisasi komentar Facebook dan Instagram (`/api/meta/sync-comments`) agar dapat memproses postingan iklan aktif secara lengkap dan menarik seluruh data komentar hingga sub-komentar (balasan) tanpa terpotong.
+
+### Masalah yang Diselesaikan:
+1. **Peningkatan Limit Ad Creatives**: Meningkatkan jumlah pencarian *Ad Creatives* dari 50 menjadi 150 agar postingan iklan aktif yang lebih lama (seperti postingan target `122149423766881366` di indeks 116) tidak terlewatkan.
+2. **Penerapan Pagination Utas Komentar**: Mengimplementasikan penarikan halaman komentar Meta secara terus-menerus (`paging.next`) untuk menyapu bersih seluruh isi komentar (total 606 komentar pada postingan target berhasil disinkronkan).
+3. **Pengambilan Sub-Komentar (Balasan)**: Menggunakan filter `filter=stream` pada query Graph API Facebook untuk mengembalikan semua balasan/nested comments dalam bentuk daftar flat.
+4. **Pemberhentian Cerdas (Smart Stop)**: Menggunakan pengurutan terbaru (`order=reverse_chronological`) dan menghentikan penarikan jika sistem mendeteksi komentar yang sudah ada di database, menghemat batas kuota API Meta (*rate limit*) secara signifikan.
+5. **Deduplikasi ID Postingan**: Menggunakan map ID postingan unik sebelum sinkronisasi dijalankan, mencegah penarikan berulang pada postingan yang sama dari beberapa materi iklan yang berbeda.
+
+### Hasil Verifikasi Uji Coba:
+- Menjalankan script pengetesan sync internal (`node scratch-test-new-sync.cjs`).
+- Postingan target `604467929427528_122149423766881366` berhasil mengidentifikasi **344 komentar baru** (dari total 606 komentar) yang belum tersimpan sebelumnya.
+- Komentar target dari **Budi Arif** ("*FAKTA SUDAH TERBUKA DARI CERAMAH PARA HABIB SENDIRI...*"), **Wedus-gembel Merapi** ("*Obaat ??? Yakin madu itu obat..??*"), dan **Soepardji Soepardji** ("*Saya beli lagi ya...*") telah berhasil dimasukkan ke tabel `meta_comments` di Supabase dan kini siap untuk diproses oleh AI atau dibalas secara manual melalui dashboard!

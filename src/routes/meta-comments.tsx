@@ -70,7 +70,12 @@ function MetaCommentsPage() {
   const [aiReplyingId, setAiReplyingId] = useState<string | null>(null);
 
   // 1. Fetch Comments
-  const { data: comments = [], refetch: refetchComments, isLoading: commentsLoading } = useQuery<MetaComment[]>({
+  const { 
+    data: comments = [], 
+    refetch: refetchComments, 
+    isLoading: commentsLoading,
+    isRefetching: commentsRefetching 
+  } = useQuery<MetaComment[]>({
     queryKey: ["meta-comments"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -84,6 +89,15 @@ function MetaCommentsPage() {
       return data as MetaComment[];
     }
   });
+
+  const handleRefresh = async () => {
+    try {
+      await refetchComments();
+      toast.success("Komentar di halaman berhasil diperbarui!");
+    } catch (err: any) {
+      toast.error("Gagal memperbarui: " + err.message);
+    }
+  };
 
   // 2. Fetch Posts Config
   const { data: posts = [], refetch: refetchPosts } = useQuery<MetaPost[]>({
@@ -397,12 +411,12 @@ function MetaCommentsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Button 
-            onClick={refetchComments} 
+            onClick={handleRefresh} 
             variant="outline" 
             size="sm"
-            disabled={commentsLoading}
+            disabled={commentsLoading || commentsRefetching}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${commentsLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${(commentsLoading || commentsRefetching) ? "animate-spin" : ""}`} />
             Perbarui
           </Button>
           <Button 
