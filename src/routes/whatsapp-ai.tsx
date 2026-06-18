@@ -48,7 +48,7 @@ interface ChatLog {
 
 function WhatsAppAiPage() {
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"chats" | "settings" | "knowledge">("chats");
+  const [activeTab, setActiveTab] = useState<"chats" | "settings">("chats");
   
   // Settings States
   const [isActive, setIsActive] = useState(false);
@@ -308,21 +308,7 @@ function WhatsAppAiPage() {
     refetchInterval: 5000 // Auto refresh every 5 seconds for real-time chat feeling!
   });
 
-  // 4. Fetch Retail Prices Reference
-  const { data: prices = [] } = useQuery({
-    queryKey: ["retail-prices-ref-wa"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("retail_prices")
-        .select(`
-          honey_type,
-          price,
-          product_sizes (name)
-        `);
-      if (error) throw error;
-      return data || [];
-    }
-  });
+
 
   // Unique chats list derived from chatLogs
   const uniqueChats = useMemo(() => {
@@ -497,17 +483,7 @@ function WhatsAppAiPage() {
           <Settings className="h-4 w-4" />
           Pengaturan AI Bot
         </button>
-        <button
-          onClick={() => setActiveTab("knowledge")}
-          className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
-            activeTab === "knowledge" 
-              ? "bg-white text-amber-600 shadow-sm border border-slate-200" 
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          <Cpu className="h-4 w-4" />
-          Katalog & Basis Pengetahuan
-        </button>
+
       </div>
 
       {/* Tab CONTENT 1: CHATS MONITOR */}
@@ -893,70 +869,7 @@ function WhatsAppAiPage() {
         </Card>
       )}
 
-      {/* Tab CONTENT 3: KNOWLEDGE BASE */}
-      {activeTab === "knowledge" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Prices references */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
-                Katalog Produk & Harga Otomatis (Database)
-              </CardTitle>
-              <CardDescription>
-                AI secara otomatis mengetahui seluruh daftar harga madu Araa Honey terbaru karena data ini langsung disuntikkan secara dinamis dari database Supabase Anda.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="divide-y border rounded-xl overflow-hidden bg-white">
-                <div className="grid grid-cols-3 p-3 bg-slate-50 font-bold text-xs text-slate-700">
-                  <div>Varian Madu</div>
-                  <div>Ukuran Kemasan</div>
-                  <div className="text-right">Harga Retail</div>
-                </div>
-                {prices.map((p: any, idx) => (
-                  <div key={idx} className="grid grid-cols-3 p-3 text-sm text-slate-600 items-center">
-                    <div className="font-semibold text-slate-800 capitalize">{p.honey_type}</div>
-                    <div>{p.product_sizes?.name || "-"}</div>
-                    <div className="text-right font-mono font-semibold text-amber-600">
-                      Rp {Number(p.price).toLocaleString("id-ID")}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Multimodal Features card */}
-          <Card className="md:col-span-1 bg-amber-50/30 border-amber-200">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2 text-amber-900">
-                <Bot className="h-5 w-5 text-amber-500" />
-                Kemampuan Multimodal
-              </CardTitle>
-              <CardDescription className="text-amber-800/80">
-                Sistem ini terintegrasi penuh dengan fitur-fitur tercanggih di pasaran:
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-xs text-amber-950/80">
-              <div className="flex items-start gap-2.5 p-3 bg-white border border-amber-100 rounded-xl">
-                <Bot className="h-5 w-5 text-amber-500 shrink-0" />
-                <div>
-                  <p className="font-bold">Pemahaman Suara (Whisper)</p>
-                  <p className="mt-0.5 leading-relaxed text-[11px]">Ketika pelanggan mengirim pesan suara (VN), Whisper API otomatis mengubahnya menjadi teks lalu dijawab oleh DeepSeek.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 p-3 bg-white border border-amber-100 rounded-xl">
-                <Bot className="h-5 w-5 text-amber-500 shrink-0" />
-                <div>
-                  <p className="font-bold">Analisis Gambar & Bukti Transfer (Vision)</p>
-                  <p className="mt-0.5 leading-relaxed text-[11px]">Jika pelanggan mengirim foto bukti transfer bank, GPT-4o-mini Vision akan mendeteksi nominal, nama bank, dan tanggal untuk dikonfirmasi ke pelanggan.</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

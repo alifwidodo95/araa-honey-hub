@@ -210,21 +210,8 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
             VALUES ($1, $2, $3, $4, $5, 'incoming', now())
           `, [userId, chatId, customerPhone, customerName, incomingLoggedText]);
 
-          // Fetch current retail prices to inject into AI prompt context
-          const pricesRes = await pool.query(`
-            SELECT rp.honey_type, ps.name as size_name, rp.price
-            FROM public.retail_prices rp
-            JOIN public.product_sizes ps ON rp.size_id = ps.id
-            ORDER BY rp.honey_type, ps.sort_order
-          `);
-          
-          let pricesText = 'DAFTAR HARGA RETAIL MADU ARAA:\n';
-          pricesRes.rows.forEach((r: any) => {
-            pricesText += `- Madu ${r.honey_type} ${r.size_name}: Rp ${Number(r.price).toLocaleString('id-ID')}\n`;
-          });
-
-          // Compile final system instruction
-          const finalSystemInstruction = `${systemPrompt}\n\n${pricesText}`;
+          // Compile final system instruction (directly use systemPrompt to remain product-agnostic)
+          const finalSystemInstruction = systemPrompt || '';
 
           // 5. Ask DeepSeek for the response
           console.log(`[WA Webhook] Querying DeepSeek V3 for ${chatId}...`);
