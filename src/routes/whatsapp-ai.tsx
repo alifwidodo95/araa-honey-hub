@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
-  User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone
+  User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
+  Play, Pause, QrCode, AlertTriangle, XCircle
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -57,6 +58,185 @@ function WhatsAppAiPage() {
   const [wahaSession, setWahaSession] = useState("default");
   const [wahaApiKey, setWahaApiKey] = useState("");
   const [showToken, setShowToken] = useState(false);
+
+  // WAHA Session Status & QR States
+  const [sessionStatus, setSessionStatus] = useState<string>("DISCONNECTED");
+  const [qrRefreshTrigger, setQrRefreshTrigger] = useState(0);
+  const [qrImageUrl, setQrImageUrl] = useState<string>("");
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const getWahaHeaders = () => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (wahaApiKey) {
+      headers["X-Api-Key"] = wahaApiKey;
+    }
+    return headers;
+  };
+
+  const safeJson = async (res: Response) => {
+    const text = await res.text();
+    if (!text || !text.trim()) return {};
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.warn("Response is not valid JSON:", text);
+      return { message: text };
+    }
+  };
+
+  const checkSessionStatus = async (silent = false) => {
+    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentSession = wahaSession.trim() || "default";
+    if (!silent) setLoadingStatus(true);
+    try {
+      const res = await fetch("/api/waha-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `${currentWahaUrl}/api/sessions/${currentSession}`,
+          method: "GET",
+          headers: getWahaHeaders()
+        })
+      });
+      if (!res.ok) {
+        if (res.status === 404) {
+          setSessionStatus("STOPPED");
+        } else {
+          throw new Error("HTTP status " + res.status);
+        }
+        return;
+      }
+      const data = await safeJson(res);
+      let normalizedStatus = data.status || "STOPPED";
+      if (data.status === "SCAN_QR_CODE") {
+        normalizedStatus = "SCAN_QR";
+      }
+      setSessionStatus(normalizedStatus);
+      if (normalizedStatus === "SCAN_QR") {
+        setQrRefreshTrigger(prev => prev + 1);
+      }
+    } catch (err: any) {
+      setSessionStatus("DISCONNECTED");
+    } finally {
+      if (!silent) setLoadingStatus(false);
+    }
+  };
+
+  const handleStartSession = async () => {
+    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentSession = wahaSession.trim() || "default";
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/waha-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `${currentWahaUrl}/api/sessions/start`,
+          method: "POST",
+          headers: getWahaHeaders(),
+          body: { name: currentSession }
+        })
+      });
+      const data = await safeJson(res);
+      
+      if (!res.ok) {
+        throw new Error(data.message || "Gagal menyalakan sesi WhatsApp.");
+      }
+      
+      toast.success("Sesi WhatsApp AI sedang dimulai...");
+      setTimeout(() => checkSessionStatus(true), 2000);
+      setTimeout(() => checkSessionStatus(true), 5000);
+      setTimeout(() => checkSessionStatus(true), 10000);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghubungkan server WAHA.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStopSession = async () => {
+    if (!confirm("Apakah Anda yakin ingin menghentikan sesi WhatsApp AI ini?")) return;
+    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentSession = wahaSession.trim() || "default";
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/waha-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: `${currentWahaUrl}/api/sessions/stop`,
+          method: "POST",
+          headers: getWahaHeaders(),
+          body: { name: currentSession }
+        })
+      });
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error(data.message || "Gagal menghentikan sesi.");
+      }
+      toast.success("Sesi berhasil dihentikan.");
+      setSessionStatus("STOPPED");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghentikan sesi.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Poll session status
+  useEffect(() => {
+    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    if (currentWahaUrl && wahaSession) {
+      checkSessionStatus(true);
+      const interval = setInterval(() => {
+        checkSessionStatus(true);
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [wahaUrl, wahaSession, wahaApiKey]);
+
+  // Fetch QR image
+  useEffect(() => {
+    let active = true;
+    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentSession = wahaSession.trim() || "default";
+
+    if (sessionStatus !== "SCAN_QR" || !currentWahaUrl || !currentSession) {
+      setQrImageUrl("");
+      return;
+    }
+
+    const fetchQrImage = async () => {
+      try {
+        const res = await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${currentWahaUrl}/api/${currentSession}/auth/qr`,
+            method: "GET",
+            headers: getWahaHeaders()
+          })
+        });
+        if (!res.ok) throw new Error("Failed to fetch QR image");
+        const blob = await res.blob();
+        if (active) {
+          const url = URL.createObjectURL(blob);
+          setQrImageUrl(url);
+        }
+      } catch (err) {
+        console.error("Gagal mengambil QR image:", err);
+      }
+    };
+
+    fetchQrImage();
+    const interval = setInterval(fetchQrImage, 10000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [sessionStatus, qrRefreshTrigger, wahaUrl, wahaSession, wahaApiKey]);
 
   // Chat Monitor States
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -473,104 +653,241 @@ function WhatsAppAiPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Toggle Switch */}
-            <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
-              <div className="space-y-0.5">
-                <Label className="text-base font-semibold">Aktifkan WhatsApp AI Bot</Label>
-                <p className="text-xs text-muted-foreground">
-                  Saat diaktifkan, DeepSeek akan langsung membalas setiap pesan masuk secara otomatis.
-                </p>
-              </div>
-              <Switch 
-                checked={isActive} 
-                onCheckedChange={setIsActive} 
-              />
-            </div>
-
-            {/* DeepSeek API Key */}
-            <div className="space-y-2">
-              <Label className="font-semibold">DeepSeek API Key</Label>
-              <div className="flex gap-2">
-                <Input
-                  type={showToken ? "text" : "password"}
-                  placeholder="Masukkan Kunci API DeepSeek (sk-...)"
-                  value={deepseekKey}
-                  onChange={(e) => setDeepseekKey(e.target.value)}
-                  className="font-mono"
-                />
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowToken(!showToken)}
-                  className="px-3"
-                >
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Kunci API disimpan secara terenkripsi di database Anda. Dapatkan di platform.deepseek.com.
-              </p>
-            </div>
-
-            {/* System Prompt / AI Character */}
-            <div className="space-y-2">
-              <Label className="font-semibold">Instruksi Karakter & System Prompt AI</Label>
-              <Textarea
-                rows={5}
-                placeholder="Tulis karakter dan panduan bagi AI (Contoh: Anda adalah CS toko Madu Araa yang ramah...)"
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                className="leading-relaxed"
-              />
-              <p className="text-xs text-muted-foreground">
-                Tulis aturan main, gaya bahasa, jam kerja, kontak alternatif, dan kebijakan retur. AI akan patuh penuh pada instruksi ini.
-              </p>
-            </div>
-
-            {/* WAHA Server Configuration (Optional Overrides) */}
-            <div className="border-t pt-6">
-              <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-amber-500" />
-                Konfigurasi VPS WAHA Khusus (Opsional)
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">WAHA Server URL</Label>
-                  <Input 
-                    placeholder="https://waha.araahoney.my.id" 
-                    value={wahaUrl} 
-                    onChange={(e) => setWahaUrl(e.target.value)} 
-                  />
-                  <p className="text-[10px] text-muted-foreground">Kosongkan untuk memakai VPS global.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Nama Sesi (Session Name)</Label>
-                  <Input 
-                    value={wahaSession} 
-                    onChange={(e) => setWahaSession(e.target.value)} 
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: AI & API Keys */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Toggle Switch */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 border rounded-xl">
+                  <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">Aktifkan WhatsApp AI Bot</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Saat diaktifkan, DeepSeek akan langsung membalas setiap pesan masuk secara otomatis.
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={isActive} 
+                    onCheckedChange={setIsActive} 
                   />
                 </div>
+
+                {/* DeepSeek API Key */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold">WAHA API Key (Opsional)</Label>
-                  <Input 
-                    type="password" 
-                    placeholder="Password API WAHA" 
-                    value={wahaApiKey} 
-                    onChange={(e) => setWahaApiKey(e.target.value)} 
+                  <Label className="font-semibold">DeepSeek API Key</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type={showToken ? "text" : "password"}
+                      placeholder="Masukkan Kunci API DeepSeek (sk-...)"
+                      value={deepseekKey}
+                      onChange={(e) => setDeepseekKey(e.target.value)}
+                      className="font-mono"
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowToken(!showToken)}
+                      className="px-3"
+                    >
+                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Kunci API disimpan secara terenkripsi di database Anda. Dapatkan di platform.deepseek.com.
+                  </p>
+                </div>
+
+                {/* System Prompt / AI Character */}
+                <div className="space-y-2">
+                  <Label className="font-semibold">Instruksi Karakter & System Prompt AI</Label>
+                  <Textarea
+                    rows={5}
+                    placeholder="Tulis karakter dan panduan bagi AI (Contoh: Anda adalah CS toko Madu Araa yang ramah...)"
+                    value={systemPrompt}
+                    onChange={(e) => setSystemPrompt(e.target.value)}
+                    className="leading-relaxed"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Tulis aturan main, gaya bahasa, jam kerja, kontak alternatif, dan kebijakan retur. AI akan patuh penuh pada instruksi ini.
+                  </p>
+                </div>
+
+                {/* WAHA Server Configuration (Optional Overrides) */}
+                <div className="border-t pt-6">
+                  <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-amber-500" />
+                    Konfigurasi VPS WAHA Khusus (Opsional)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">WAHA Server URL</Label>
+                      <Input 
+                        placeholder="https://waha.araahoney.my.id" 
+                        value={wahaUrl} 
+                        onChange={(e) => setWahaUrl(e.target.value)} 
+                      />
+                      <p className="text-[10px] text-muted-foreground">Kosongkan untuk memakai VPS global.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">Nama Sesi (Session Name)</Label>
+                      <Input 
+                        value={wahaSession} 
+                        onChange={(e) => setWahaSession(e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">WAHA API Key (Opsional)</Label>
+                      <Input 
+                        type="password" 
+                        placeholder="Password API WAHA" 
+                        value={wahaApiKey} 
+                        onChange={(e) => setWahaApiKey(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end pt-4 border-t">
+                  <Button 
+                    onClick={() => saveSettingsMutation.mutate()} 
+                    disabled={saveSettingsMutation.isPending}
+                    className="bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center gap-2 rounded-xl"
+                  >
+                    <Save className="h-4 w-4" />
+                    Simpan Konfigurasi
+                  </Button>
                 </div>
               </div>
-            </div>
 
-            {/* Save Button */}
-            <div className="flex justify-end pt-4 border-t">
-              <Button 
-                onClick={() => saveSettingsMutation.mutate()} 
-                disabled={saveSettingsMutation.isPending}
-                className="bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center gap-2 rounded-xl"
-              >
-                <Save className="h-4 w-4" />
-                Simpan Konfigurasi
-              </Button>
+              {/* Right Column: Connection Status & Barcode Scan */}
+              <div className="lg:col-span-1">
+                <div className="border border-slate-200 bg-slate-50/50 rounded-xl p-4 space-y-4 flex flex-col h-full justify-between shadow-xs">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                      <QrCode className="h-4 w-4 text-amber-500" />
+                      Status Sesi & Hubungkan WA
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      Scan QR Code menggunakan nomor WhatsApp khusus untuk asisten AI ini.
+                    </p>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="p-3 bg-white border rounded-xl flex items-center justify-between shadow-xs">
+                    <span className="text-xs font-medium text-slate-500">Status Sesi ({wahaSession}):</span>
+                    {sessionStatus === "WORKING" && (
+                      <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white border-0 flex items-center gap-1 text-[10px]">
+                        <CheckCircle className="h-3 w-3" /> AKTIF & KONEK
+                      </Badge>
+                    )}
+                    {sessionStatus === "SCAN_QR" && (
+                      <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-0 flex items-center gap-1 text-[10px]">
+                        <QrCode className="h-3 w-3" /> PINDAI QR CODE
+                      </Badge>
+                    )}
+                    {sessionStatus === "STARTING" && (
+                      <Badge className="bg-blue-500 hover:bg-blue-600 text-white border-0 flex items-center gap-1 text-[10px] animate-pulse">
+                        <RefreshCw className="h-3 w-3 animate-spin" /> MENYALAKAN...
+                      </Badge>
+                    )}
+                    {sessionStatus === "STOPPED" && (
+                      <Badge className="bg-slate-400 hover:bg-slate-500 text-white border-0 flex items-center gap-1 text-[10px]">
+                        <XCircle className="h-3 w-3" /> NONAKTIF (MATI)
+                      </Badge>
+                    )}
+                    {sessionStatus === "DISCONNECTED" && (
+                      <Badge className="bg-destructive hover:bg-destructive text-white border-0 flex items-center gap-1 text-[10px]">
+                        <AlertTriangle className="h-3 w-3" /> DISKONEK / DOWN
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* QR Code / Status Visual Display Area */}
+                  <div className="flex-1 min-h-[220px] border border-dashed rounded-xl bg-white flex flex-col items-center justify-center p-4 text-center">
+                    {sessionStatus === "SCAN_QR" && qrImageUrl ? (
+                      <div className="space-y-3 flex flex-col items-center">
+                        <img 
+                          src={qrImageUrl} 
+                          alt="WAHA QR Code" 
+                          className="h-44 w-44 object-contain border p-2 rounded-lg bg-white shadow-xs" 
+                        />
+                        <p className="text-[10px] text-muted-foreground max-w-[180px] leading-relaxed">
+                          Buka WhatsApp &gt; Perangkat Tertaut &gt; Tautkan Perangkat, lalu scan QR Code di atas.
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="xs" 
+                          onClick={() => setQrRefreshTrigger(p => p + 1)}
+                          className="text-[10px] h-7 px-2.5"
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" /> Segarkan QR
+                        </Button>
+                      </div>
+                    ) : sessionStatus === "WORKING" ? (
+                      <div className="space-y-2 flex flex-col items-center">
+                        <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <CheckCircle className="h-6 w-6 text-emerald-600" />
+                        </div>
+                        <h4 className="font-bold text-xs text-slate-800">WhatsApp Terhubung!</h4>
+                        <p className="text-[10px] text-slate-500 max-w-[180px] leading-relaxed">
+                          Bot AI saat ini aktif dan siap merespon chat pelanggan secara otomatis menggunakan nomor ini.
+                        </p>
+                      </div>
+                    ) : sessionStatus === "STARTING" ? (
+                      <div className="space-y-2 flex flex-col items-center">
+                        <RefreshCw className="h-8 w-8 text-amber-500 animate-spin" />
+                        <h4 className="font-bold text-xs text-slate-800">Menghubungkan...</h4>
+                        <p className="text-[10px] text-slate-500 max-w-[180px]">
+                          Sedang memuat data sesi WhatsApp dari server. Mohon tunggu sebentar.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 flex flex-col items-center text-slate-400">
+                        <QrCode className="h-10 w-10 opacity-30 text-slate-400" />
+                        <h4 className="font-bold text-xs text-slate-650">Sesi Belum Dinyalakan</h4>
+                        <p className="text-[10px] text-slate-400 max-w-[180px]">
+                          Klik tombol **Mulai Sesi** di bawah untuk membuat barcode WhatsApp.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Controller Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => checkSessionStatus(false)}
+                      disabled={loadingStatus || actionLoading}
+                      className="text-xs h-9 flex items-center justify-center gap-1 rounded-xl"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${loadingStatus ? "animate-spin" : ""}`} />
+                      Cek Status
+                    </Button>
+                    
+                    {sessionStatus === "WORKING" || sessionStatus === "SCAN_QR" || sessionStatus === "STARTING" ? (
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={handleStopSession}
+                        disabled={actionLoading}
+                        className="text-xs h-9 flex items-center justify-center gap-1 rounded-xl"
+                      >
+                        <Pause className="h-3 w-3" />
+                        Mati Sesi
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        onClick={handleStartSession}
+                        disabled={actionLoading || sessionStatus === "DISCONNECTED"}
+                        className="text-xs h-9 bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center justify-center gap-1 rounded-xl"
+                      >
+                        <Play className="h-3 w-3" />
+                        Mulai Sesi
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
