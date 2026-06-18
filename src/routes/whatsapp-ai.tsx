@@ -78,8 +78,9 @@ function WhatsAppAiPage() {
 
   const getWahaHeaders = () => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (wahaApiKey) {
-      headers["X-Api-Key"] = wahaApiKey;
+    const keyToUse = wahaApiKey.trim() || globalWahaConfig?.apiKey || "";
+    if (keyToUse) {
+      headers["X-Api-Key"] = keyToUse;
     }
     return headers;
   };
@@ -96,7 +97,7 @@ function WhatsAppAiPage() {
   };
 
   const checkSessionStatus = async (silent = false) => {
-    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     const currentSession = wahaSession.trim() || "default";
     if (!silent) setLoadingStatus(true);
     try {
@@ -134,7 +135,7 @@ function WhatsAppAiPage() {
   };
 
   const handleStartSession = async () => {
-    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     const currentSession = wahaSession.trim() || "default";
     setActionLoading(true);
     try {
@@ -167,7 +168,7 @@ function WhatsAppAiPage() {
 
   const handleStopSession = async () => {
     if (!confirm("Apakah Anda yakin ingin menghentikan sesi WhatsApp AI ini?")) return;
-    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     const currentSession = wahaSession.trim() || "default";
     setActionLoading(true);
     try {
@@ -196,7 +197,7 @@ function WhatsAppAiPage() {
 
   // Poll session status
   useEffect(() => {
-    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     if (currentWahaUrl && wahaSession) {
       checkSessionStatus(true);
       const interval = setInterval(() => {
@@ -204,12 +205,12 @@ function WhatsAppAiPage() {
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [wahaUrl, wahaSession, wahaApiKey]);
+  }, [wahaUrl, wahaSession, wahaApiKey, globalWahaConfig]);
 
   // Fetch QR image
   useEffect(() => {
     let active = true;
-    const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
+    const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     const currentSession = wahaSession.trim() || "default";
 
     if (sessionStatus !== "SCAN_QR" || !currentWahaUrl || !currentSession) {
@@ -246,7 +247,7 @@ function WhatsAppAiPage() {
       active = false;
       clearInterval(interval);
     };
-  }, [sessionStatus, qrRefreshTrigger, wahaUrl, wahaSession, wahaApiKey]);
+  }, [sessionStatus, qrRefreshTrigger, wahaUrl, wahaSession, wahaApiKey, globalWahaConfig]);
 
   // Chat Monitor States
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -260,6 +261,23 @@ function WhatsAppAiPage() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       return user;
+    }
+  });
+
+  // Fetch global WAHA Config from app_settings
+  const { data: globalWahaConfig } = useQuery({
+    queryKey: ["global-waha-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "waha_config")
+        .maybeSingle();
+      if (error) {
+        console.error("Gagal memuat konfigurasi global WAHA:", error);
+        throw error;
+      }
+      return data?.value as any || {};
     }
   });
 
