@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -27,6 +27,7 @@ const navOwnerOnly = [
   { to: "/pengeluaran-pribadi", label: "Pengeluaran Pribadi", icon: Wallet },
   { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone }, // Added Meta Ads Manager
   { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
+  { to: "/whatsapp-ai", label: "Asisten WA AI", icon: Bot },
   { to: "/import-riwayat", label: "Impor Riwayat", icon: Database },
   { to: "/pengaturan/whatsapp", label: "Integrasi WhatsApp", icon: MessageSquare },
   { to: "/pengaturan/harga", label: "Pengaturan Harga", icon: Settings },

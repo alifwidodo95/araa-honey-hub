@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WhatsappAiRouteImport } from './routes/whatsapp-ai'
 import { Route as ReturRouteImport } from './routes/retur'
 import { Route as PenjualanRouteImport } from './routes/penjualan'
 import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pribadi'
@@ -30,6 +31,7 @@ import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumps
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
+import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api.webhooks.whatsapp'
 import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
 import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-comments'
 import { Route as ApiMetaSubscribePageRouteImport } from './routes/api.meta.subscribe-page'
@@ -38,6 +40,11 @@ import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 
+const WhatsappAiRoute = WhatsappAiRouteImport.update({
+  id: '/whatsapp-ai',
+  path: '/whatsapp-ai',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReturRoute = ReturRouteImport.update({
   id: '/retur',
   path: '/retur',
@@ -143,6 +150,11 @@ const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   path: '/api/telegram-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
+  id: '/api/webhooks/whatsapp',
+  path: '/api/webhooks/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksMetaCommentsRoute = ApiWebhooksMetaCommentsRouteImport.update({
   id: '/api/webhooks/meta-comments',
   path: '/api/webhooks/meta-comments',
@@ -192,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
   '/retur': typeof ReturRoute
+  '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -209,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
+  '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -222,6 +236,7 @@ export interface FileRoutesByTo {
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
   '/retur': typeof ReturRoute
+  '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -239,6 +254,7 @@ export interface FileRoutesByTo {
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
+  '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -253,6 +269,7 @@ export interface FileRoutesById {
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
   '/retur': typeof ReturRoute
+  '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -270,6 +287,7 @@ export interface FileRoutesById {
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
+  '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -285,6 +303,7 @@ export interface FileRouteTypes {
     | '/pengeluaran-pribadi'
     | '/penjualan'
     | '/retur'
+    | '/whatsapp-ai'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -302,6 +321,7 @@ export interface FileRouteTypes {
     | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
+    | '/api/webhooks/whatsapp'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -315,6 +335,7 @@ export interface FileRouteTypes {
     | '/pengeluaran-pribadi'
     | '/penjualan'
     | '/retur'
+    | '/whatsapp-ai'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -332,6 +353,7 @@ export interface FileRouteTypes {
     | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
+    | '/api/webhooks/whatsapp'
   id:
     | '__root__'
     | '/'
@@ -345,6 +367,7 @@ export interface FileRouteTypes {
     | '/pengeluaran-pribadi'
     | '/penjualan'
     | '/retur'
+    | '/whatsapp-ai'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -362,6 +385,7 @@ export interface FileRouteTypes {
     | '/api/meta/subscribe-page'
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
+    | '/api/webhooks/whatsapp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -376,6 +400,7 @@ export interface RootRouteChildren {
   PengeluaranPribadiRoute: typeof PengeluaranPribadiRoute
   PenjualanRoute: typeof PenjualanRoute
   ReturRoute: typeof ReturRoute
+  WhatsappAiRoute: typeof WhatsappAiRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
   ApiWahaProxyRoute: typeof ApiWahaProxyRoute
   PengaturanHargaRoute: typeof PengaturanHargaRoute
@@ -393,10 +418,18 @@ export interface RootRouteChildren {
   ApiMetaSubscribePageRoute: typeof ApiMetaSubscribePageRoute
   ApiMetaSyncCommentsRoute: typeof ApiMetaSyncCommentsRoute
   ApiWebhooksMetaCommentsRoute: typeof ApiWebhooksMetaCommentsRoute
+  ApiWebhooksWhatsappRoute: typeof ApiWebhooksWhatsappRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/whatsapp-ai': {
+      id: '/whatsapp-ai'
+      path: '/whatsapp-ai'
+      fullPath: '/whatsapp-ai'
+      preLoaderRoute: typeof WhatsappAiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/retur': {
       id: '/retur'
       path: '/retur'
@@ -544,6 +577,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/whatsapp': {
+      id: '/api/webhooks/whatsapp'
+      path: '/api/webhooks/whatsapp'
+      fullPath: '/api/webhooks/whatsapp'
+      preLoaderRoute: typeof ApiWebhooksWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/meta-comments': {
       id: '/api/webhooks/meta-comments'
       path: '/api/webhooks/meta-comments'
@@ -608,6 +648,7 @@ const rootRouteChildren: RootRouteChildren = {
   PengeluaranPribadiRoute: PengeluaranPribadiRoute,
   PenjualanRoute: PenjualanRoute,
   ReturRoute: ReturRoute,
+  WhatsappAiRoute: WhatsappAiRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
   ApiWahaProxyRoute: ApiWahaProxyRoute,
   PengaturanHargaRoute: PengaturanHargaRoute,
@@ -625,6 +666,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMetaSubscribePageRoute: ApiMetaSubscribePageRoute,
   ApiMetaSyncCommentsRoute: ApiMetaSyncCommentsRoute,
   ApiWebhooksMetaCommentsRoute: ApiWebhooksMetaCommentsRoute,
+  ApiWebhooksWhatsappRoute: ApiWebhooksWhatsappRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

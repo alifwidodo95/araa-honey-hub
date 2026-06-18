@@ -155,3 +155,12 @@
 - [x] Lakukan verifikasi manual menggunakan script pengetesan sync lokal
 - [x] Buat walkthrough untuk merangkum hasil kerja dan verifikasi perbaikan komentar
 
+# Task List: Integrasi Asisten WhatsApp AI (DeepSeek)
+
+- [x] Buat file migrasi database `supabase/migrations/20260618203500_whatsapp_ai_bot.sql` dan eksekusi
+- [x] Buat file handler webhook `/api/webhooks/whatsapp`
+- [x] Buat page route `/whatsapp-ai` untuk mengelola setelan, prompt, FAQ, dan riwayat chat log
+- [x] Hubungkan menu Asisten WA AI ke sidebar dan batasi akses menggunakan RBAC permissions
+- [/] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [ ] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+
