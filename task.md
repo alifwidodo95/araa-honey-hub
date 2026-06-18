@@ -161,6 +161,6 @@
 - [x] Buat file handler webhook `/api/webhooks/whatsapp`
 - [x] Buat page route `/whatsapp-ai` untuk mengelola setelan, prompt, FAQ, dan riwayat chat log
 - [x] Hubungkan menu Asisten WA AI ke sidebar dan batasi akses menggunakan RBAC permissions
-- [/] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
-- [ ] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
+- [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
 
