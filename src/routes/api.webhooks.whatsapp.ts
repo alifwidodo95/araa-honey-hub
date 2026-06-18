@@ -279,7 +279,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                   const areas = searchAreaData.areas || [];
                   if (areas.length > 0) {
                     const destinationAreaId = areas[0].id;
-                    const destinationAreaName = `${areas[0].name}, ${areas[0].administrative_division_level_2}, ${areas[0].administrative_division_level_1}`;
+                    const destinationAreaName = areas[0].name;
                     console.log(`[WA Webhook] Found Biteship Area ID: "${destinationAreaId}" for "${destinationAreaName}"`);
 
                     // 2. Fetch rates from Biteship Rates API

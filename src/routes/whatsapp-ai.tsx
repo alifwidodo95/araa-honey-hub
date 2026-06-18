@@ -416,7 +416,7 @@ function WhatsAppAiPage() {
   };
 
   const handleSelectArea = (area: any) => {
-    const fullName = `${area.name}, ${area.administrative_division_level_2}, ${area.administrative_division_level_1}`;
+    const fullName = area.name || `${area.administrative_division_level_3_name}, ${area.administrative_division_level_2_name}, ${area.administrative_division_level_1_name}`;
     setOriginAreaId(area.id);
     setOriginAreaName(fullName);
     setSearchQuery(fullName);
@@ -795,10 +795,10 @@ function WhatsAppAiPage() {
                             className="w-full text-left px-4 py-2.5 hover:bg-amber-50/50 transition-colors text-sm flex flex-col gap-0.5"
                           >
                             <span className="font-medium text-slate-800">
-                              Kec. {area.name}
+                              Kec. {area.administrative_division_level_3_name || area.name.split(',')[0]}
                             </span>
                             <span className="text-xs text-slate-500">
-                              {area.administrative_division_level_2}, {area.administrative_division_level_1} {area.postal_code ? `(${area.postal_code})` : ''}
+                              {area.name || `${area.administrative_division_level_2_name}, ${area.administrative_division_level_1_name}`}
                             </span>
                           </button>
                         ))}
