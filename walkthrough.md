@@ -396,3 +396,35 @@ Kami telah membangun asisten WhatsApp AI yang paling mutakhir, pintar, dan multi
    - Kirim pesan teks, pesan suara (VN), atau foto bukti transfer ke nomor WhatsApp WAHA Anda.
    - Amati balasan otomatis dari Jarvis yang instan, akurat sesuai basis harga madu Araa, dan pantau log bubble chat-nya langsung di dashboard **Asisten WA AI**!
 
+---
+
+## 23. Integrasi Cek Ongkir Otomatis Biteship (Tersembunyi & Dinamis) (Selesai)
+
+Kami telah menyelesaikan fitur cek ongkos kirim otomatis yang terintegrasi secara dinamis dengan layanan aggregator **Biteship**. Asisten WhatsApp AI sekarang dapat menghitung dan menginfokan tarif ongkir langsung ke pelanggan ketika ditanyakan, menggunakan lokasi gudang asal (origin) yang dapat diatur dari dashboard Owner.
+
+### Masalah yang Diselesaikan & Poin Keamanan:
+1. **Keamanan API Key**: Kunci API Biteship (`BITESHIP_API_KEY`) disimpan secara aman di sisi server (berkas `.env`) dan **tidak diperlihatkan** di halaman dashboard. Staf atau siapa pun yang membuka dashboard tidak bisa melihat API Key tersebut.
+2. **Pencarian Lokasi Asal Dinamis**: Untuk mempermudah konfigurasi, Owner cukup mengetik nama kecamatan / kabupaten asal gudang pada dashboard. Sistem akan mencari kecocokan area melalui proxy server dan menyimpannya di database (`whatsapp_ai_settings`).
+
+### Perubahan Teknis yang Dilakukan:
+1. **Migrasi Database (`supabase/migrations/20260618212000_add_biteship_to_settings.sql`):**
+   - Menambahkan kolom `biteship_origin_area_id` (ID Area Biteship) dan `biteship_origin_name` (Nama Area Lengkap) ke tabel `public.whatsapp_ai_settings`.
+2. **Proxy Area Search di Sisi Server (`src/routes/api.biteship.search-area.ts`):**
+   - Membuat endpoint `/api/biteship/search-area?input=...` yang mencari data wilayah di API Maps Biteship secara aman menggunakan token API server.
+3. **Peningkatan Webhook WhatsApp AI (`src/routes/api.webhooks.whatsapp.ts`):**
+   - Mendeteksi kata kunci pengiriman (seperti *ongkir, kirim ke, tarif, biaya*) pada chat pelanggan.
+   - Menggunakan **OpenAI GPT-4o-mini** untuk mengekstrak nama KECAMATAN dan KABUPATEN tujuan dari chat pelanggan secara akurat.
+   - Mencari ID area tujuan di Biteship Maps, lalu memanggil Biteship Rates API untuk paket seberat 1 kg dari lokasi gudang asal ke lokasi tujuan.
+   - Menyuntikkan rincian tarif kurir populer (JNE, J&T, SiCepat, SPX, Tiki, POS) langsung ke dalam prompt karakter DeepSeek-V3 agar diinfokan kepada pelanggan secara natural dan sopan.
+4. **Antarmuka Autocomplete Dashboard ([whatsapp-ai.tsx](file:///C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/src/routes/whatsapp-ai.tsx)):**
+   - Menambahkan input pencarian **Gudang Keberangkatan (Biteship Origin)** di bawah pengaturan prompt AI.
+   - Mengintegrasikan pencarian area real-time dengan debounce 600ms ke endpoint proxy.
+   - Menampilkan hasil pencarian di dropdown yang responsif dan menyimpan nama serta ID area terpilih ke database saat Owner menyimpan konfigurasi.
+
+### Hasil Verifikasi & Build:
+- Jalankan build lokal (`npm.cmd run build`) dan kompilasi berhasil 100% tanpa kesalahan TypeScript.
+- Perubahan kode telah dicommit dan didorong ke cabang utama GitHub (`git push`), sehingga auto-deployment ke Vercel selesai secara otomatis.
+
+> [!IMPORTANT]
+> **Tindakan yang Diperlukan oleh Owner (Big Bos):**
+> Mohon daftarkan variabel environment `BITESHIP_API_KEY` pada menu **Environment Variables** di dashboard Vercel Anda untuk digunakan di server produksi. Gunakan API Key Biteship Live yang telah Anda miliki.

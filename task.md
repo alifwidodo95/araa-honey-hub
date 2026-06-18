@@ -164,3 +164,13 @@
 - [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
 - [x] Deploy ke server produksi Vercel (`app.araahoney.my.id`)
 
+# Task List: Integrasi Cek Ongkir Otomatis Biteship (Tersembunyi)
+
+- [x] Buat file migrasi database `supabase/migrations/20260618212000_add_biteship_to_settings.sql` dan eksekusi
+- [x] Daftarkan BITESHIP_API_KEY ke file `.env` lokal
+- [x] Buat API route `/api/biteship/search-area` di `src/routes/api.biteship.search-area.ts`
+- [x] Perbarui `src/routes/api.webhooks.whatsapp.ts` untuk mendukung parsing ongkir otomatis via Biteship
+- [x] Perbarui UI `src/routes/whatsapp-ai.tsx` untuk input pencarian Gudang Asal
+- [x] Jalankan build lokal (`npm.cmd run build`) untuk verifikasi kompilasi
+- [x] Commit perubahan dan push ke GitHub untuk auto-deploy Vercel
+
