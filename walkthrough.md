@@ -449,3 +449,19 @@ Kami telah mengatasi masalah error putih (*error card popup*) saat memproses ret
 2. Masukkan nomor resi pesanan yang ingin diretur.
 3. Klik **Proses Konfirmasi Retur**.
 4. Proses retur pesanan sekarang dapat diselesaikan secara sukses tanpa adanya popup error!
+
+---
+
+## 25. Desain Ulang Filter Tanggal Finance Hub (Dropdown & Pilihan Kemarin) (Selesai)
+
+Kami telah mengubah tombol filter rentang tanggal pada halaman **Finance Hub (Keuangan)** menjadi sistem dropdown yang lebih simpel, rapi, dan menambahkan opsi filter rentang tanggal **Kemarin**.
+
+### Fitur yang Diimplementasikan:
+1. **Dropdown Periode Simpel:** Mengganti deretan tombol periode filter (Hari Ini, 1 Minggu, 1 Bulan, 3 Bulan, Kustom) dengan satu input dropdown (`Select` dari Shadcn/ui) agar tampilan dashboard terlihat lebih bersih, rapi, dan luas.
+2. **Pilihan "Kemarin" (Yesterday):** Menambahkan opsi filter **Kemarin** untuk mempermudah Big Bos memantau catatan keuangan secara khusus pada 1 hari sebelum hari ini (mengurangkan 1 hari penuh pada rentang tanggal mulai dan selesai).
+3. **Kustom Rentang Tanggal:** Input kustom tanggal tetap dipertahankan dan akan muncul secara dinamis di sebelah kanan dropdown jika pilihan "Kustom Tanggal" dipilih.
+
+### Cara Pengujian & Status Live:
+1. Masuk ke halaman **Keuangan** (`/keuangan`) di dashboard.
+2. Perhatikan di bagian kanan atas kartu Header Finance Hub, kini terdapat dropdown berlabel default periode aktif.
+3. Klik dropdown tersebut dan pilih **Kemarin** untuk melihat performa omzet kotor, potongan platform, HPP, operasional, dan laba bersih khusus untuk transaksi kemarin.
