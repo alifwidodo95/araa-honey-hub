@@ -428,3 +428,24 @@ Kami telah menyelesaikan fitur cek ongkos kirim otomatis yang terintegrasi secar
 > [!IMPORTANT]
 > **Tindakan yang Diperlukan oleh Owner (Big Bos):**
 > Mohon daftarkan variabel environment `BITESHIP_API_KEY` pada menu **Environment Variables** di dashboard Vercel Anda untuk digunakan di server produksi. Gunakan API Key Biteship Live yang telah Anda miliki.
+
+---
+
+## 24. Perbaikan Overload Fungsi Database (Order Return & Historical Import) (Selesai)
+
+Kami telah mengatasi masalah error putih (*error card popup*) saat memproses retur pesanan pada halaman `/retur` yang disebabkan oleh kegagalan PostgreSQL memilih fungsi kandidat terbaik (*Could not choose the best candidate function*) untuk `public.process_order_return`.
+
+### Masalah yang Diselesaikan:
+- **Pembersihan Fungsi Duplikat:** Kami menemukan dua signature untuk `process_order_return` yang memiliki tipe parameter yang sama persis namun berbeda urutan penulisannya di database Supabase.
+- **Pembersihan Fungsi Impor Usang:** Kami juga menemukan dan menghapus overload fungsi `public.import_historical_order` versi lama (10 parameter) karena saat ini sistem menggunakan versi 13 parameter.
+
+### Perubahan Teknis yang Dilakukan:
+1. Menghapus fungsi retur usang `public.process_order_return(_order_id uuid, _items_condition jsonb, _return_shipping_fee numeric, _notes text)` menggunakan perintah `DROP FUNCTION`.
+2. Menghapus overload fungsi `public.import_historical_order` versi lama (10 parameter) agar RPC query menargetkan fungsi yang tepat secara unik.
+3. Melakukan pemeriksaan menyeluruh di database dan mengonfirmasi saat ini jumlah fungsi yang memiliki *overload* di skema `public` adalah **0 (nol)**.
+
+### Cara Pengujian & Status Live:
+1. Masuk ke halaman **Retur Pesanan** di dashboard.
+2. Masukkan nomor resi pesanan yang ingin diretur.
+3. Klik **Proses Konfirmasi Retur**.
+4. Proses retur pesanan sekarang dapat diselesaikan secara sukses tanpa adanya popup error!
