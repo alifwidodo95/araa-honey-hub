@@ -24,6 +24,7 @@ import {
   ShoppingBag
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/keuangan")({ component: () => <RequireAuth requiredPermission="keuangan"><Page /></RequireAuth> });
 
@@ -89,7 +90,7 @@ const CustomRoasTooltip = ({ active, payload, label }: any) => {
 };
 
 function Page() {
-  const [rangeOption, setRangeOption] = useState<"today" | "7days" | "30days" | "90days" | "custom">("30days");
+  const [rangeOption, setRangeOption] = useState<"today" | "yesterday" | "7days" | "30days" | "90days" | "custom">("30days");
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -105,6 +106,9 @@ function Page() {
     
     if (rangeOption === "today") {
       // keep start as today
+    } else if (rangeOption === "yesterday") {
+      start.setDate(end.getDate() - 1);
+      end.setDate(end.getDate() - 1);
     } else if (rangeOption === "7days") {
       start.setDate(end.getDate() - 7);
     } else if (rangeOption === "30days") {
@@ -277,63 +281,37 @@ function Page() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex bg-muted p-1 rounded-lg border gap-1">
-            <Button
-              variant={rangeOption === "today" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setRangeOption("today")}
-              className={`text-xs h-8 px-3 ${rangeOption === "today" ? "bg-background shadow-sm font-semibold" : ""}`}
-            >
-              Hari Ini
-            </Button>
-            <Button
-              variant={rangeOption === "7days" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setRangeOption("7days")}
-              className={`text-xs h-8 px-3 ${rangeOption === "7days" ? "bg-background shadow-sm font-semibold" : ""}`}
-            >
-              1 Minggu
-            </Button>
-            <Button
-              variant={rangeOption === "30days" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setRangeOption("30days")}
-              className={`text-xs h-8 px-3 ${rangeOption === "30days" ? "bg-background shadow-sm font-semibold" : ""}`}
-            >
-              1 Bulan
-            </Button>
-            <Button
-              variant={rangeOption === "90days" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setRangeOption("90days")}
-              className={`text-xs h-8 px-3 ${rangeOption === "90days" ? "bg-background shadow-sm font-semibold" : ""}`}
-            >
-              3 Bulan
-            </Button>
-            <Button
-              variant={rangeOption === "custom" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setRangeOption("custom")}
-              className={`text-xs h-8 px-3 ${rangeOption === "custom" ? "bg-background shadow-sm font-semibold" : ""}`}
-            >
-              Kustom
-            </Button>
-          </div>
+          <Select
+            value={rangeOption}
+            onValueChange={(v: any) => setRangeOption(v)}
+          >
+            <SelectTrigger className="w-[180px] bg-background text-xs h-9">
+              <SelectValue placeholder="Pilih Periode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Hari Ini</SelectItem>
+              <SelectItem value="yesterday">Kemarin</SelectItem>
+              <SelectItem value="7days">1 Minggu Terakhir</SelectItem>
+              <SelectItem value="30days">1 Bulan Terakhir</SelectItem>
+              <SelectItem value="90days">3 Bulan Terakhir</SelectItem>
+              <SelectItem value="custom">Kustom Tanggal</SelectItem>
+            </SelectContent>
+          </Select>
 
           {rangeOption === "custom" && (
-            <div className="flex items-center gap-2 bg-muted/40 p-1 rounded-lg border">
+            <div className="flex items-center gap-2 bg-muted/40 p-1 rounded-lg border h-9">
               <Input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="h-8 w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1"
+                className="h-7 w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1"
               />
               <span className="text-xs font-medium text-muted-foreground px-0.5">s/d</span>
               <Input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="h-8 w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1"
+                className="h-7 w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1"
               />
             </div>
           )}
