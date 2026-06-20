@@ -465,3 +465,19 @@ Kami telah mengubah tombol filter rentang tanggal pada halaman **Finance Hub (Ke
 1. Masuk ke halaman **Keuangan** (`/keuangan`) di dashboard.
 2. Perhatikan di bagian kanan atas kartu Header Finance Hub, kini terdapat dropdown berlabel default periode aktif.
 3. Klik dropdown tersebut dan pilih **Kemarin** untuk melihat performa omzet kotor, potongan platform, HPP, operasional, dan laba bersih khusus untuk transaksi kemarin.
+
+---
+
+## 26. Fitur Pemantauan Volume Madu Keluar Harian di Dashboard (Selesai)
+
+Kami telah menambahkan panel pemantauan volume keluar madu (dalam kg) secara real-time yang dikelompokkan berdasarkan jenis madu (seperti Akasia, Randu, dll.) pada halaman **Dashboard Utama**.
+
+### Fitur yang Diimplementasikan:
+1. **Perhitungan Volume Riil:** Sistem secara dinamis memuat seluruh transaksi sukses hari ini dan merangkum akumulasi volume madu yang digunakan (`honey_kg_used`) dari seluruh item penjualan yang dikirim.
+2. **Pengelompokan Jenis Madu:** Menampilkan data volume keluar dalam bentuk kartu grid premium untuk setiap varian madu (Akasia, Randu, dll.) yang memiliki penjualan hari ini.
+3. **Pesan Status Kosong:** Jika belum ada madu yang keluar hari ini, panel akan menampilkan pesan informatif: *"Belum ada madu yang keluar dari pesanan hari ini."*
+
+### Cara Pengujian & Status Live:
+1. Masuk ke halaman **Dashboard** utama.
+2. Di bawah deretan kartu metrik utama (Saldo Madu Dandang, Order Hari Ini, dsb.), perhatikan komponen kartu baru berlabel **"Madu Keluar Hari Ini"**.
+3. Komponen ini akan otomatis memuat nama jenis madu beserta volume kilogram yang terjual secara real-time pada hari tersebut.
