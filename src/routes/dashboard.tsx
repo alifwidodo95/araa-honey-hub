@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { formatIDR } from "@/lib/theme";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Droplet } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
 
@@ -40,6 +40,34 @@ function DashboardPage() {
     queryKey: ["orders-today"],
     queryFn: async () =>
       (await supabase.from("orders").select("subtotal_gross,net_revenue,created_at").eq("returned", false).gte("created_at", `${today}T00:00:00Z`)).data ?? [],
+  });
+
+  const { data: honeyToday } = useQuery({
+    queryKey: ["honey-today"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          order_items (
+            honey_type,
+            honey_kg_used
+          )
+        `)
+        .eq("returned", false)
+        .gte("created_at", `${today}T00:00:00Z`);
+      if (error) throw error;
+      
+      const totals: Record<string, number> = {};
+      (data ?? []).forEach((o: any) => {
+        (o.order_items ?? []).forEach((item: any) => {
+          const type = item.honey_type || "Lainnya";
+          const kg = Number(item.honey_kg_used) || 0;
+          totals[type] = (totals[type] || 0) + kg;
+        });
+      });
+      return totals;
+    },
   });
 
   const { data: salesTrend } = useQuery({
@@ -107,6 +135,38 @@ function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* Rincian Madu Keluar Hari Ini */}
+      <Card className="rounded-2xl border-muted/50 shadow-xs overflow-hidden bg-card transition-all duration-300 hover:shadow-md">
+        <CardHeader className="pb-3 border-b border-muted/20 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
+              <Droplet className="w-4 h-4" />
+            </div>
+            Madu Keluar Hari Ini
+          </CardTitle>
+          <span className="text-[10px] bg-muted px-2.5 py-0.5 rounded-full text-muted-foreground font-semibold">
+            Real-time
+          </span>
+        </CardHeader>
+        <CardContent className="pt-5">
+          {Object.keys(honeyToday || {}).length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">Belum ada madu yang keluar dari pesanan hari ini.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {Object.entries(honeyToday || {}).map(([type, kg]) => (
+                <div key={type} className="flex justify-between items-center p-4 rounded-xl bg-gradient-to-br from-amber-500/5 to-amber-500/[0.01] border border-amber-500/10 hover:border-amber-500/20 transition-all">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-foreground">{type}</div>
+                    <div className="text-[10px] text-muted-foreground">Volume keluar</div>
+                  </div>
+                  <div className="text-sm font-extrabold text-amber-500">{Number(kg).toFixed(2)} kg</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {hasPermission("keuangan") && (
         <Card>
