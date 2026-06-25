@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/sync-meta-ads",
       "schedule": "30 17 * * *"
+    },
+    {
+      "path": "/api/cron/send-crm-reminders",
+      "schedule": "0 3 * * *"
     }
   ]
 }

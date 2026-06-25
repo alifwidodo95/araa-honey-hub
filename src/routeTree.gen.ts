@@ -39,6 +39,7 @@ import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply
 import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.reply-all-unreplied'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
+import { Route as ApiCronSendCrmRemindersRouteImport } from './routes/api.cron.send-crm-reminders'
 import { Route as ApiBiteshipSearchAreaRouteImport } from './routes/api.biteship.search-area'
 
 const WhatsappAiRoute = WhatsappAiRouteImport.update({
@@ -192,6 +193,11 @@ const ApiCronSendResiRoute = ApiCronSendResiRouteImport.update({
   path: '/api/cron/send-resi',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSendCrmRemindersRoute = ApiCronSendCrmRemindersRouteImport.update({
+  id: '/api/cron/send-crm-reminders',
+  path: '/api/cron/send-crm-reminders',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBiteshipSearchAreaRoute = ApiBiteshipSearchAreaRouteImport.update({
   id: '/api/biteship/search-area',
   path: '/api/biteship/search-area',
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -255,6 +262,7 @@ export interface FileRoutesByTo {
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -289,6 +297,7 @@ export interface FileRoutesById {
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -324,6 +333,7 @@ export interface FileRouteTypes {
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
     | '/api/biteship/search-area'
+    | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-all-unreplied'
@@ -357,6 +367,7 @@ export interface FileRouteTypes {
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
     | '/api/biteship/search-area'
+    | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-all-unreplied'
@@ -390,6 +401,7 @@ export interface FileRouteTypes {
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
     | '/api/biteship/search-area'
+    | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/meta/reply-all-unreplied'
@@ -424,6 +436,7 @@ export interface RootRouteChildren {
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
   ApiBiteshipSearchAreaRoute: typeof ApiBiteshipSearchAreaRoute
+  ApiCronSendCrmRemindersRoute: typeof ApiCronSendCrmRemindersRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
   ApiMetaReplyAllUnrepliedRoute: typeof ApiMetaReplyAllUnrepliedRoute
@@ -646,6 +659,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSendResiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/send-crm-reminders': {
+      id: '/api/cron/send-crm-reminders'
+      path: '/api/cron/send-crm-reminders'
+      fullPath: '/api/cron/send-crm-reminders'
+      preLoaderRoute: typeof ApiCronSendCrmRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/biteship/search-area': {
       id: '/api/biteship/search-area'
       path: '/api/biteship/search-area'
@@ -680,6 +700,7 @@ const rootRouteChildren: RootRouteChildren = {
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
   ApiBiteshipSearchAreaRoute: ApiBiteshipSearchAreaRoute,
+  ApiCronSendCrmRemindersRoute: ApiCronSendCrmRemindersRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
   ApiMetaReplyAllUnrepliedRoute: ApiMetaReplyAllUnrepliedRoute,

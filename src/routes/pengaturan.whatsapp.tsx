@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
-  XCircle, Trash2
+  XCircle, Trash2, Clock, Calendar, Bell
 } from "lucide-react";
 
 export const Route = createFileRoute("/pengaturan/whatsapp")({
@@ -47,6 +47,218 @@ function WhatsAppPage() {
   const [followUpTemplate, setFollowUpTemplate] = useState(() => localStorage.getItem("waha_followup_template") || `Halo Kak {customer_name},\n\nKami mendapati paket madu Araa Honey Kakak dengan nomor resi {tracking_number} ({expedition}) dikembalikan oleh pihak ekspedisi (retur).\n\nBoleh kami tahu alasan paketnya diretur, Kak? Apakah kurir tidak datang ke alamat Kakak, atau ada kendala lain?\n\nJika memang ada kesalahan dari pihak kurir/ekspedisi, kami bersedia mengirimkan ulang paket yang baru secara gratis tanpa biaya tambahan untuk Kakak. 😊🍯\n\nTerima kasih banyak atas perhatiannya, Kak!`);
   const [activeTemplateTab, setActiveTemplateTab] = useState<"resi" | "retur">("resi");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<"waha" | "crm">("waha");
+
+  // CRM State Configurations
+  const [crmEnabled, setCrmEnabled] = useState(true);
+  const [crmDelayDays, setCrmDelayDays] = useState(45);
+  const [crmTemplate, setCrmTemplate] = useState(`Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`);
+  const crmTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fetch CRM Config from Supabase
+  const { data: dbCrmConfig, refetch: refetchCrmConfig } = useQuery({
+    queryKey: ["crm-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "crm_config")
+        .maybeSingle();
+      if (error) {
+        console.error("Gagal mengambil CRM config:", error);
+        throw error;
+      }
+      return data?.value as any || null;
+    }
+  });
+
+  // Sync Supabase CRM settings to state on load
+  useEffect(() => {
+    if (dbCrmConfig) {
+      if (dbCrmConfig.enabled !== undefined) setCrmEnabled(dbCrmConfig.enabled);
+      if (dbCrmConfig.delayDays !== undefined) setCrmDelayDays(dbCrmConfig.delayDays);
+      if (dbCrmConfig.template) setCrmTemplate(dbCrmConfig.template);
+    }
+  }, [dbCrmConfig]);
+
+  // Fetch pending reminders
+  const { data: activeReminders, refetch: refetchActiveReminders, isLoading: loadingActiveReminders } = useQuery({
+    queryKey: ["active-crm-reminders"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("crm_reminders" as any)
+        .select("*, orders(customer_name, created_at)")
+        .eq("status", "pending")
+        .order("scheduled_for", { ascending: true });
+      if (error) {
+        console.error("Gagal memuat antrean CRM:", error);
+        throw error;
+      }
+      return data || [];
+    }
+  });
+
+  // Fetch crm history (sent/failed/cancelled)
+  const { data: crmHistory, refetch: refetchCrmHistory, isLoading: loadingCrmHistory } = useQuery({
+    queryKey: ["crm-history"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("crm_reminders" as any)
+        .select("*, orders(customer_name, created_at)")
+        .neq("status", "pending")
+        .order("updated_at", { ascending: false } as any)
+        .limit(50);
+      if (error) {
+        console.error("Gagal memuat riwayat CRM:", error);
+        throw error;
+      }
+      return data || [];
+    }
+  });
+
+  // Save CRM config handler
+  const handleSaveCrmConfig = async () => {
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({
+          key: "crm_config",
+          value: {
+            enabled: crmEnabled,
+            delayDays: Number(crmDelayDays),
+            template: crmTemplate.trim()
+          }
+        });
+      if (error) throw error;
+      toast.success("Konfigurasi CRM berhasil disimpan!");
+      refetchCrmConfig();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan konfigurasi CRM.");
+    }
+  };
+
+  // Immediate toggle save helper for CRM
+  const handleToggleCrmEnabled = async (checked: boolean) => {
+    setCrmEnabled(checked);
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({
+          key: "crm_config",
+          value: {
+            enabled: checked,
+            delayDays: Number(crmDelayDays),
+            template: crmTemplate.trim()
+          }
+        });
+      if (error) throw error;
+      toast.success(checked ? "CRM Auto-Reminders diaktifkan!" : "CRM Auto-Reminders dinonaktifkan!");
+      refetchCrmConfig();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memperbarui status CRM.");
+      setCrmEnabled(!checked);
+    }
+  };
+
+  // Insert placeholder helper for CRM
+  const insertCrmPlaceholder = (ph: string) => {
+    const el = crmTextareaRef.current;
+    if (!el) {
+      setCrmTemplate(prev => prev + ph);
+      return;
+    }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const text = el.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end, text.length);
+    const newText = before + ph + after;
+    setCrmTemplate(newText);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + ph.length, start + ph.length);
+    }, 0);
+  };
+
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+
+  // Send single CRM reminder manually now
+  const handleSendReminderNow = async (reminder: any) => {
+    setSendingReminderId(reminder.id);
+    try {
+      const template = crmTemplate || `Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.`;
+      
+      const formatDateIndo = (dateStr: string): string => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        const day = date.getDate();
+        const monthIdx = date.getMonth();
+        const year = date.getFullYear();
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return `${day} ${months[monthIdx]} ${year}`;
+      };
+
+      const formattedMessage = template
+        .replace(/{customer_name}/g, reminder.customer_name || '')
+        .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
+        .replace(/{last_order_date}/g, formatDateIndo(reminder.orders?.created_at) || '');
+
+      const success = await sendWhatsAppMessage(reminder.customer_phone, formattedMessage);
+
+      if (success) {
+        const { error } = await supabase
+          .from("crm_reminders" as any)
+          .update({ 
+            status: "sent", 
+            sent_at: new Date().toISOString(), 
+            updated_at: new Date().toISOString() 
+          })
+          .eq("id", reminder.id);
+        if (error) throw error;
+        toast.success(`Pengingat CRM berhasil dikirim ke ${reminder.customer_name}!`);
+        refetchActiveReminders();
+        refetchCrmHistory();
+      } else {
+        throw new Error("Gagal mengirim dari gateway WAHA.");
+      }
+    } catch (err: any) {
+      await supabase
+        .from("crm_reminders" as any)
+        .update({ 
+          status: "failed", 
+          error_message: err.message || "Gagal kirim dari gateway WAHA", 
+          updated_at: new Date().toISOString() 
+        })
+        .eq("id", reminder.id);
+      toast.error(err.message || "Gagal mengirim pengingat.");
+      refetchActiveReminders();
+      refetchCrmHistory();
+    } finally {
+      setSendingReminderId(null);
+    }
+  };
+
+  // Cancel CRM reminder manually
+  const handleCancelReminder = async (reminderId: string) => {
+    if (!confirm("Apakah Anda yakin ingin membatalkan pengingat CRM ini?")) return;
+    try {
+      const { error } = await supabase
+        .from("crm_reminders" as any)
+        .update({ 
+          status: "cancelled", 
+          updated_at: new Date().toISOString() 
+        })
+        .eq("id", reminderId);
+      if (error) throw error;
+      toast.success("Pengingat berhasil dibatalkan.");
+      refetchActiveReminders();
+      refetchCrmHistory();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membatalkan pengingat.");
+    }
+  };
 
   // Fetch WAHA Config from Supabase database for multi-device sync
   const { data: wahaConfig, refetch: refetchConfig } = useQuery({
@@ -658,12 +870,41 @@ function WhatsAppPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Integrasi WhatsApp (WAHA)</h2>
-        <p className="text-sm text-muted-foreground">Kirim resi pengiriman otomatis ke pelanggan menggunakan nomor WhatsApp Anda.</p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Integrasi WhatsApp (WAHA) & CRM</h2>
+          <p className="text-sm text-muted-foreground">Kirim resi pengiriman otomatis dan pengingat repeat order ke pelanggan menggunakan WhatsApp Anda.</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Top Navigation Tabs */}
+      <div className="flex bg-muted/60 p-1 rounded-xl border border-border/60 max-w-md">
+        <button
+          type="button"
+          onClick={() => setActiveTab("waha")}
+          className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all duration-200 ${
+            activeTab === "waha"
+              ? "bg-white dark:bg-slate-950 shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Kirim Resi & Sesi WA
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("crm")}
+          className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all duration-200 ${
+            activeTab === "crm"
+              ? "bg-white dark:bg-slate-950 shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          CRM Auto-Reminders
+        </button>
+      </div>
+
+      {activeTab === "waha" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Left column: Server Settings & Scheduler */}
         <div className="space-y-6 lg:col-span-1">
@@ -1129,8 +1370,280 @@ function WhatsAppPage() {
             </CardContent>
           </Card>
         </div>
-
       </div>
+    ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* CRM Left Column: Configurations */}
+          <div className="space-y-6 lg:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-honey" /> Konfigurasi CRM
+                </CardTitle>
+                <CardDescription>Atur jeda waktu dan aktifkan pengingat.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="crm-enabled" className="cursor-pointer font-medium">CRM Auto-Reminder</Label>
+                    <p className="text-[10px] text-muted-foreground">Kirim pesan WA otomatis setelah jeda waktu pembelian.</p>
+                  </div>
+                  <Switch 
+                    id="crm-enabled" 
+                    checked={crmEnabled} 
+                    onCheckedChange={handleToggleCrmEnabled}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="crm-delay">Jeda Hari Pengingat</Label>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      id="crm-delay"
+                      type="number"
+                      placeholder="45" 
+                      value={crmDelayDays} 
+                      onChange={(e) => setCrmDelayDays(Number(e.target.value))}
+                      className="w-24"
+                    />
+                    <span className="text-xs text-muted-foreground">Hari setelah belanja</span>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3 mt-3 space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground">Info Cron Pengingat CRM:</Label>
+                  <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded border border-border/80 text-[10px] space-y-1 font-mono select-all">
+                    <div className="text-slate-500 dark:text-slate-400 break-all font-semibold">GET https://app.araahoney.my.id/api/cron/send-crm-reminders</div>
+                    <div className="text-slate-400 dark:text-slate-500 break-all">Header: Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground leading-normal">
+                    Cron Vercel untuk CRM berjalan otomatis setiap hari pukul **10:00 WIB** pagi (mengirim pesan pending yang telah jatuh tempo).
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-honey" /> Template CRM
+                </CardTitle>
+                <CardDescription>Format pesan pengingat repeat order.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-1.5">
+                  <textarea
+                    id="crm-template"
+                    ref={crmTextareaRef}
+                    rows={8}
+                    className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={crmTemplate}
+                    onChange={(e) => setCrmTemplate(e.target.value)}
+                    placeholder="Masukkan format pesan CRM..."
+                  />
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <Label className="text-muted-foreground font-semibold">Placeholder yang tersedia:</Label>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <Badge 
+                      variant="outline" 
+                      className="cursor-pointer hover:bg-accent select-none" 
+                      onClick={() => insertCrmPlaceholder("{customer_name}")}
+                    >
+                      {`{customer_name}`}
+                    </Badge>
+                    <Badge 
+                      variant="outline" 
+                      className="cursor-pointer hover:bg-accent select-none" 
+                      onClick={() => insertCrmPlaceholder("{honey_type}")}
+                    >
+                      {`{honey_type}`}
+                    </Badge>
+                    <Badge 
+                      variant="outline" 
+                      className="cursor-pointer hover:bg-accent select-none" 
+                      onClick={() => insertCrmPlaceholder("{last_order_date}")}
+                    >
+                      {`{last_order_date}`}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="mt-3 p-3 bg-muted/30 rounded-lg border border-border/80 text-xs space-y-1.5">
+                  <span className="font-semibold text-muted-foreground">Pratinjau Pesan:</span>
+                  <div className="bg-white dark:bg-slate-950 p-2.5 rounded border border-border text-slate-800 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
+                    {crmTemplate
+                      .replace(/{customer_name}/g, "Opa Fandra")
+                      .replace(/{honey_type}/g, "Madu Akasia & Randu")
+                      .replace(/{last_order_date}/g, "24 Mei 2026")}
+                  </div>
+                </div>
+
+                <Button onClick={handleSaveCrmConfig} className="w-full bg-honey hover:bg-honey-dark text-honey-foreground">
+                  Simpan Konfigurasi & Template
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* CRM Right Column: Queues and History */}
+          <div className="space-y-6 lg:col-span-2">
+            <Card>
+              <CardHeader className="pb-3 flex flex-row items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-honey" /> Antrean CRM Aktif
+                  </CardTitle>
+                  <CardDescription>
+                    Ada <strong>{activeReminders?.length || 0}</strong> antrean pengingat pending berikutnya.
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-[300px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nama Pelanggan</TableHead>
+                        <TableHead>Nomor HP</TableHead>
+                        <TableHead>Madu Dibeli</TableHead>
+                        <TableHead>Jadwal Kirim</TableHead>
+                        <TableHead className="w-28 text-center">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loadingActiveReminders ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                            Memuat data antrean CRM...
+                          </TableCell>
+                        </TableRow>
+                      ) : !activeReminders || activeReminders.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                            Tidak ada antrean pengingat aktif (semua sudah terkirim atau dinonaktifkan).
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        activeReminders.map((rem: any) => (
+                          <TableRow key={rem.id}>
+                            <TableCell className="font-medium">{rem.customer_name}</TableCell>
+                            <TableCell>{rem.customer_phone}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="bg-honey/5 border-honey/20 text-honey-dark font-semibold">
+                                {rem.honey_type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-semibold text-xs">
+                              {new Date(rem.scheduled_for).toLocaleDateString("id-ID", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric"
+                              })}
+                            </TableCell>
+                            <TableCell className="text-center flex justify-center gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs border-honey/20 hover:bg-honey/10 text-honey-dark"
+                                disabled={sendingReminderId === rem.id}
+                                onClick={() => handleSendReminderNow(rem)}
+                              >
+                                {sendingReminderId === rem.id ? "..." : <Send className="w-3.5 h-3.5" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                disabled={sendingReminderId === rem.id}
+                                onClick={() => handleCancelReminder(rem.id)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-honey" /> Riwayat Pengiriman CRM (50 Terakhir)
+                </CardTitle>
+                <CardDescription>Catatan pengiriman pengingat otomatis maupun manual.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-[300px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nama Pelanggan</TableHead>
+                        <TableHead>Nomor HP</TableHead>
+                        <TableHead>Madu Dibeli</TableHead>
+                        <TableHead>Tanggal Kirim</TableHead>
+                        <TableHead className="w-24 text-center">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loadingCrmHistory ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                            Memuat data riwayat...
+                          </TableCell>
+                        </TableRow>
+                      ) : !crmHistory || crmHistory.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                            Belum ada riwayat pengiriman CRM.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        crmHistory.map((h: any) => (
+                          <TableRow key={h.id}>
+                            <TableCell className="font-medium">{h.customer_name}</TableCell>
+                            <TableCell>{h.customer_phone}</TableCell>
+                            <TableCell>{h.honey_type}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(h.updated_at).toLocaleString("id-ID", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {h.status === "sent" ? (
+                                <Badge variant="success">Terkirim</Badge>
+                              ) : h.status === "cancelled" ? (
+                                <Badge variant="secondary">Batal</Badge>
+                              ) : (
+                                <Badge 
+                                  variant="destructive" 
+                                  title={h.error_message || "Gagal mengirim"} 
+                                  className="cursor-help"
+                                >
+                                  Gagal
+                                </Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
