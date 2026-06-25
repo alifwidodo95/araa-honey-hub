@@ -182,6 +182,28 @@ function WhatsAppPage() {
     }, 0);
   };
 
+  const [backfilling, setBackfilling] = useState(false);
+
+  const handleBackfillCrm = async () => {
+    if (!confirm("Apakah Anda yakin ingin menyinkronkan data pesanan WhatsApp lama sejak 1 Januari 2026 ke antrean CRM? Proses ini akan mencari transaksi terakhir masing-masing pelanggan dan menjadwalkan reminder (+45 hari).")) return;
+    setBackfilling(true);
+    try {
+      const { data, error } = await supabase.rpc("backfill_crm_reminders", { p_start_date: "2026-01-01" });
+      if (error) throw error;
+      
+      const res = (data as any)?.[0] || { inserted_count: 0, cancelled_count: 0 };
+      toast.success(
+        `Sinkronisasi CRM Sukses! Menambahkan ${res.inserted_count || 0} pengingat baru dan memperbarui ${res.cancelled_count || 0} antrean lama.`
+      );
+      refetchActiveReminders();
+      refetchCrmHistory();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyinkronkan data CRM.");
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
 
   // Send single CRM reminder manually now
@@ -1419,6 +1441,22 @@ function WhatsAppPage() {
                   <p className="text-[9px] text-muted-foreground leading-normal">
                     Cron Vercel untuk CRM berjalan otomatis setiap hari pukul **10:00 WIB** pagi (mengirim pesan pending yang telah jatuh tempo).
                   </p>
+                  
+                  <div className="border-t pt-3 mt-1 space-y-2">
+                    <Label className="text-xs font-semibold text-muted-foreground">Sinkronisasi Data Penjualan Lama:</Label>
+                    <p className="text-[9px] text-muted-foreground leading-normal">
+                      Tarik data pesanan lama (dari WhatsApp & sukses) sejak 1 Januari 2026 ke dalam antrean CRM. Hanya mengambil pesanan terbaru untuk masing-masing konsumen.
+                    </p>
+                    <Button
+                      onClick={handleBackfillCrm}
+                      disabled={backfilling || !crmEnabled}
+                      variant="outline"
+                      className="w-full text-xs font-semibold border-honey/20 hover:bg-honey/10 text-honey-dark flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${backfilling ? "animate-spin" : ""}`} />
+                      {backfilling ? "Menyinkronkan..." : "Sinkronkan Data Sejak Januari"}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
