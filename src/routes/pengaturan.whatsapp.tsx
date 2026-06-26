@@ -54,6 +54,7 @@ function WhatsAppPage() {
   // CRM State Configurations
   const [crmEnabled, setCrmEnabled] = useState(true);
   const [crmDelayDays, setCrmDelayDays] = useState(45);
+  const [crmMaxDailyLimit, setCrmMaxDailyLimit] = useState(50);
   const [crmTemplate, setCrmTemplate] = useState(`Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`);
   const crmTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -80,6 +81,7 @@ function WhatsAppPage() {
       if (dbCrmConfig.enabled !== undefined) setCrmEnabled(dbCrmConfig.enabled);
       if (dbCrmConfig.delayDays !== undefined) setCrmDelayDays(dbCrmConfig.delayDays);
       if (dbCrmConfig.template) setCrmTemplate(dbCrmConfig.template);
+      if (dbCrmConfig.maxDailyLimit !== undefined) setCrmMaxDailyLimit(dbCrmConfig.maxDailyLimit);
     }
   }, [dbCrmConfig]);
 
@@ -128,7 +130,8 @@ function WhatsAppPage() {
           value: {
             enabled: crmEnabled,
             delayDays: Number(crmDelayDays),
-            template: crmTemplate.trim()
+            template: crmTemplate.trim(),
+            maxDailyLimit: Number(crmMaxDailyLimit)
           }
         });
       if (error) throw error;
@@ -150,7 +153,8 @@ function WhatsAppPage() {
           value: {
             enabled: checked,
             delayDays: Number(crmDelayDays),
-            template: crmTemplate.trim()
+            template: crmTemplate.trim(),
+            maxDailyLimit: Number(crmMaxDailyLimit)
           }
         });
       if (error) throw error;
@@ -1417,18 +1421,34 @@ function WhatsAppPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="crm-delay">Jeda Hari Pengingat</Label>
-                  <div className="flex items-center gap-2">
-                    <Input 
-                      id="crm-delay"
-                      type="number"
-                      placeholder="45" 
-                      value={crmDelayDays} 
-                      onChange={(e) => setCrmDelayDays(Number(e.target.value))}
-                      className="w-24"
-                    />
-                    <span className="text-xs text-muted-foreground">Hari setelah belanja</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="crm-delay">Jeda Pengingat</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Input 
+                        id="crm-delay"
+                        type="number"
+                        placeholder="45" 
+                        value={crmDelayDays} 
+                        onChange={(e) => setCrmDelayDays(Number(e.target.value))}
+                        className="w-full"
+                      />
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">Hari</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="crm-limit">Batas Harian</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Input 
+                        id="crm-limit"
+                        type="number"
+                        placeholder="50" 
+                        value={crmMaxDailyLimit} 
+                        onChange={(e) => setCrmMaxDailyLimit(Number(e.target.value))}
+                        className="w-full"
+                      />
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">Pesan</span>
+                    </div>
                   </div>
                 </div>
 

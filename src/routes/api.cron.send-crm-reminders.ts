@@ -38,7 +38,8 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
           }
 
           const crmConfig = crmConfigRes.rows[0].value;
-          const { enabled, delayDays, template: crmTemplate } = crmConfig || {};
+          const { enabled, delayDays, template: crmTemplate, maxDailyLimit } = crmConfig || {};
+          const dailyLimit = Number(maxDailyLimit) || 50;
 
           // If CRM reminders are disabled, do not run the cron job
           if (enabled === false) {
@@ -70,7 +71,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          // 5. Fetch pending reminders due today or earlier
+          // 5. Fetch pending reminders due today or earlier (capped by maxDailyLimit)
           const remindersRes = await pool.query(`
             SELECT r.id, r.order_id, r.customer_name, r.customer_phone, r.honey_type, o.created_at as last_order_date
             FROM crm_reminders r
@@ -78,7 +79,8 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             WHERE r.status = 'pending' 
               AND r.scheduled_for <= CURRENT_DATE
             ORDER BY r.scheduled_for ASC
-          `);
+            LIMIT $1
+          `, [dailyLimit]);
 
           const pendingReminders = remindersRes.rows;
           if (pendingReminders.length === 0) {
