@@ -12,7 +12,7 @@ const client = new pg.Client({
   }
 });
 
-const sqlFilePath = 'C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/supabase/migrations/20260626020000_crm_reminders_earliest_backfill.sql';
+const sqlFilePath = 'C:/Users/USER/.gemini/antigravity/scratch/araa-honey-hub/supabase/migrations/20260626030000_optimize_backfill_crm_reminders.sql';
 
 async function main() {
   try {
