@@ -76,7 +76,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             SELECT COUNT(*)::int as sent_today
             FROM crm_reminders
             WHERE status = 'sent'
-              AND (sent_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta')::date = (NOW() AT TIME ZONE 'Asia/Jakarta')::date
+              AND (sent_at AT TIME ZONE 'Asia/Jakarta')::date = (NOW() AT TIME ZONE 'Asia/Jakarta')::date
           `);
           const sentToday = quotaRes.rows[0].sent_today || 0;
 
