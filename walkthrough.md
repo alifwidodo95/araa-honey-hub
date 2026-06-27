@@ -481,3 +481,25 @@ Kami telah menambahkan panel pemantauan volume keluar madu (dalam kg) secara rea
 1. Masuk ke halaman **Dashboard** utama.
 2. Di bawah deretan kartu metrik utama (Saldo Madu Dandang, Order Hari Ini, dsb.), perhatikan komponen kartu baru berlabel **"Madu Keluar Hari Ini"**.
 3. Komponen ini akan otomatis memuat nama jenis madu beserta volume kilogram yang terjual secara real-time pada hari tersebut.
+
+---
+
+## 27. Sistem Otomatisasi CRM dengan Pembatasan Harian & Siklus 1 Menit (Selesai)
+
+Kami telah mengubah sistem pengiriman pesan CRM agar 100% aman dari ancaman pemblokiran (banned) WhatsApp serta batas waktu serverless (timeout) di akun Vercel Hobby Anda.
+
+### Perubahan Teknis yang Dilakukan:
+1. **Logika Siklus 1 Pesan per Run (Single Message Loop):**
+   - Menghapus perulangan penundaan yang lama di backend. Sekarang, setiap kali cron job berjalan, server hanya memproses dan mengirimkan **1 pesan** teratas dari antrean.
+   - Mengurangi durasi eksekusi serverless menjadi kurang dari 1 detik (sangat aman dari limit timeout 10 detik di Vercel Hobby).
+2. **Kontrol Batas Harian Otomatis (Daily Quota Enforcement):**
+   - Menambahkan pemeriksaan kuota harian dinamis menggunakan zona waktu Jakarta (**Asia/Jakarta**).
+   - Sistem akan menghitung jumlah pesan yang sudah sukses terkirim hari ini. Jika jumlahnya telah mencapai atau melebihi batas harian yang diatur di dashboard (misalnya **50** pesan per hari), cron akan langsung berhenti (*exit early*) tanpa melakukan pengiriman baru.
+3. **Pembaruan Panduan di UI Pengaturan:**
+   - Memperbarui teks petunjuk pada menu **Pengaturan > WhatsApp** di dashboard. Informasi cron sekarang memandu Owner untuk mendaftarkan URL & token Authorization di **cron-job.org** dengan setelan frekuensi **setiap 1 menit**.
+
+### Rekomendasi Setelan di cron-job.org:
+1. Daftarkan URL & header token Authorization Anda di **cron-job.org** (gratis).
+2. Atur jadwal ke **Every 1 minute** (Setiap 1 menit).
+3. **Hasil Riil**: Sistem akan mengirimkan tepat 1 pesan setiap menit. Dalam waktu 50 menit pertama, kuota 50 pesan harian Anda akan terkirim dengan jeda yang sangat aman dan alami (1 menit antar pesan). Setelah kuota 50 tercapai, pemicu cron berikutnya akan langsung berhenti otomatis hingga berganti hari berikutnya.
+

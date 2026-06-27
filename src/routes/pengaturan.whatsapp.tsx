@@ -1459,7 +1459,7 @@ function WhatsAppPage() {
                     <div className="text-slate-400 dark:text-slate-500 break-all">Header: Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
                   </div>
                   <p className="text-[9px] text-muted-foreground leading-normal">
-                    Cron Vercel untuk CRM berjalan otomatis setiap hari pukul **10:00 WIB** pagi (mengirim pesan pending yang telah jatuh tempo).
+                    Cron bawaan Vercel berjalan harian, namun karena batasan Vercel Hobby (10 detik), disarankan mendaftarkan URL & Header di atas ke **cron-job.org** dengan frekuensi **setiap 1 menit** (mengirim 1 pesan per menit secara bertahap hingga batas kuota harian tercapai) agar pengiriman aman dari spam & server tidak timeout.
                   </p>
                   
                   <div className="border-t pt-3 mt-1 space-y-2">

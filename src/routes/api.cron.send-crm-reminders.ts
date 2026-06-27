@@ -71,7 +71,27 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          // 5. Fetch pending reminders due today or earlier (capped by maxDailyLimit)
+          // 5. Check daily quota limits (based on Asia/Jakarta timezone)
+          const quotaRes = await pool.query(`
+            SELECT COUNT(*)::int as sent_today
+            FROM crm_reminders
+            WHERE status = 'sent'
+              AND (sent_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Jakarta')::date = (NOW() AT TIME ZONE 'Asia/Jakarta')::date
+          `);
+          const sentToday = quotaRes.rows[0].sent_today || 0;
+
+          if (sentToday >= dailyLimit) {
+            await pool.end();
+            return new Response(JSON.stringify({ 
+              message: `Daily limit reached. ${sentToday}/${dailyLimit} reminders already sent today (Asia/Jakarta).`, 
+              count: 0 
+            }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+
+          // 6. Fetch oldest 1 pending reminder due today or earlier
           const remindersRes = await pool.query(`
             SELECT r.id, r.order_id, r.customer_name, r.customer_phone, r.honey_type, o.created_at as last_order_date
             FROM crm_reminders r
@@ -79,8 +99,8 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             WHERE r.status = 'pending' 
               AND r.scheduled_for <= CURRENT_DATE
             ORDER BY r.scheduled_for ASC
-            LIMIT $1
-          `, [dailyLimit]);
+            LIMIT 1
+          `);
 
           const pendingReminders = remindersRes.rows;
           if (pendingReminders.length === 0) {
@@ -91,8 +111,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          console.log(`[Cron CRM] Found ${pendingReminders.length} pending reminders to process.`);
-
+          const reminder = pendingReminders[0];
           const results = [];
           const headers: Record<string, string> = { 'Content-Type': 'application/json' };
           if (apiKey) {
@@ -153,18 +172,13 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             }
           };
 
-          // Default template fallback
           const defaultTemplate = `Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`;
           const template = crmTemplate || defaultTemplate;
 
-          // 6. Process each reminder
-          for (const reminder of pendingReminders) {
-            if (!reminder.customer_phone) {
-              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Nomor HP kosong', updated_at = now() WHERE id = $1", [reminder.id]);
-              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SKIPPED', reason: 'Phone number is empty' });
-              continue;
-            }
-
+          if (!reminder.customer_phone) {
+            await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Nomor HP kosong', updated_at = now() WHERE id = $1", [reminder.id]);
+            results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SKIPPED', reason: 'Phone number is empty' });
+          } else {
             const formattedMessage = template
               .replace(/{customer_name}/g, reminder.customer_name || '')
               .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
@@ -173,24 +187,19 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             const success = await sendMessage(reminder.customer_phone, formattedMessage);
 
             if (success) {
-              // Update status in crm_reminders
               await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1", [reminder.id]);
               results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS' });
             } else {
-              // Log failure error
               await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Gagal mengirim dari gateway WAHA', updated_at = now() WHERE id = $1", [reminder.id]);
               results.push({ id: reminder.id, customer: reminder.customer_name, status: 'FAILED' });
             }
-
-            // Anti-spam delay between messages
-            await new Promise(resolve => setTimeout(resolve, 1500));
           }
 
           await pool.end();
 
           return new Response(JSON.stringify({ 
-            message: 'CRM Auto-Reminders cron execution completed', 
-            processed: pendingReminders.length,
+            message: 'CRM Auto-Reminders cron execution completed (single message)', 
+            processed: 1,
             results 
           }), {
             status: 200,
