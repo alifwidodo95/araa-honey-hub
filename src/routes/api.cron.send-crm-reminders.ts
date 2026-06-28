@@ -50,6 +50,21 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
+          // 3.5. Enforce working hours (09:00 WIB to 20:00 WIB)
+          const nowJakarta = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+          const currentHour = nowJakarta.getHours();
+          
+          if (currentHour < 9 || currentHour >= 20) {
+            await pool.end();
+            return new Response(JSON.stringify({ 
+              message: `Outside sending hours. Current Jakarta hour is ${currentHour}. CRM reminders only send between 09:00 WIB and 20:00 WIB.`, 
+              count: 0 
+            }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+
           // 4. Fetch WAHA configuration
           const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
           if (wahaConfigRes.rowCount === 0) {

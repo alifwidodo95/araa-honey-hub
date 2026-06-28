@@ -503,3 +503,9 @@ Kami telah mengubah sistem pengiriman pesan CRM agar 100% aman dari ancaman pemb
 2. Atur jadwal ke **Every 1 minute** (Setiap 1 menit).
 3. **Hasil Riil**: Sistem akan mengirimkan tepat 1 pesan setiap menit. Dalam waktu 50 menit pertama, kuota 50 pesan harian Anda akan terkirim dengan jeda yang sangat aman dan alami (1 menit antar pesan). Setelah kuota 50 tercapai, pemicu cron berikutnya akan langsung berhenti otomatis hingga berganti hari berikutnya.
 
+### 4. Proteksi Jam Operasional Kirim (Membatasi Waktu Kirim Malam Hari)
+- Menambahkan aturan jam operasional di backend: pesan CRM **hanya boleh dikirim antara pukul 09:00 WIB s.d. 20:00 WIB**.
+- Pemicu cron yang masuk di luar jam tersebut (misalnya jam 00:00 malam hingga 08:59 pagi) akan langsung dihentikan secara otomatis (*exit early*) tanpa memproses atau mengirim pesan ke pelanggan.
+- Hal ini mencegah antrean kuota harian yang baru saja di-reset pada tengah malam langsung terkirim secara serentak di waktu istirahat malam pelanggan.
+
+
