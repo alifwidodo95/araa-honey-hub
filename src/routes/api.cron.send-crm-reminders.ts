@@ -168,7 +168,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
                   text
                 })
               });
-              if (res.ok) return true;
+              if (res.ok) return { success: true };
 
               // Fallback
               const fallbackRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
@@ -180,10 +180,13 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
                   text
                 })
               });
-              return fallbackRes.ok;
-            } catch (err) {
+              if (fallbackRes.ok) return { success: true };
+              
+              const errText = await fallbackRes.text().catch(() => '');
+              return { success: false, error: `WAHA returned status ${fallbackRes.status || fallbackRes.statusText}: ${errText}` };
+            } catch (err: any) {
               console.error('[Cron CRM] Error sending message via WAHA:', err);
-              return false;
+              return { success: false, error: err.message || 'Connection failed' };
             }
           };
 
@@ -199,14 +202,22 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
               .replace(/{last_order_date}/g, formatDateIndo(reminder.last_order_date) || '');
 
-            const success = await sendMessage(reminder.customer_phone, formattedMessage);
+            const sendResult = await sendMessage(reminder.customer_phone, formattedMessage);
 
-            if (success) {
+            if (sendResult.success) {
               await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1", [reminder.id]);
               results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS' });
             } else {
-              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Gagal mengirim dari gateway WAHA', updated_at = now() WHERE id = $1", [reminder.id]);
-              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'FAILED' });
+              // WAHA Gateway/Session Error - DO NOT change status to failed.
+              // Leave it as pending so it can be retried once WAHA is back online.
+              await pool.end();
+              return new Response(JSON.stringify({ 
+                error: `WAHA Gateway Error: ${sendResult.error}. Reminder left as pending for retry.`,
+                results: [{ id: reminder.id, customer: reminder.customer_name, status: 'GATEWAY_ERROR', reason: sendResult.error }]
+              }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' },
+              });
             }
           }
 
