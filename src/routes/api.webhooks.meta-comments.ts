@@ -109,8 +109,8 @@ ${system_instruction}
                   commentId = val.comment_id;
                   postId = val.post_id;
                   parentId = val.parent_id === val.post_id ? null : val.parent_id;
-                  username = val.sender_name || 'User Facebook';
-                  senderId = String(val.sender_id || '');
+                  username = val.from?.name || val.sender_name || 'User Facebook';
+                  senderId = String(val.from?.id || val.sender_id || '');
                   message = val.message || '';
                   channel = 'facebook';
                   createdAt = new Date(val.created_time * 1000);
