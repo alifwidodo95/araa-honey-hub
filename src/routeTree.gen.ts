@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WhatsappAiRouteImport } from './routes/whatsapp-ai'
 import { Route as ReturRouteImport } from './routes/retur'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PenjualanRouteImport } from './routes/penjualan'
 import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pribadi'
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
@@ -50,6 +51,11 @@ const WhatsappAiRoute = WhatsappAiRouteImport.update({
 const ReturRoute = ReturRouteImport.update({
   id: '/retur',
   path: '/retur',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PenjualanRoute = PenjualanRouteImport.update({
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
+  '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -249,6 +256,7 @@ export interface FileRoutesByTo {
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
+  '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -284,6 +292,7 @@ export interface FileRoutesById {
   '/pengeluaran': typeof PengeluaranRoute
   '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
+  '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -320,6 +329,7 @@ export interface FileRouteTypes {
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
+    | '/privacy'
     | '/retur'
     | '/whatsapp-ai'
     | '/api/telegram-webhook'
@@ -354,6 +364,7 @@ export interface FileRouteTypes {
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
+    | '/privacy'
     | '/retur'
     | '/whatsapp-ai'
     | '/api/telegram-webhook'
@@ -388,6 +399,7 @@ export interface FileRouteTypes {
     | '/pengeluaran'
     | '/pengeluaran-pribadi'
     | '/penjualan'
+    | '/privacy'
     | '/retur'
     | '/whatsapp-ai'
     | '/api/telegram-webhook'
@@ -423,6 +435,7 @@ export interface RootRouteChildren {
   PengeluaranRoute: typeof PengeluaranRoute
   PengeluaranPribadiRoute: typeof PengeluaranPribadiRoute
   PenjualanRoute: typeof PenjualanRoute
+  PrivacyRoute: typeof PrivacyRoute
   ReturRoute: typeof ReturRoute
   WhatsappAiRoute: typeof WhatsappAiRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
@@ -461,6 +474,13 @@ declare module '@tanstack/react-router' {
       path: '/retur'
       fullPath: '/retur'
       preLoaderRoute: typeof ReturRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/penjualan': {
@@ -687,6 +707,7 @@ const rootRouteChildren: RootRouteChildren = {
   PengeluaranRoute: PengeluaranRoute,
   PengeluaranPribadiRoute: PengeluaranPribadiRoute,
   PenjualanRoute: PenjualanRoute,
+  PrivacyRoute: PrivacyRoute,
   ReturRoute: ReturRoute,
   WhatsappAiRoute: WhatsappAiRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
