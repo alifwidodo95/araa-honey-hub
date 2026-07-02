@@ -126,13 +126,29 @@ function Page() {
     queryFn: async () => {
       const startIso = `${startDate}T00:00:00Z`;
       const endIso = `${endDate}T23:59:59Z`;
-      return (await supabase
-        .from("orders")
-        .select("*")
-        .eq("returned", false)
-        .gte("created_at", startIso)
-        .lte("created_at", endIso)
-      ).data ?? [];
+      
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      
+      while (true) {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("returned", false)
+          .gte("created_at", startIso)
+          .lte("created_at", endIso)
+          .range(from, from + step - 1);
+          
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        
+        allData = [...allData, ...data];
+        if (data.length < step) break;
+        from += step;
+      }
+      
+      return allData;
     },
   });
 
