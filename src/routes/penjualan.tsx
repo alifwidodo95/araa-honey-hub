@@ -160,9 +160,19 @@ const parseProductString = (
       const sizeId = detectedSize.id;
       const unitPrice = Number(retailPrices?.find((r) => r.size_id === sizeId && r.honey_type === currentVariant)?.price ?? 0);
       
+      // Detect quantity from product part text (e.g. (1 PCS), 2x, x2), default to 1
+      let itemQty = 1;
+      const pcsMatch = partUpper.match(/\((\d+)\s*PCS\s*\)/i);
+      const xMatch = partUpper.match(/\b(\d+)\s*X\b/i) || partUpper.match(/\bX\s*(\d+)\b/i);
+      if (pcsMatch) {
+        itemQty = Number(pcsMatch[1]);
+      } else if (xMatch) {
+        itemQty = Number(xMatch[1]);
+      }
+
       parsedItems.push({
         size_id: sizeId,
-        qty: packageQty,
+        qty: itemQty,
         unit_price: unitPrice,
         honey_type: currentVariant,
         size_name: detectedSize.name
