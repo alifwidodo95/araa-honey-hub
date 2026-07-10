@@ -925,6 +925,10 @@ function Page() {
                 onValueChange={(v) => { 
                   const nextChannel = v as Channel;
                   setChannel(nextChannel); 
+                  if (nextChannel === "offline") {
+                    setTrackingNumber("");
+                    setExpedition("-");
+                  }
                   setItems(items.map(it => ({ 
                     ...it, 
                     unit_price: nextChannel === "reseller" && tierId
@@ -1013,40 +1017,44 @@ function Page() {
                 <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
               </div>
             )}
-            <div className="space-y-1">
-              <Label>No. Resi</Label>
-              <Input 
-                value={trackingNumber} 
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setTrackingNumber(val);
-                  const detected = detectCourier(val);
-                  if (detected) {
-                    setExpedition(detected);
-                  }
-                }} 
-                placeholder="Nomor resi pengiriman" 
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Ekspedisi</Label>
-              <Select value={expedition} onValueChange={setExpedition}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih Ekspedisi" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="-">— Tidak Ada / Lainnya —</SelectItem>
-                  <SelectItem value="ID EXPRESS">ID EXPRESS</SelectItem>
-                  <SelectItem value="SPX">SPX</SelectItem>
-                  <SelectItem value="JNE">JNE</SelectItem>
-                  <SelectItem value="J&T">J&T</SelectItem>
-                  <SelectItem value="LION PARCEL">LION PARCEL</SelectItem>
-                  <SelectItem value="SICEPAT">SICEPAT</SelectItem>
-                  <SelectItem value="ANTERAJA">ANTERAJA</SelectItem>
-                  <SelectItem value="SAP EXPRESS">SAP EXPRESS</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {channel !== "offline" && (
+              <>
+                <div className="space-y-1">
+                  <Label>No. Resi</Label>
+                  <Input 
+                    value={trackingNumber} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTrackingNumber(val);
+                      const detected = detectCourier(val);
+                      if (detected) {
+                        setExpedition(detected);
+                      }
+                    }} 
+                    placeholder="Nomor resi pengiriman" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Ekspedisi</Label>
+                  <Select value={expedition} onValueChange={setExpedition}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih Ekspedisi" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="-">— Tidak Ada / Lainnya —</SelectItem>
+                      <SelectItem value="ID EXPRESS">ID EXPRESS</SelectItem>
+                      <SelectItem value="SPX">SPX</SelectItem>
+                      <SelectItem value="JNE">JNE</SelectItem>
+                      <SelectItem value="J&T">J&T</SelectItem>
+                      <SelectItem value="LION PARCEL">LION PARCEL</SelectItem>
+                      <SelectItem value="SICEPAT">SICEPAT</SelectItem>
+                      <SelectItem value="ANTERAJA">ANTERAJA</SelectItem>
+                      <SelectItem value="SAP EXPRESS">SAP EXPRESS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="space-y-1">
               <Label>Metode Pembayaran</Label>
               <Select 
