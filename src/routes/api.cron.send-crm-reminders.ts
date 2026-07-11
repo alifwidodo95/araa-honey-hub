@@ -155,10 +155,13 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             return `${day} ${months[monthIdx]} ${year}`;
           };
 
-          // Helper to send message via WAHA
+          // Helper to send message via WAHA with 6 seconds timeout to prevent Vercel function timeout
           const sendMessage = async (to: string, text: string) => {
             const chatId = formatPhoneNumber(to);
             try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 6000);
+
               const res = await fetch(`${wahaUrl}/api/sendText`, {
                 method: 'POST',
                 headers,
@@ -166,11 +169,16 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
                   session: sessionName,
                   chatId,
                   text
-                })
+                }),
+                signal: controller.signal
               });
+              clearTimeout(timeoutId);
               if (res.ok) return { success: true };
 
               // Fallback
+              const fallbackController = new AbortController();
+              const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 6000);
+
               const fallbackRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
                 method: 'POST',
                 headers,
@@ -178,15 +186,17 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
                   session: sessionName,
                   chatId,
                   text
-                })
+                }),
+                signal: fallbackController.signal
               });
+              clearTimeout(fallbackTimeoutId);
               if (fallbackRes.ok) return { success: true };
               
               const errText = await fallbackRes.text().catch(() => '');
               return { success: false, error: `WAHA returned status ${fallbackRes.status || fallbackRes.statusText}: ${errText}` };
             } catch (err: any) {
               console.error('[Cron CRM] Error sending message via WAHA:', err);
-              return { success: false, error: err.message || 'Connection failed' };
+              return { success: false, error: err.name === 'AbortError' ? 'Request timed out after 6 seconds' : (err.message || 'Connection failed') };
             }
           };
 
