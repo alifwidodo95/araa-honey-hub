@@ -246,7 +246,28 @@ function Page() {
                     />
                   </TableCell>
                   <TableCell>{it.unit}</TableCell>
-                  <TableCell>{formatIDR(it.avg_cost)}</TableCell>
+                  <TableCell>
+                    <Input
+                      key={`${it.id}-${it.avg_cost}`}
+                      type="number"
+                      step="1"
+                      defaultValue={Number(it.avg_cost || 0)}
+                      onBlur={async (e) => {
+                        const val = Number(e.target.value);
+                        if (val === Number(it.avg_cost)) return;
+                        const { error } = await supabase
+                          .from("packaging_items")
+                          .update({ avg_cost: val } as any)
+                          .eq("id", it.id);
+                        if (error) toast.error("Gagal memperbarui HPP rata-rata: " + error.message);
+                        else {
+                          toast.success(`HPP rata-rata ${it.name} diperbarui ke ${formatIDR(val)}`);
+                          qc.invalidateQueries({ queryKey: ["pkg"] });
+                        }
+                      }}
+                      className="w-24 h-8 text-center font-semibold"
+                    />
+                  </TableCell>
                   <TableCell>
                     <Input
                       key={`${it.id}-${it.min_stock}`}
