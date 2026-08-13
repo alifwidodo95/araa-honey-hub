@@ -1174,6 +1174,7 @@ function WhatsAppPage() {
                     variant={
                       sessionStatus === "WORKING" ? "success" : 
                       sessionStatus === "SCAN_QR" ? "warning" : 
+                      sessionStatus === "STARTING" ? "secondary" :
                       "destructive"
                     }
                   >
@@ -1198,31 +1199,36 @@ function WhatsAppPage() {
                       <QrCode className="w-4 h-4 text-amber-500 flex-shrink-0" />
                       <span>Sesi berjalan. Silakan scan QR Code di samping menggunakan fitur 'Perangkat Tertaut' WA HP Anda.</span>
                     </>
+                  ) : sessionStatus === "STARTING" ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+                      <span>Sesi WhatsApp sedang dimulai. Silakan tunggu beberapa detik hingga QR Code muncul...</span>
+                    </>
                   ) : (
                     <>
                       <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-                      <span>Sesi WAHA berhenti atau tidak terhubung. Jalankan sesi terlebih dahulu.</span>
+                      <span>Sesi WAHA berhenti atau tidak terhubung. Klik 'Mulai Sesi WhatsApp' di bawah untuk menyalakan.</span>
                     </>
                   )}
                 </div>
 
                 <div className="flex gap-2">
-                  {sessionStatus === "STOPPED" || sessionStatus === "DISCONNECTED" ? (
-                    <Button 
-                      onClick={handleStartSession} 
-                      disabled={actionLoading || loadingStatus}
-                      className="w-full bg-honey hover:bg-honey-dark text-honey-foreground"
-                    >
-                      {actionLoading ? "Menghubungkan..." : "Mulai Sesi WhatsApp"}
-                    </Button>
-                  ) : (
+                  {sessionStatus === "WORKING" || sessionStatus === "SCAN_QR" ? (
                     <Button 
                       variant="destructive"
                       onClick={handleStopSession} 
                       disabled={actionLoading}
                       className="w-full"
                     >
-                      {actionLoading ? "Mematikan..." : "Putuskan Sesi WhatsApp"}
+                      {actionLoading ? "Mengeluarkan Sesi..." : "Putuskan Sesi WhatsApp"}
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={handleStartSession} 
+                      disabled={actionLoading || loadingStatus}
+                      className="w-full bg-honey hover:bg-honey-dark text-honey-foreground font-bold"
+                    >
+                      {actionLoading ? "Menghubungkan..." : "Mulai Sesi WhatsApp (Munculkan QR Code)"}
                     </Button>
                   )}
                   
@@ -1231,6 +1237,7 @@ function WhatsAppPage() {
                     size="icon" 
                     onClick={() => checkSessionStatus()}
                     disabled={loadingStatus}
+                    title="Refresh Status"
                   >
                     <RefreshCw className={`w-4 h-4 ${loadingStatus ? "animate-spin" : ""}`} />
                   </Button>
