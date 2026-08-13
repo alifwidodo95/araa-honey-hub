@@ -615,29 +615,38 @@ function WhatsAppPage() {
     }
   };
 
-  // Stop WAHA Session
+  // Stop & Logout WAHA Session (wipes session cache to force a fresh QR Code)
   const handleStopSession = async () => {
-    if (!confirm("Apakah Anda yakin ingin menghentikan sesi WhatsApp ini?")) return;
+    if (!confirm("Apakah Anda yakin ingin mengeluarkan sesi WhatsApp ini? (Sesi akan di-logout total dan memerlukan scan QR baru)")) return;
     setActionLoading(true);
     try {
       const res = await fetch("/api/waha-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions/stop`,
+          url: `${wahaUrl}/api/sessions/${sessionName}/logout`,
           method: "POST",
-          headers: getWahaHeaders(),
-          body: { name: sessionName }
+          headers: getWahaHeaders()
         })
       });
       const data = await safeJson(res);
       if (!res.ok) {
-        throw new Error(data.message || "Gagal menghentikan sesi.");
+        // Fallback to /api/sessions/logout
+        await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sessions/logout`,
+            method: "POST",
+            headers: getWahaHeaders(),
+            body: { name: sessionName }
+          })
+        });
       }
-      toast.success("Sesi berhasil dihentikan.");
+      toast.success("Sesi WhatsApp berhasil dikeluarkan. Silakan klik Mulai Sesi untuk scan QR baru.");
       setSessionStatus("STOPPED");
     } catch (err: any) {
-      toast.error(err.message || "Gagal menghentikan sesi.");
+      toast.error(err.message || "Gagal mengeluarkan sesi.");
     } finally {
       setActionLoading(false);
     }
