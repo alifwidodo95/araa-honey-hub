@@ -91,11 +91,25 @@ function DashboardPage() {
     queryKey: ["dashboard-month-return-stats", currentMonthKey],
     queryFn: async () => {
       const startDate = `${currentMonthKey}-01T00:00:00Z`;
-      const { data } = await supabase
-        .from("orders")
-        .select("returned")
-        .gte("created_at", startDate);
-      const orders = data ?? [];
+      let orders: any[] = [];
+      let from = 0;
+      const step = 1000;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("returned")
+          .gte("created_at", startDate)
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        orders = [...orders, ...data];
+        if (data.length < step) break;
+        from += step;
+      }
+
       const total = orders.length;
       const returned = orders.filter((o) => o.returned).length;
       const rate = total > 0 ? (returned / total) * 100 : 0;

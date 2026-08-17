@@ -125,7 +125,7 @@ function Page() {
 
   const selectedMonthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
 
-  // Cohort Return Statistics Query (Based on order created_at month)
+  // Cohort Return Statistics Query (Based on order created_at month - Full pagination)
   const { data: cohortStats, isLoading: loadingCohort } = useQuery({
     queryKey: ["cohort-return-stats", selectedMonth],
     queryFn: async () => {
@@ -134,14 +134,25 @@ function Page() {
       const lastDay = new Date(y, m, 0).getDate();
       const endDate = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59.999Z`;
 
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, returned, subtotal_gross, cogs_total, expedition")
-        .gte("created_at", startDate)
-        .lte("created_at", endDate);
+      let orders: any[] = [];
+      let from = 0;
+      const step = 1000;
 
-      if (error) throw error;
-      const orders = data || [];
+      while (true) {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("id, returned, subtotal_gross, cogs_total, expedition")
+          .gte("created_at", startDate)
+          .lte("created_at", endDate)
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        orders = [...orders, ...data];
+        if (data.length < step) break;
+        from += step;
+      }
       const totalOrders = orders.length;
       const returnedOrders = orders.filter((o: any) => o.returned).length;
       const deliveredOrders = totalOrders - returnedOrders;
