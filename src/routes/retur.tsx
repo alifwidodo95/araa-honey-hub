@@ -10,8 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { formatIDR } from "@/lib/theme";
-import { Search, RotateCcw, AlertTriangle, CheckCircle2, HelpCircle, Trash2 } from "lucide-react";
+import { 
+  Search, RotateCcw, AlertTriangle, CheckCircle2, HelpCircle, Trash2, 
+  TrendingDown, TrendingUp, PackageCheck, PackageX, Truck, Calendar, DollarSign, Percent, ShieldCheck, ChevronDown, ChevronUp
+} from "lucide-react";
 
 export const Route = createFileRoute("/retur")({ component: () => <RequireAuth><Page /></RequireAuth> });
 
@@ -101,6 +103,84 @@ function Page() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Cohort Return Analysis States
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
+  const [showExpeditionDetails, setShowExpeditionDetails] = useState(false);
+
+  const monthsIndo = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = `${monthsIndo[d.getMonth()]} ${d.getFullYear()}`;
+    return { value: val, label };
+  });
+
+  const selectedMonthLabel = monthOptions.find((m) => m.value === selectedMonth)?.label || selectedMonth;
+
+  // Cohort Return Statistics Query (Based on order created_at month)
+  const { data: cohortStats, isLoading: loadingCohort } = useQuery({
+    queryKey: ["cohort-return-stats", selectedMonth],
+    queryFn: async () => {
+      const [y, m] = selectedMonth.split("-").map(Number);
+      const startDate = `${selectedMonth}-01T00:00:00.000Z`;
+      const lastDay = new Date(y, m, 0).getDate();
+      const endDate = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59.999Z`;
+
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id, returned, subtotal_gross, cogs_total, expedition")
+        .gte("created_at", startDate)
+        .lte("created_at", endDate);
+
+      if (error) throw error;
+      const orders = data || [];
+      const totalOrders = orders.length;
+      const returnedOrders = orders.filter((o: any) => o.returned).length;
+      const deliveredOrders = totalOrders - returnedOrders;
+      const returnRate = totalOrders > 0 ? (returnedOrders / totalOrders) * 100 : 0;
+      const totalGross = orders.reduce((sum: number, o: any) => sum + (Number(o.subtotal_gross) || 0), 0);
+      const returnedGross = orders.filter((o: any) => o.returned).reduce((sum: number, o: any) => sum + (Number(o.subtotal_gross) || 0), 0);
+      const returnedCogs = orders.filter((o: any) => o.returned).reduce((sum: number, o: any) => sum + (Number(o.cogs_total) || 0), 0);
+
+      // Group by courier / expedition
+      const expMap: Record<string, { courier: string; total: number; returned: number }> = {};
+      orders.forEach((o: any) => {
+        const courier = (o.expedition || "").trim() || "Lainnya";
+        if (!expMap[courier]) {
+          expMap[courier] = { courier, total: 0, returned: 0 };
+        }
+        expMap[courier].total += 1;
+        if (o.returned) {
+          expMap[courier].returned += 1;
+        }
+      });
+
+      const expeditionBreakdown = Object.values(expMap)
+        .map((item) => ({
+          ...item,
+          returnRate: item.total > 0 ? (item.returned / item.total) * 100 : 0,
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      return {
+        totalOrders,
+        returnedOrders,
+        deliveredOrders,
+        returnRate,
+        totalGross,
+        returnedGross,
+        returnedCogs,
+        expeditionBreakdown,
+      };
+    },
+  });
 
   // Fetch WAHA Config from Supabase database for follow-up message sending
   const { data: wahaConfig } = useQuery({
@@ -276,12 +356,206 @@ function Page() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div>
-        <h2 className="text-2xl font-semibold">Pencatatan Barang Retur</h2>
-        <p className="text-sm text-muted-foreground">
-          Proses pesanan retur (gagal COD/kirim) berdasarkan nomor resi. Stok madu akan dikembalikan ke dandang, dan kemasan luar (kardus/bubble) dianggap rusak otomatis.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold flex items-center gap-2">
+            <RotateCcw className="h-6 w-6 text-rose-500" />
+            Pencatatan & Analisis Retur
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Pantau persentase retur bulanan (Metode Cohort) dan proses pesanan retur fisik masuk ke gudang.
+          </p>
+        </div>
+
+        {/* Month Selector for Cohort Analysis */}
+        <div className="flex items-center gap-2 bg-card p-1.5 rounded-xl border shadow-xs self-start sm:self-auto">
+          <Calendar className="h-4 w-4 text-muted-foreground ml-2" />
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="w-[180px] h-9 border-none shadow-none focus:ring-0">
+              <SelectValue placeholder="Pilih Bulan" />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {/* Widget Analisis Retur Bulanan (Metode Cohort) */}
+      <Card className="border-muted/60 shadow-xs overflow-hidden bg-gradient-to-br from-card via-card to-rose-500/[0.02]">
+        <CardHeader className="pb-3 border-b border-muted/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <Percent className="w-4 h-4" />
+              </div>
+              Statistik Retur Batch: {selectedMonthLabel}
+            </CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              Metode Cohort: Dihitung berdasarkan tanggal order terbit di bulan {selectedMonthLabel} (bukan tanggal fisik retur sampai).
+            </CardDescription>
+          </div>
+
+          {cohortStats && (
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {cohortStats.returnRate < 8 ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Kondisi Sehat (&lt;8%)
+                </span>
+              ) : cohortStats.returnRate <= 15 ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Kondisi Normal (8-15%)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 animate-pulse">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Waspada: Retur Tinggi (&gt;15%)
+                </span>
+              )}
+            </div>
+          )}
+        </CardHeader>
+
+        <CardContent className="pt-5 space-y-5">
+          {loadingCohort ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">Memuat statistik retur bulan {selectedMonthLabel}...</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* 1. Total Order Dikirim */}
+                <div className="p-4 rounded-xl bg-card border border-muted/50 space-y-1 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Total Order Dikirim</span>
+                    <Truck className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div className="text-2xl font-bold">{cohortStats?.totalOrders.toLocaleString("id-ID") ?? 0}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Omzet Terbit: {formatIDR(cohortStats?.totalGross ?? 0)}
+                  </div>
+                </div>
+
+                {/* 2. Order Sukses Terkirim */}
+                <div className="p-4 rounded-xl bg-card border border-muted/50 space-y-1 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Sukses Diterima (Delivered)</span>
+                    <PackageCheck className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {cohortStats?.deliveredOrders.toLocaleString("id-ID") ?? 0}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Tingkat Sukses: {cohortStats && cohortStats.totalOrders > 0 ? ((cohortStats.deliveredOrders / cohortStats.totalOrders) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+
+                {/* 3. Total Retur & Persentase */}
+                <div className="p-4 rounded-xl bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/20 space-y-1 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    <span>Tingkat Retur (RTS Rate)</span>
+                    <PackageX className="w-4 h-4 text-rose-500" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-extrabold text-rose-600 dark:text-rose-400">
+                      {cohortStats?.returnRate.toFixed(2) ?? 0}%
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({cohortStats?.returnedOrders ?? 0} paket)
+                    </span>
+                  </div>
+                  {/* Progress bar visual */}
+                  <div className="w-full bg-muted/60 h-1.5 rounded-full overflow-hidden mt-2">
+                    <div 
+                      className={`h-full rounded-full transition-all ${
+                        (cohortStats?.returnRate ?? 0) < 8 
+                          ? "bg-emerald-500" 
+                          : (cohortStats?.returnRate ?? 0) <= 15 
+                          ? "bg-amber-500" 
+                          : "bg-rose-500"
+                      }`}
+                      style={{ width: `${Math.min(cohortStats?.returnRate ?? 0, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Dampak Finansial Retur */}
+                <div className="p-4 rounded-xl bg-card border border-muted/50 space-y-1 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Omzet Retur (Batal)</span>
+                    <DollarSign className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    {formatIDR(cohortStats?.returnedGross ?? 0)}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Beban HPP Produk: {formatIDR(cohortStats?.returnedCogs ?? 0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Rincian per Ekspedisi (Collapsible) */}
+              {cohortStats && cohortStats.expeditionBreakdown.length > 0 && (
+                <div className="pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowExpeditionDetails(!showExpeditionDetails)}
+                    className="w-full justify-between text-xs font-semibold text-muted-foreground hover:text-foreground border border-muted/40 h-8 px-3 rounded-lg"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5 text-muted-foreground" />
+                      Rincian Persentase Retur per Ekspedisi / Kurir ({cohortStats.expeditionBreakdown.length} kurir)
+                    </span>
+                    {showExpeditionDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </Button>
+
+                  {showExpeditionDetails && (
+                    <div className="mt-3 rounded-xl border border-muted/50 overflow-hidden shadow-2xs bg-card">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30 text-xs">
+                            <TableHead className="py-2">Ekspedisi</TableHead>
+                            <TableHead className="py-2 text-right">Total Kirim</TableHead>
+                            <TableHead className="py-2 text-right">Sukses</TableHead>
+                            <TableHead className="py-2 text-right">Retur</TableHead>
+                            <TableHead className="py-2 text-right font-bold">% Retur</TableHead>
+                            <TableHead className="py-2 text-center">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cohortStats.expeditionBreakdown.map((exp: any) => (
+                            <TableRow key={exp.courier} className="text-xs">
+                              <TableCell className="font-semibold py-2.5">{exp.courier}</TableCell>
+                              <TableCell className="text-right py-2.5">{exp.total.toLocaleString("id-ID")}</TableCell>
+                              <TableCell className="text-right py-2.5 text-emerald-600 font-medium">{(exp.total - exp.returned).toLocaleString("id-ID")}</TableCell>
+                              <TableCell className="text-right py-2.5 text-rose-600 font-medium">{exp.returned.toLocaleString("id-ID")}</TableCell>
+                              <TableCell className="text-right py-2.5 font-bold">{exp.returnRate.toFixed(2)}%</TableCell>
+                              <TableCell className="text-center py-2.5">
+                                {exp.returnRate < 8 ? (
+                                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-semibold px-2 py-0.5 rounded-full">Sehat</span>
+                                ) : exp.returnRate <= 15 ? (
+                                  <span className="text-[10px] bg-amber-500/10 text-amber-600 font-semibold px-2 py-0.5 rounded-full">Normal</span>
+                                ) : (
+                                  <span className="text-[10px] bg-rose-500/10 text-rose-600 font-semibold px-2 py-0.5 rounded-full">Tinggi</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: search and process form */}

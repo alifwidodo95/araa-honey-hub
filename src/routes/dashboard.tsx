@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { formatIDR } from "@/lib/theme";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, Droplet } from "lucide-react";
+import { AlertTriangle, Droplet, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
 
@@ -86,6 +86,23 @@ function DashboardPage() {
     },
   });
 
+  const currentMonthKey = today.slice(0, 7);
+  const { data: monthReturnStats } = useQuery({
+    queryKey: ["dashboard-month-return-stats", currentMonthKey],
+    queryFn: async () => {
+      const startDate = `${currentMonthKey}-01T00:00:00Z`;
+      const { data } = await supabase
+        .from("orders")
+        .select("returned")
+        .gte("created_at", startDate);
+      const orders = data ?? [];
+      const total = orders.length;
+      const returned = orders.filter((o) => o.returned).length;
+      const rate = total > 0 ? (returned / total) * 100 : 0;
+      return { total, returned, rate };
+    },
+  });
+
   const omzetToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.subtotal_gross), 0);
   const netToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.net_revenue), 0);
 
@@ -120,7 +137,7 @@ function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <MetricCard label="Saldo Madu Dandang" value={`${Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg`} />
         <MetricCard label="Order Hari Ini" value={String(ordersToday?.length ?? 0)} />
         {hasPermission("keuangan") ? (
@@ -134,6 +151,25 @@ function DashboardPage() {
             <MetricCard label="Status" value="Operasional" accent />
           </>
         )}
+        <MetricCard 
+          label="Retur Bulan Ini" 
+          value={`${(monthReturnStats?.rate ?? 0).toFixed(1)}%`}
+          subValue={`${monthReturnStats?.returned ?? 0} dari ${monthReturnStats?.total ?? 0} order`}
+          badge={
+            (monthReturnStats?.rate ?? 0) < 8 
+              ? "Sehat" 
+              : (monthReturnStats?.rate ?? 0) <= 15 
+              ? "Normal" 
+              : "Waspada"
+          }
+          badgeColor={
+            (monthReturnStats?.rate ?? 0) < 8 
+              ? "emerald" 
+              : (monthReturnStats?.rate ?? 0) <= 15 
+              ? "amber" 
+              : "rose"
+          }
+        />
       </div>
 
       {/* Rincian Madu Keluar Hari Ini */}
@@ -193,12 +229,42 @@ function DashboardPage() {
   );
 }
 
-function MetricCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function MetricCard({ 
+  label, 
+  value, 
+  subValue,
+  badge,
+  badgeColor,
+  accent 
+}: { 
+  label: string; 
+  value: string; 
+  subValue?: string;
+  badge?: string;
+  badgeColor?: "emerald" | "amber" | "rose";
+  accent?: boolean;
+}) {
   return (
     <Card className={accent ? "border-honey/40 bg-honey/5" : ""}>
       <CardContent className="p-5">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+          {badge && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              badgeColor === "emerald" 
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
+                : badgeColor === "amber" 
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" 
+                : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+            }`}>
+              {badge}
+            </span>
+          )}
+        </div>
         <div className="text-2xl font-bold mt-2">{value}</div>
+        {subValue && (
+          <div className="text-[11px] text-muted-foreground mt-1 truncate">{subValue}</div>
+        )}
       </CardContent>
     </Card>
   );
