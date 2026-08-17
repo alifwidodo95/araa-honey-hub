@@ -106,33 +106,6 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          // 6. Fetch oldest 1 pending reminder due today or earlier
-          const remindersRes = await pool.query(`
-            SELECT r.id, r.order_id, r.customer_name, r.customer_phone, r.honey_type, o.created_at as last_order_date
-            FROM crm_reminders r
-            JOIN orders o ON r.order_id = o.id
-            WHERE r.status = 'pending' 
-              AND r.scheduled_for <= CURRENT_DATE
-            ORDER BY r.scheduled_for ASC
-            LIMIT 1
-          `);
-
-          const pendingReminders = remindersRes.rows;
-          if (pendingReminders.length === 0) {
-            await pool.end();
-            return new Response(JSON.stringify({ message: 'No pending CRM reminders to send today', count: 0 }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-
-          const reminder = pendingReminders[0];
-          const results = [];
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (apiKey) {
-            headers['X-Api-Key'] = apiKey;
-          }
-
           // Helper to format phone number
           const formatPhoneNumber = (phone: string): string => {
             let clean = phone.replace(/[^0-9]/g, '');
@@ -142,6 +115,17 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               clean = '62' + clean;
             }
             return `${clean}@c.us`;
+          };
+
+          // Helper to extract just the phone digits for checkNumberStatus
+          const extractPhoneDigits = (phone: string): string => {
+            let clean = phone.replace(/[^0-9]/g, '');
+            if (clean.startsWith('0')) {
+              clean = '62' + clean.slice(1);
+            } else if (clean.startsWith('8')) {
+              clean = '62' + clean;
+            }
+            return clean;
           };
 
           // Helper to format date in Indonesian style
@@ -155,8 +139,32 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             return `${day} ${months[monthIdx]} ${year}`;
           };
 
-          // Helper to send message via WAHA with 6 seconds timeout to prevent Vercel function timeout
-          const sendMessage = async (to: string, text: string) => {
+          const wahaHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (apiKey) {
+            wahaHeaders['X-Api-Key'] = apiKey;
+          }
+
+          // Helper to check if phone number exists on WhatsApp
+          const checkNumberExists = async (phone: string): Promise<boolean> => {
+            try {
+              const phoneDigits = extractPhoneDigits(phone);
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 6000);
+              const res = await fetch(`${wahaUrl}/api/checkNumberStatus?session=${sessionName}&phone=${phoneDigits}`, {
+                headers: wahaHeaders,
+                signal: controller.signal
+              });
+              clearTimeout(timeoutId);
+              if (!res.ok) return true; // If check fails, assume exists and try sending
+              const data = await res.json();
+              return data.numberExists !== false;
+            } catch {
+              return true; // If check errors, assume exists and try sending
+            }
+          };
+
+          // Helper to send message via WAHA with 6 seconds timeout
+          const sendMessage = async (to: string, text: string): Promise<{ success: boolean; error?: string; isNumberError?: boolean }> => {
             const chatId = formatPhoneNumber(to);
             try {
               const controller = new AbortController();
@@ -164,7 +172,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
 
               const res = await fetch(`${wahaUrl}/api/sendText`, {
                 method: 'POST',
-                headers,
+                headers: wahaHeaders,
                 body: JSON.stringify({
                   session: sessionName,
                   chatId,
@@ -175,13 +183,24 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               clearTimeout(timeoutId);
               if (res.ok) return { success: true };
 
-              // Fallback
+              // Check if it's a number-specific error (not a gateway error)
+              const errText = await res.text().catch(() => '');
+              const isNumberError = errText.includes('No LID for user') || 
+                                    errText.includes('number does not exist') ||
+                                    errText.includes('not registered') ||
+                                    errText.includes('invalid phone');
+              
+              if (isNumberError) {
+                return { success: false, error: errText.substring(0, 200), isNumberError: true };
+              }
+
+              // Try fallback endpoint
               const fallbackController = new AbortController();
               const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 6000);
 
               const fallbackRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
                 method: 'POST',
-                headers,
+                headers: wahaHeaders,
                 body: JSON.stringify({
                   session: sessionName,
                   chatId,
@@ -192,8 +211,8 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               clearTimeout(fallbackTimeoutId);
               if (fallbackRes.ok) return { success: true };
               
-              const errText = await fallbackRes.text().catch(() => '');
-              return { success: false, error: `WAHA returned status ${fallbackRes.status || fallbackRes.statusText}: ${errText}` };
+              const fallbackErrText = await fallbackRes.text().catch(() => '');
+              return { success: false, error: `WAHA returned status ${fallbackRes.status}: ${fallbackErrText.substring(0, 200)}` };
             } catch (err: any) {
               console.error('[Cron CRM] Error sending message via WAHA:', err);
               return { success: false, error: err.name === 'AbortError' ? 'Request timed out after 6 seconds' : (err.message || 'Connection failed') };
@@ -203,10 +222,51 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
           const defaultTemplate = `Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`;
           const template = crmTemplate || defaultTemplate;
 
-          if (!reminder.customer_phone) {
-            await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Nomor HP kosong', updated_at = now() WHERE id = $1", [reminder.id]);
-            results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SKIPPED', reason: 'Phone number is empty' });
-          } else {
+          // 6. Fetch oldest pending reminders due today or earlier (batch of 3)
+          const remindersRes = await pool.query(`
+            SELECT r.id, r.order_id, r.customer_name, r.customer_phone, r.honey_type, o.created_at as last_order_date
+            FROM crm_reminders r
+            JOIN orders o ON r.order_id = o.id
+            WHERE r.status = 'pending' 
+              AND r.scheduled_for <= CURRENT_DATE
+            ORDER BY r.scheduled_for ASC
+            LIMIT 3
+          `);
+
+          const pendingReminders = remindersRes.rows;
+          if (pendingReminders.length === 0) {
+            await pool.end();
+            return new Response(JSON.stringify({ message: 'No pending CRM reminders to send today', count: 0 }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+
+          const results = [];
+          let successCount = 0;
+          let gatewayError = false;
+
+          for (const reminder of pendingReminders) {
+            // Check daily quota before each send
+            if ((sentToday + successCount) >= dailyLimit) {
+              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'QUOTA_REACHED' });
+              break;
+            }
+
+            if (!reminder.customer_phone) {
+              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Nomor HP kosong', updated_at = now() WHERE id = $1", [reminder.id]);
+              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SKIPPED', reason: 'Phone number is empty' });
+              continue;
+            }
+
+            // Check if number exists on WhatsApp before sending
+            const numberExists = await checkNumberExists(reminder.customer_phone);
+            if (!numberExists) {
+              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Nomor tidak terdaftar di WhatsApp', updated_at = now() WHERE id = $1", [reminder.id]);
+              results.push({ id: reminder.id, customer: reminder.customer_name, phone: reminder.customer_phone, status: 'SKIPPED', reason: 'Number not registered on WhatsApp' });
+              continue;
+            }
+
             const formattedMessage = template
               .replace(/{customer_name}/g, reminder.customer_name || '')
               .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
@@ -217,25 +277,36 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             if (sendResult.success) {
               await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1", [reminder.id]);
               results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS' });
+              successCount++;
+            } else if (sendResult.isNumberError) {
+              // Number-specific error (e.g., "No LID for user") — mark as failed, move on
+              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = $2, updated_at = now() WHERE id = $1", [reminder.id, (sendResult.error || 'Nomor tidak valid di WhatsApp').substring(0, 500)]);
+              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'FAILED_NUMBER', reason: sendResult.error });
             } else {
-              // WAHA Gateway/Session Error - DO NOT change status to failed.
-              // Leave it as pending so it can be retried once WAHA is back online.
-              await pool.end();
-              return new Response(JSON.stringify({ 
-                error: `WAHA Gateway Error: ${sendResult.error}. Reminder left as pending for retry.`,
-                results: [{ id: reminder.id, customer: reminder.customer_name, status: 'GATEWAY_ERROR', reason: sendResult.error }]
-              }), {
-                status: 502,
-                headers: { 'Content-Type': 'application/json' },
-              });
+              // Actual WAHA Gateway/Session Error — stop processing, leave as pending for retry
+              gatewayError = true;
+              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'GATEWAY_ERROR', reason: sendResult.error });
+              break;
             }
+          }
+
+          if (gatewayError && successCount === 0) {
+            await pool.end();
+            return new Response(JSON.stringify({ 
+              error: `WAHA Gateway Error. Reminders left as pending for retry.`,
+              results
+            }), {
+              status: 502,
+              headers: { 'Content-Type': 'application/json' },
+            });
           }
 
           await pool.end();
 
           return new Response(JSON.stringify({ 
-            message: 'CRM Auto-Reminders cron execution completed (single message)', 
-            processed: 1,
+            message: `CRM Auto-Reminders cron completed. Processed ${pendingReminders.length}, sent ${successCount}.`, 
+            processed: pendingReminders.length,
+            sent: successCount,
             results 
           }), {
             status: 200,
