@@ -17,6 +17,7 @@ import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pri
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
 import { Route as MetaCommentsRouteImport } from './routes/meta-comments'
 import { Route as MetaAdsRouteImport } from './routes/meta-ads'
+import { Route as LoyalitasRouteImport } from './routes/loyalitas'
 import { Route as KeuanganRouteImport } from './routes/keuangan'
 import { Route as ImportRiwayatRouteImport } from './routes/import-riwayat'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -32,6 +33,7 @@ import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumps
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
+import { Route as ApiLoyaltyStatsRouteImport } from './routes/api.loyalty-stats'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api.webhooks.whatsapp'
 import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
 import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-comments'
@@ -81,6 +83,11 @@ const MetaCommentsRoute = MetaCommentsRouteImport.update({
 const MetaAdsRoute = MetaAdsRouteImport.update({
   id: '/meta-ads',
   path: '/meta-ads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoyalitasRoute = LoyalitasRouteImport.update({
+  id: '/loyalitas',
+  path: '/loyalitas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KeuanganRoute = KeuanganRouteImport.update({
@@ -158,6 +165,11 @@ const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   path: '/api/telegram-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLoyaltyStatsRoute = ApiLoyaltyStatsRouteImport.update({
+  id: '/api/loyalty-stats',
+  path: '/api/loyalty-stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
   id: '/api/webhooks/whatsapp',
   path: '/api/webhooks/whatsapp',
@@ -216,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
+  '/loyalitas': typeof LoyalitasRoute
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -224,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
+  '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -251,6 +265,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
+  '/loyalitas': typeof LoyalitasRoute
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -259,6 +274,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
+  '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -287,6 +303,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
+  '/loyalitas': typeof LoyalitasRoute
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -295,6 +312,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
+  '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -324,6 +342,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/import-riwayat'
     | '/keuangan'
+    | '/loyalitas'
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
@@ -332,6 +351,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/retur'
     | '/whatsapp-ai'
+    | '/api/loyalty-stats'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -359,6 +379,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/import-riwayat'
     | '/keuangan'
+    | '/loyalitas'
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
@@ -367,6 +388,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/retur'
     | '/whatsapp-ai'
+    | '/api/loyalty-stats'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -394,6 +416,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/import-riwayat'
     | '/keuangan'
+    | '/loyalitas'
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
@@ -402,6 +425,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/retur'
     | '/whatsapp-ai'
+    | '/api/loyalty-stats'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -430,6 +454,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   ImportRiwayatRoute: typeof ImportRiwayatRoute
   KeuanganRoute: typeof KeuanganRoute
+  LoyalitasRoute: typeof LoyalitasRoute
   MetaAdsRoute: typeof MetaAdsRoute
   MetaCommentsRoute: typeof MetaCommentsRoute
   PengeluaranRoute: typeof PengeluaranRoute
@@ -438,6 +463,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ReturRoute: typeof ReturRoute
   WhatsappAiRoute: typeof WhatsappAiRoute
+  ApiLoyaltyStatsRoute: typeof ApiLoyaltyStatsRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
   ApiWahaProxyRoute: typeof ApiWahaProxyRoute
   PengaturanHargaRoute: typeof PengaturanHargaRoute
@@ -516,6 +542,13 @@ declare module '@tanstack/react-router' {
       path: '/meta-ads'
       fullPath: '/meta-ads'
       preLoaderRoute: typeof MetaAdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/loyalitas': {
+      id: '/loyalitas'
+      path: '/loyalitas'
+      fullPath: '/loyalitas'
+      preLoaderRoute: typeof LoyalitasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/keuangan': {
@@ -623,6 +656,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/loyalty-stats': {
+      id: '/api/loyalty-stats'
+      path: '/api/loyalty-stats'
+      fullPath: '/api/loyalty-stats'
+      preLoaderRoute: typeof ApiLoyaltyStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/whatsapp': {
       id: '/api/webhooks/whatsapp'
       path: '/api/webhooks/whatsapp'
@@ -702,6 +742,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   ImportRiwayatRoute: ImportRiwayatRoute,
   KeuanganRoute: KeuanganRoute,
+  LoyalitasRoute: LoyalitasRoute,
   MetaAdsRoute: MetaAdsRoute,
   MetaCommentsRoute: MetaCommentsRoute,
   PengeluaranRoute: PengeluaranRoute,
@@ -710,6 +751,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ReturRoute: ReturRoute,
   WhatsappAiRoute: WhatsappAiRoute,
+  ApiLoyaltyStatsRoute: ApiLoyaltyStatsRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
   ApiWahaProxyRoute: ApiWahaProxyRoute,
   PengaturanHargaRoute: PengaturanHargaRoute,

@@ -8,12 +8,12 @@ export const Route = createFileRoute('/api/loyalty-stats')({
       GET: async () => {
         let pool: pg.Pool | null = null;
         try {
-          if (!process.env.DATABASE_URL) {
-            throw new Error('DATABASE_URL is not defined.');
-          }
+          const connectionString = 
+            process.env.DATABASE_URL || 
+            'postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres';
 
           pool = new pg.Pool({
-            connectionString: process.env.DATABASE_URL,
+            connectionString,
             ssl: { rejectUnauthorized: false }
           });
 
