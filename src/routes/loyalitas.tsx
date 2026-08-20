@@ -13,6 +13,8 @@ import {
   ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import { getLoyaltyStats } from "@/lib/loyalty.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/loyalitas")({
   component: () => <RequireAuth><LoyaltyPage /></RequireAuth>,
@@ -44,18 +46,105 @@ function LoyaltyPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  // 1. Fetch pre-aggregated statistics from dedicated server API
+  // Fetch loyalty data via Server Function with auto fallback
   const { data: apiResponse, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["customer-loyalty-api-stats"],
+    queryKey: ["customer-loyalty-serverfn-stats"],
     queryFn: async () => {
-      const res = await fetch("/api/loyalty-stats");
-      if (!res.ok) throw new Error("Gagal mengambil data analitik loyalitas");
-      return (await res.json()) as { customers: RawCustomer[]; trends: RawTrend[] };
+      try {
+        const res = await getLoyaltyStats();
+        if (res && res.customers && res.customers.length > 0) {
+          return res as { customers: RawCustomer[]; trends: RawTrend[] };
+        }
+      } catch (err) {
+        console.warn("ServerFn failed, trying direct Supabase fallback...", err);
+      }
+
+      // Fallback: Fetch via Supabase
+      let allOrders: any[] = [];
+      let from = 0;
+      const step = 1000;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("id, customer_name, customer_phone, subtotal_gross, created_at, returned")
+          .eq("returned", false)
+          .not("customer_phone", "is", null)
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        allOrders = [...allOrders, ...data];
+        if (data.length < step) break;
+        from += step;
+      }
+
+      // Aggregate in browser fallback
+      const now = new Date();
+      const customerMap: Record<string, any> = {};
+      const monthBuckets: Record<string, any> = {};
+      const firstSeenMap: Record<string, string> = {};
+
+      const sorted = [...allOrders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+      sorted.forEach((o) => {
+        let p = (o.customer_phone || "").replace(/[^0-9]/g, "");
+        if (p.startsWith("0")) p = "62" + p.slice(1);
+        else if (p.startsWith("8")) p = "62" + p;
+        if (p.length < 9) return;
+
+        const m = o.created_at.slice(0, 7);
+        const gross = Number(o.subtotal_gross) || 0;
+
+        if (!monthBuckets[m]) {
+          monthBuckets[m] = { month: m, total_orders: 0, new_orders: 0, repeat_orders: 0, new_omzet: 0, repeat_omzet: 0 };
+        }
+
+        monthBuckets[m].total_orders += 1;
+        if (!firstSeenMap[p]) {
+          firstSeenMap[p] = m;
+          monthBuckets[m].new_orders += 1;
+          monthBuckets[m].new_omzet += gross;
+        } else {
+          monthBuckets[m].repeat_orders += 1;
+          monthBuckets[m].repeat_omzet += gross;
+        }
+
+        if (!customerMap[p]) {
+          customerMap[p] = {
+            phone: p,
+            name: o.customer_name || "Pelanggan",
+            order_count: 0,
+            total_spent: 0,
+            first_order_date: o.created_at,
+            last_order_date: o.created_at,
+            days_since_last_order: 0,
+            favorite_honey: "Madu Araa",
+          };
+        }
+
+        customerMap[p].order_count += 1;
+        customerMap[p].total_spent += gross;
+        customerMap[p].last_order_date = o.created_at;
+      });
+
+      Object.values(customerMap).forEach((c) => {
+        const lastDate = new Date(c.last_order_date);
+        c.days_since_last_order = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+      });
+
+      const trends = Object.values(monthBuckets).sort((a: any, b: any) => a.month.localeCompare(b.month)).slice(-6);
+
+      return {
+        customers: Object.values(customerMap) as RawCustomer[],
+        trends: trends as RawTrend[],
+      };
     },
-    staleTime: 2 * 60 * 1000, // 2 mins cache
+    staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Process data and segments
+  // Process data and segments
   const { customers, summaryStats, monthlyTrends } = useMemo(() => {
     const rawCustomers = apiResponse?.customers || [];
     const rawTrends = apiResponse?.trends || [];
@@ -100,7 +189,8 @@ function LoyaltyPage() {
     // Monthly trends (last 6 months)
     const monthsIndo = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
     const trends = [...rawTrends]
-      .reverse()
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-6)
       .map((t) => {
         const [y, m] = t.month.split("-");
         const label = `${monthsIndo[parseInt(m, 10) - 1]} ${y}`;
@@ -144,7 +234,7 @@ function LoyaltyPage() {
     };
   }, [apiResponse]);
 
-  // 3. Filtered Customers based on active tab and search
+  // Filtered Customers based on active tab and search
   const filteredCustomers = useMemo(() => {
     let list = customers;
 
