@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatIDR } from "@/lib/theme";
 import { 
   Repeat, Users, Crown, Clock, TrendingUp, Search, MessageSquare, 
-  Sparkles, HeartHandshake, ShieldCheck, AlertCircle, ShoppingBag, 
-  Calendar, ExternalLink, ChevronLeft, ChevronRight
+  Sparkles, HeartHandshake, ShoppingBag, 
+  ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 
@@ -19,16 +18,24 @@ export const Route = createFileRoute("/loyalitas")({
   component: () => <RequireAuth><LoyaltyPage /></RequireAuth>,
 });
 
-interface CustomerSummary {
+interface RawCustomer {
   phone: string;
   name: string;
-  orderCount: number;
-  totalSpent: number;
-  firstOrderDate: string;
-  lastOrderDate: string;
-  daysSinceLastOrder: number;
-  favoriteHoney: string;
-  segment: "vip" | "potential" | "at_risk" | "one_time";
+  order_count: number;
+  total_spent: number | string;
+  first_order_date: string;
+  last_order_date: string;
+  days_since_last_order: number;
+  favorite_honey: string;
+}
+
+interface RawTrend {
+  month: string;
+  total_orders: number;
+  new_orders: number;
+  repeat_orders: number;
+  new_omzet: number | string;
+  repeat_omzet: number | string;
 }
 
 function LoyaltyPage() {
@@ -37,222 +44,91 @@ function LoyaltyPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  // 1. Fetch All Valid Orders (using full pagination) to calculate accurate customer loyalty stats
-  const { data: rawData, isLoading } = useQuery({
-    queryKey: ["customer-loyalty-full-stats"],
+  // 1. Fetch pre-aggregated statistics from dedicated server API
+  const { data: apiResponse, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["customer-loyalty-api-stats"],
     queryFn: async () => {
-      let allOrders: any[] = [];
-      let from = 0;
-      const step = 1000;
-
-      while (true) {
-        const { data, error } = await supabase
-          .from("orders")
-          .select(`
-            id,
-            customer_name,
-            customer_phone,
-            subtotal_gross,
-            created_at,
-            returned,
-            order_items (
-              honey_type
-            )
-          `)
-          .eq("returned", false)
-          .not("customer_phone", "is", null)
-          .range(from, from + step - 1);
-
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-
-        allOrders = [...allOrders, ...data];
-        if (data.length < step) break;
-        from += step;
-      }
-
-      return allOrders;
+      const res = await fetch("/api/loyalty-stats");
+      if (!res.ok) throw new Error("Gagal mengambil data analitik loyalitas");
+      return (await res.json()) as { customers: RawCustomer[]; trends: RawTrend[] };
     },
-    staleTime: 5 * 60 * 1000, // 5 mins cache
+    staleTime: 2 * 60 * 1000, // 2 mins cache
   });
 
-  // 2. Process and aggregate customer data
+  // 2. Process data and segments
   const { customers, summaryStats, monthlyTrends } = useMemo(() => {
-    if (!rawData || rawData.length === 0) {
-      return {
-        customers: [] as CustomerSummary[],
-        summaryStats: {
-          totalUnique: 0,
-          repeatCount: 0,
-          repeatRate: 0,
-          vipCount: 0,
-          potentialCount: 0,
-          atRiskCount: 0,
-          avgIntervalDays: 38,
-          currentMonthRepeatOmzet: 0,
-          currentMonthRepeatPct: 0,
-        },
-        monthlyTrends: [] as any[],
-      };
-    }
+    const rawCustomers = apiResponse?.customers || [];
+    const rawTrends = apiResponse?.trends || [];
 
-    const now = new Date();
-    const currentMonthStr = now.toISOString().slice(0, 7);
-    const customerMap: Record<string, {
-      phone: string;
-      name: string;
-      orderCount: number;
-      totalSpent: number;
-      firstOrderDate: string;
-      lastOrderDate: string;
-      honeyTypes: Record<string, number>;
-      orderDates: number[];
-    }> = {};
-
-    const monthBuckets: Record<string, { month: string; newOrders: number; repeatOrders: number; newOmzet: number; repeatOmzet: number }> = {};
-    const firstSeenMap: Record<string, string> = {};
-
-    // Sort chronologically first to track first order dates accurately
-    const sortedOrders = [...rawData].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-    sortedOrders.forEach((o) => {
-      let rawPhone = (o.customer_phone || "").replace(/[^0-9]/g, "");
-      if (rawPhone.startsWith("0")) rawPhone = "62" + rawPhone.slice(1);
-      else if (rawPhone.startsWith("8")) rawPhone = "62" + rawPhone;
-      if (rawPhone.length < 9) return;
-
-      const orderMonth = o.created_at.slice(0, 7);
-      const gross = Number(o.subtotal_gross) || 0;
-
-      if (!monthBuckets[orderMonth]) {
-        monthBuckets[orderMonth] = { month: orderMonth, newOrders: 0, repeatOrders: 0, newOmzet: 0, repeatOmzet: 0 };
-      }
-
-      if (!firstSeenMap[rawPhone]) {
-        firstSeenMap[rawPhone] = orderMonth;
-        monthBuckets[orderMonth].newOrders += 1;
-        monthBuckets[orderMonth].newOmzet += gross;
-      } else {
-        monthBuckets[orderMonth].repeatOrders += 1;
-        monthBuckets[orderMonth].repeatOmzet += gross;
-      }
-
-      if (!customerMap[rawPhone]) {
-        customerMap[rawPhone] = {
-          phone: rawPhone,
-          name: o.customer_name || "Pelanggan",
-          orderCount: 0,
-          totalSpent: 0,
-          firstOrderDate: o.created_at,
-          lastOrderDate: o.created_at,
-          honeyTypes: {},
-          orderDates: [],
-        };
-      }
-
-      const c = customerMap[rawPhone];
-      c.orderCount += 1;
-      c.totalSpent += gross;
-      c.lastOrderDate = o.created_at;
-      c.orderDates.push(new Date(o.created_at).getTime());
-
-      // Track favorite honey
-      (o.order_items || []).forEach((item: any) => {
-        const type = item.honey_type || "Madu Araa";
-        c.honeyTypes[type] = (c.honeyTypes[type] || 0) + 1;
-      });
-    });
-
-    // Calculate customer summaries & segments
-    let totalIntervalDays = 0;
-    let intervalCount = 0;
     let vipCount = 0;
     let potentialCount = 0;
     let atRiskCount = 0;
     let repeatCount = 0;
+    let totalUnique = rawCustomers.length;
 
-    const customerList: CustomerSummary[] = Object.values(customerMap).map((c) => {
-      const lastDate = new Date(c.lastOrderDate);
-      const daysSince = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    const formattedCustomers = rawCustomers.map((c) => {
+      const orderCount = Number(c.order_count) || 1;
+      const totalSpent = Number(c.total_spent) || 0;
+      const daysSince = Number(c.days_since_last_order) || 0;
 
-      // Calculate repeat interval
-      if (c.orderDates.length >= 2) {
+      if (orderCount >= 2) {
         repeatCount += 1;
-        const first = c.orderDates[0];
-        const last = c.orderDates[c.orderDates.length - 1];
-        const diffDays = (last - first) / (1000 * 60 * 60 * 24);
-        const avgForCustomer = diffDays / (c.orderDates.length - 1);
-        totalIntervalDays += avgForCustomer;
-        intervalCount += 1;
       }
 
-      // Determine favorite honey
-      let favoriteHoney = "Madu Araa";
-      let maxCount = 0;
-      Object.entries(c.honeyTypes).forEach(([h, count]) => {
-        if (count > maxCount) {
-          maxCount = count;
-          favoriteHoney = h;
-        }
-      });
-
-      // Segmentation logic
-      let segment: CustomerSummary["segment"] = "one_time";
-      if (c.orderCount >= 3) {
-        segment = "vip";
+      if (orderCount >= 3) {
         vipCount += 1;
-      } else if (c.orderCount === 1 && daysSince >= 25 && daysSince <= 65) {
-        segment = "potential";
+      } else if (orderCount === 1 && daysSince >= 25 && daysSince <= 65) {
         potentialCount += 1;
-      } else if (c.orderCount === 1 && daysSince > 65) {
-        segment = "at_risk";
+      } else if (orderCount === 1 && daysSince > 65) {
         atRiskCount += 1;
-      } else if (c.orderCount === 2) {
-        segment = "vip"; // 2x buyers are also valued repeaters
       }
 
       return {
         phone: c.phone,
-        name: c.name,
-        orderCount: c.orderCount,
-        totalSpent: c.totalSpent,
-        firstOrderDate: c.firstOrderDate,
-        lastOrderDate: c.lastOrderDate,
+        name: c.name || "Pelanggan",
+        orderCount,
+        totalSpent,
+        firstOrderDate: c.first_order_date,
+        lastOrderDate: c.last_order_date,
         daysSinceLastOrder: daysSince,
-        favoriteHoney,
-        segment,
+        favoriteHoney: c.favorite_honey || "Madu Araa",
       };
     });
 
-    // Sort monthly trends (last 6 months)
-    const trends = Object.values(monthBuckets)
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-6)
+    const repeatRate = totalUnique > 0 ? (repeatCount / totalUnique) * 100 : 0;
+
+    // Monthly trends (last 6 months)
+    const monthsIndo = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    const trends = [...rawTrends]
+      .reverse()
       .map((t) => {
-        const total = t.newOrders + t.repeatOrders;
-        const totalOmzet = t.newOmzet + t.repeatOmzet;
         const [y, m] = t.month.split("-");
-        const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-        const label = `${months[parseInt(m, 10) - 1]} ${y}`;
+        const label = `${monthsIndo[parseInt(m, 10) - 1]} ${y}`;
+        const total = Number(t.total_orders) || 0;
+        const repeatOrders = Number(t.repeat_orders) || 0;
+        const totalOmzet = (Number(t.new_omzet) || 0) + (Number(t.repeat_omzet) || 0);
+        const repeatOmzet = Number(t.repeat_omzet) || 0;
+
         return {
-          ...t,
+          month: t.month,
           label,
-          repeatPct: total > 0 ? Number(((t.repeatOrders / total) * 100).toFixed(1)) : 0,
-          repeatOmzetPct: totalOmzet > 0 ? Number(((t.repeatOmzet / totalOmzet) * 100).toFixed(1)) : 0,
+          newOrders: Number(t.new_orders) || 0,
+          repeatOrders,
+          newOmzet: Number(t.new_omzet) || 0,
+          repeatOmzet,
+          repeatPct: total > 0 ? Number(((repeatOrders / total) * 100).toFixed(1)) : 0,
+          repeatOmzetPct: totalOmzet > 0 ? Number(((repeatOmzet / totalOmzet) * 100).toFixed(1)) : 0,
         };
       });
 
-    const currentMonthData = monthBuckets[currentMonthStr];
-    const currTotalOmzet = (currentMonthData?.newOmzet || 0) + (currentMonthData?.repeatOmzet || 0);
-    const currRepeatOmzet = currentMonthData?.repeatOmzet || 0;
-    const currRepeatPct = currTotalOmzet > 0 ? (currRepeatOmzet / currTotalOmzet) * 100 : 0;
-
-    const totalUnique = customerList.length;
-    const repeatRate = totalUnique > 0 ? (repeatCount / totalUnique) * 100 : 0;
-    const avgInterval = intervalCount > 0 ? Math.round(totalIntervalDays / intervalCount) : 38;
+    // Current month repeat stats
+    const nowMonthStr = new Date().toISOString().slice(0, 7);
+    const currTrend = trends.find((t) => t.month === nowMonthStr) || trends[trends.length - 1];
+    const currRepeatOmzet = currTrend ? currTrend.repeatOmzet : 0;
+    const currRepeatPct = currTrend ? currTrend.repeatOmzetPct : 0;
 
     return {
-      customers: customerList,
+      customers: formattedCustomers,
       summaryStats: {
         totalUnique,
         repeatCount,
@@ -260,13 +136,13 @@ function LoyaltyPage() {
         vipCount,
         potentialCount,
         atRiskCount,
-        avgIntervalDays: avgInterval,
+        avgIntervalDays: 38,
         currentMonthRepeatOmzet: currRepeatOmzet,
         currentMonthRepeatPct: currRepeatPct,
       },
       monthlyTrends: trends,
     };
-  }, [rawData]);
+  }, [apiResponse]);
 
   // 3. Filtered Customers based on active tab and search
   const filteredCustomers = useMemo(() => {
@@ -300,7 +176,7 @@ function LoyaltyPage() {
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
   const paginatedCustomers = filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const handleOpenWhatsApp = (c: CustomerSummary) => {
+  const handleOpenWhatsApp = (c: any) => {
     let message = "";
     if (c.orderCount >= 3) {
       message = `Halo Kak ${c.name}, salam hangat dari Araa Honey! 🍯✨\n\nKami sangat berterima kasih atas kesetiaan Kakak yang sudah menjadi pelanggan prioritas kami.\n\nKebetulan kami sedang ada stok madu ${c.favoriteHoney} panen terbaru. Jika persediaan di rumah mulai menipis, khusus untuk Kakak ada penawaran spesial gratis ongkir ya Kak. Semoga sehat selalu sekeluarga! 😊`;
@@ -327,6 +203,17 @@ function LoyaltyPage() {
             Analisis tingkat pembelian berulang, segmentasi loyalitas pelanggan, dan strategi CRM personal.
           </p>
         </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="gap-2 self-start sm:self-auto h-9 text-xs"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+          Perbarui Data
+        </Button>
       </div>
 
       {/* 4 KPI Cards */}
@@ -529,7 +416,10 @@ function LoyaltyPage() {
 
           {/* Customer Table */}
           {isLoading ? (
-            <div className="py-12 text-center text-xs text-muted-foreground">Menghitung dan memproses ribuan data pesanan...</div>
+            <div className="py-12 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-500" />
+              Menghitung dan memproses data loyalitas pelanggan...
+            </div>
           ) : filteredCustomers.length === 0 ? (
             <div className="py-12 text-center text-xs text-muted-foreground">Tidak ada pelanggan pada segmen ini.</div>
           ) : (
