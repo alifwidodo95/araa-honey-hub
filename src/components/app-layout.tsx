@@ -8,13 +8,14 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake
 } from "lucide-react";
 import { Button } from "./ui/button";
 
 const navStaff = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/penjualan", label: "Penjualan", icon: ShoppingCart },
+  { to: "/loyalitas", label: "Loyalitas & Repeat", icon: HeartHandshake },
   { to: "/retur", label: "Retur Pesanan", icon: RotateCcw },
   { to: "/stok/bahan-baku", label: "Bahan Baku", icon: Package },
   { to: "/stok/pindah-wadah", label: "Pindah Wadah", icon: ArrowLeftRight },
