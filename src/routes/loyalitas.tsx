@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatIDR } from "@/lib/theme";
 import { toast } from "sonner";
 import { 
   Repeat, Users, Crown, Clock, TrendingUp, Search, MessageSquare, 
   Sparkles, HeartHandshake, ShoppingBag, 
   ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
-  Send, CheckCircle2, Loader2, Calendar
+  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { 
@@ -64,6 +65,7 @@ function LoyaltyPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"vip" | "potential" | "at_risk" | "all_repeat">("vip");
+  const [sortBy, setSortBy] = useState<"oldest" | "newest" | "spent_desc" | "count_desc">("oldest");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -378,12 +380,18 @@ function LoyaltyPage() {
     }
 
     return list.sort((a, b) => {
-      if (activeTab === "vip" || activeTab === "all_repeat") {
+      if (sortBy === "oldest") {
+        return b.daysSinceLastOrder - a.daysSinceLastOrder; // Jeda hari terbesar ke terkecil (Terlama ke Terbaru)
+      } else if (sortBy === "newest") {
+        return a.daysSinceLastOrder - b.daysSinceLastOrder; // Jeda hari terkecil ke terbesar (Terbaru ke Terlama)
+      } else if (sortBy === "spent_desc") {
         return b.totalSpent - a.totalSpent;
+      } else if (sortBy === "count_desc") {
+        return b.orderCount - a.orderCount;
       }
-      return a.daysSinceLastOrder - b.daysSinceLastOrder;
+      return b.daysSinceLastOrder - a.daysSinceLastOrder;
     });
-  }, [customers, activeTab, searchTerm]);
+  }, [customers, activeTab, searchTerm, sortBy]);
 
   // Pagination
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
@@ -553,18 +561,36 @@ function LoyaltyPage() {
             </CardDescription>
           </div>
 
-          {/* Search Input */}
-          <div className="relative w-full md:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Cari nama / nomor WA..."
-              className="pl-9 h-9 text-xs"
-            />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+            {/* Sort Selector */}
+            <div className="w-full sm:w-56">
+              <Select value={sortBy} onValueChange={(v: any) => { setSortBy(v); setCurrentPage(1); }}>
+                <SelectTrigger className="h-9 text-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="Urutkan Pelanggan" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="oldest" className="text-xs">⏳ Order Terlama (Prioritas CRM)</SelectItem>
+                  <SelectItem value="newest" className="text-xs">🕒 Order Terbaru (Baru Saja)</SelectItem>
+                  <SelectItem value="spent_desc" className="text-xs">💰 Belanja Terbanyak (LTV)</SelectItem>
+                  <SelectItem value="count_desc" className="text-xs">👑 Frekuensi Order Terbanyak</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full sm:w-60">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Cari nama / nomor WA..."
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
           </div>
         </CardHeader>
 
