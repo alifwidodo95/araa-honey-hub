@@ -39,6 +39,7 @@ interface RawCustomer {
   last_order_date: string;
   days_since_last_order: number;
   favorite_honey: string;
+  last_crm_sent_at?: string | null;
 }
 
 interface RawTrend {
@@ -229,12 +230,13 @@ function LoyaltyPage() {
 
   // Mutation to send Direct WhatsApp via WAHA
   const sendWhatsAppMutation = useMutation({
-    mutationFn: async ({ phone, customerName, message }: { phone: string; customerName: string; message: string }) => {
-      return await sendDirectLoyaltyWhatsApp({ data: { phone, customerName, message } });
+    mutationFn: async ({ phone, customerName, message, favoriteHoney }: { phone: string; customerName: string; message: string; favoriteHoney?: string }) => {
+      return await sendDirectLoyaltyWhatsApp({ data: { phone, customerName, message, favoriteHoney } });
     },
     onSuccess: (_, variables) => {
       toast.success(`✅ Pesan berhasil dikirim ke ${variables.customerName} (${variables.phone}) via WAHA!`);
       setSentMap((prev) => ({ ...prev, [variables.phone]: true }));
+      queryClient.invalidateQueries({ queryKey: ["customer-loyalty-serverfn-stats"] });
       setPreviewDialogCustomer(null);
     },
     onError: (err: any) => {
@@ -279,6 +281,7 @@ function LoyaltyPage() {
         lastOrderDate: c.last_order_date,
         daysSinceLastOrder: daysSince,
         favoriteHoney: c.favorite_honey || "Madu Araa",
+        lastCrmSentAt: c.last_crm_sent_at || null,
       };
     });
 
@@ -357,6 +360,7 @@ function LoyaltyPage() {
       phone: previewDialogCustomer.phone,
       customerName: previewDialogCustomer.name,
       message: previewMessage,
+      favoriteHoney: previewDialogCustomer.favoriteHoney,
     });
   };
 
@@ -682,6 +686,16 @@ function LoyaltyPage() {
                 <TableBody>
                   {paginatedCustomers.map((c) => {
                     const isSent = sentMap[c.phone];
+                    const hasCrmSent = !!c.lastCrmSentAt;
+                    let isSentToday = false;
+                    let daysSinceCrm = 0;
+                    if (hasCrmSent && c.lastCrmSentAt) {
+                      const sentDate = new Date(c.lastCrmSentAt);
+                      const now = new Date();
+                      daysSinceCrm = Math.floor((now.getTime() - sentDate.getTime()) / (1000 * 60 * 60 * 24));
+                      isSentToday = daysSinceCrm === 0;
+                    }
+
                     return (
                       <TableRow key={c.phone} className="text-xs hover:bg-muted/20">
                         <TableCell className="py-2.5 font-medium">
@@ -716,11 +730,32 @@ function LoyaltyPage() {
                           </span>
                         </TableCell>
                         <TableCell className="py-2.5 text-center">
-                          {isSent ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md">
+                          {isSent || isSentToday ? (
+                            <span 
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md" 
+                              title={`Terkirim: ${c.lastCrmSentAt ? formatDateIndo(c.lastCrmSentAt) : 'Hari ini'}`}
+                            >
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              Terkirim
+                              Terkirim Hari Ini
                             </span>
+                          ) : hasCrmSent && daysSinceCrm < 30 ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span 
+                                className="inline-block text-[10px] font-medium text-muted-foreground bg-muted/80 px-1.5 py-0.5 rounded"
+                                title={`Telah dikirim pesan otomatis pada: ${formatDateIndo(c.lastCrmSentAt || '')}`}
+                              >
+                                Terkirim {daysSinceCrm}h lalu
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleOpenSendDialog(c)}
+                                className="h-6 text-[10px] px-2 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10"
+                                title="Kirim pesan ulang jika diperlukan"
+                              >
+                                Kirim Ulang
+                              </Button>
+                            </div>
                           ) : (
                             <Button
                               size="sm"
@@ -919,6 +954,15 @@ function LoyaltyPage() {
                   <span className="font-medium text-amber-600 dark:text-amber-400">{previewDialogCustomer.favoriteHoney}</span>
                 </div>
               </div>
+
+              {previewDialogCustomer.lastCrmSentAt && (
+                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-2.5 rounded-xl text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Info Riwayat CRM:</span> Pelanggan ini pernah menerima pesan otomatis pada <b>{formatDateIndo(previewDialogCustomer.lastCrmSentAt)}</b>. Pengiriman pesan baru ini akan memperbarui status dan membatalkan jadwal cron jam 10 pagi berikutnya.
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-muted-foreground">Isi Pesan yang Akan Dikirim:</label>

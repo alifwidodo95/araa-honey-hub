@@ -6,7 +6,7 @@ const DB_URL =
   process.env.DATABASE_URL ||
   "postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres";
 
-// 1. Server function to get loyalty analytics
+// 1. Server function to get loyalty analytics (with synced CRM sent timestamps)
 export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async () => {
   let pool: pg.Pool | null = null;
   try {
@@ -54,6 +54,20 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
         FROM normalized_orders
         GROUP BY phone
       ),
+      sent_crm AS (
+        SELECT 
+          CASE 
+            WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '0%' 
+              THEN '62' || SUBSTRING(REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') FROM 2)
+            WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '8%' 
+              THEN '62' || REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
+            ELSE REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
+          END as phone,
+          MAX(sent_at) as last_crm_sent_at
+        FROM crm_reminders
+        WHERE status = 'sent' AND sent_at IS NOT NULL
+        GROUP BY 1
+      ),
       customer_agg AS (
         SELECT 
           n.phone,
@@ -63,8 +77,10 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           MIN(n.created_at) as first_order_date,
           MAX(n.created_at) as last_order_date,
           EXTRACT(DAY FROM (NOW() - MAX(n.created_at)))::int as days_since_last_order,
-          MODE() WITHIN GROUP (ORDER BY n.honey_type) as favorite_honey
+          MODE() WITHIN GROUP (ORDER BY n.honey_type) as favorite_honey,
+          MAX(s.last_crm_sent_at) as last_crm_sent_at
         FROM normalized_orders n
+        LEFT JOIN sent_crm s ON n.phone = s.phone
         GROUP BY n.phone
       ),
       monthly_summary AS (
@@ -172,7 +188,7 @@ export const saveLoyaltyTemplates = createServerFn({ method: "POST" })
     }
   });
 
-// 4. Server function to send 1-click WhatsApp message directly via WAHA Gateway
+// 4. Server function to send 1-click WhatsApp message directly via WAHA Gateway with automatic CRM sync
 export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
   .validator((data) =>
     z
@@ -180,6 +196,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         phone: z.string(),
         customerName: z.string(),
         message: z.string(),
+        favoriteHoney: z.string().optional(),
       })
       .parse(data)
   )
@@ -200,7 +217,6 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         if (val.session) sessionName = val.session;
         if (val.apiKey) apiKey = val.apiKey;
       }
-      await pool.end();
 
       // Normalize phone number
       let rawPhone = data.phone.replace(/[^0-9]/g, "");
@@ -259,7 +275,29 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         throw new Error(`WAHA Gateway error (${response.status}): ${errBody.substring(0, 150)}`);
       }
 
-      return { ok: true, recipient: chatId };
+      // SINKRONISASI ANTI-DOUBLE-CHAT:
+      // 1. Mark any pending cron reminders for this phone as 'sent' so the 10 AM cron will NEVER double-chat them!
+      await pool.query(
+        `UPDATE crm_reminders 
+         SET status = 'sent', sent_at = now(), updated_at = now() 
+         WHERE (
+           customer_phone = $1 
+           OR customer_phone = $2 
+           OR REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') = $1
+         ) AND status = 'pending'`,
+        [rawPhone, '0' + rawPhone.slice(2)]
+      );
+
+      // 2. Insert or update the sent history
+      await pool.query(
+        `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
+         VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
+        [data.customerName, rawPhone, data.favoriteHoney || 'Madu Araa']
+      );
+
+      await pool.end();
+
+      return { ok: true, recipient: chatId, sentAt: new Date().toISOString() };
     } catch (err: any) {
       if (pool) try { await pool.end(); } catch (e) {}
       console.error("[sendDirectLoyaltyWhatsApp Error]:", err);
