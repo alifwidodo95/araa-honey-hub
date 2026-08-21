@@ -125,7 +125,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
   }
 });
 
-// 2. Server function to get loyalty CRM message templates
+// 2. Server function to get loyalty CRM message templates (including image URLs)
 export const getLoyaltyTemplates = createServerFn({ method: "GET" }).handler(async () => {
   let pool: pg.Pool | null = null;
   try {
@@ -138,6 +138,10 @@ export const getLoyaltyTemplates = createServerFn({ method: "GET" }).handler(asy
       potential: "Halo Kak {nama}, semoga sehat selalu ya Kak! 🍯😊\n\nSekadar menyapa, bagaimana rasa {madu_favorit} yang dipesan pada {tanggal_order} ({jeda_hari} hari lalu) Kak? Semoga cocok dan bermanfaat untuk kesehatan keluarga ya.\n\nJika stok madunya di rumah sudah mulai menipis, Kakak bisa amankan pesanan kembali dengan promo spesial minggu ini ya Kak. Terima kasih banyak Kak!",
       at_risk: "Halo Kak {nama}, semoga sehat selalu sekeluarga ya! 🍯\n\nSudah lama tidak bersilaturahmi nih Kak sejak pesanan terakhir {madu_favorit} pada tanggal {tanggal_order} ({jeda_hari} hari lalu). Kami rindu menyapa Kakak pelanggan setia Araa Honey.\n\nKhusus minggu ini kami ada promo diskon spesial untuk pemesanan ulang. Boleh kami bantu amankan stoknya Kak? 😊",
       all_repeat: "Halo Kak {nama}, salam sehat dari Araa Honey! 🍯 Terima kasih sudah mempercayakan kebutuhan madu murni keluarga pada kami. Pesanan terakhir Kakak tercatat pada {tanggal_order} ({madu_favorit}). Jika stok di rumah mulai habis, kami siap kirimkan kembali ya Kak!",
+      vip_image_url: "",
+      potential_image_url: "",
+      at_risk_image_url: "",
+      all_repeat_image_url: "",
     };
 
     if (res.rowCount === 0 || !res.rows[0].value) {
@@ -153,6 +157,10 @@ export const getLoyaltyTemplates = createServerFn({ method: "GET" }).handler(asy
       potential: "Halo Kak {nama}, bagaimana kabar madu yang dipesan pada {tanggal_order}? 🍯",
       at_risk: "Halo Kak {nama}, rindu menyapa Kakak sejak pesanan {tanggal_order}! 🍯",
       all_repeat: "Halo Kak {nama}, salam hangat dari Araa Honey! 🍯",
+      vip_image_url: "",
+      potential_image_url: "",
+      at_risk_image_url: "",
+      all_repeat_image_url: "",
     };
   }
 });
@@ -166,6 +174,10 @@ export const saveLoyaltyTemplates = createServerFn({ method: "POST" })
         potential: z.string(),
         at_risk: z.string(),
         all_repeat: z.string(),
+        vip_image_url: z.string().optional().default(""),
+        potential_image_url: z.string().optional().default(""),
+        at_risk_image_url: z.string().optional().default(""),
+        all_repeat_image_url: z.string().optional().default(""),
       })
       .parse(data)
   )
@@ -188,7 +200,7 @@ export const saveLoyaltyTemplates = createServerFn({ method: "POST" })
     }
   });
 
-// 4. Server function to send 1-click WhatsApp message directly via WAHA Gateway with automatic CRM sync
+// 4. Server function to send 1-click WhatsApp message (Text OR Image + Caption) directly via WAHA Gateway
 export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
   .validator((data) =>
     z
@@ -197,6 +209,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         customerName: z.string(),
         message: z.string(),
         favoriteHoney: z.string().optional(),
+        imageUrl: z.string().optional().default(""),
       })
       .parse(data)
   )
@@ -235,48 +248,99 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         headers["x-api-key"] = apiKey;
       }
 
-      console.log(`[Direct WAHA Send] Sending message to ${chatId} via ${wahaUrl}...`);
+      const hasImage = !!(data.imageUrl && data.imageUrl.trim().startsWith("http"));
+      console.log(`[Direct WAHA Send] Sending ${hasImage ? "IMAGE + CAPTION" : "TEXT"} to ${chatId} via ${wahaUrl}...`);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-      // Call WAHA sendText
-      let response = await fetch(`${wahaUrl}/api/sendText`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
+      let response: Response | null = null;
+
+      if (hasImage) {
+        // Send Image with Caption
+        const imagePayload = {
+          session: sessionName,
+          chatId,
+          file: {
+            url: data.imageUrl.trim(),
+            mimetype: "image/jpeg",
+            filename: "promo-madu-araa.jpg",
+          },
+          caption: data.message,
+        };
+
+        // Try /api/sendImage first
+        response = await fetch(`${wahaUrl}/api/sendImage`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(imagePayload),
+          signal: controller.signal,
+        }).catch((e) => {
+          console.warn("[WAHA /api/sendImage failed, trying /api/sendFile]:", e);
+          return null;
+        });
+
+        if (!response || !response.ok) {
+          // Fallback to /api/sendFile
+          response = await fetch(`${wahaUrl}/api/sendFile`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(imagePayload),
+            signal: controller.signal,
+          }).catch(() => null);
+        }
+
+        if (!response || !response.ok) {
+          // Fallback to /api/messages/sendFile
+          response = await fetch(`${wahaUrl}/api/messages/sendFile`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(imagePayload),
+            signal: controller.signal,
+          }).catch(() => null);
+        }
+      }
+
+      // If no image or if image dispatch failed, send text message
+      if (!response || !response.ok) {
+        if (hasImage) {
+          console.warn("[Image dispatch failed, falling back to text only message]");
+        }
+
+        const textPayload = {
           session: sessionName,
           chatId,
           text: data.message,
-        }),
-        signal: controller.signal,
-      }).catch((e) => {
-        console.warn("[WAHA Primary Endpoint failed, trying /api/messages/sendText]:", e);
-        return null;
-      });
+        };
 
-      if (!response || !response.ok) {
-        // Fallback endpoint
-        response = await fetch(`${wahaUrl}/api/messages/sendText`, {
+        response = await fetch(`${wahaUrl}/api/sendText`, {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            session: sessionName,
-            chatId,
-            text: data.message,
-          }),
+          body: JSON.stringify(textPayload),
+          signal: controller.signal,
+        }).catch((e) => {
+          console.warn("[WAHA Primary Endpoint failed, trying /api/messages/sendText]:", e);
+          return null;
         });
+
+        if (!response || !response.ok) {
+          response = await fetch(`${wahaUrl}/api/messages/sendText`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(textPayload),
+          });
+        }
       }
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errBody = await response.text().catch(() => "");
-        throw new Error(`WAHA Gateway error (${response.status}): ${errBody.substring(0, 150)}`);
+      if (!response || !response.ok) {
+        const errBody = response ? await response.text().catch(() => "") : "Koneksi gateway terputus";
+        throw new Error(`WAHA Gateway error (${response?.status || 500}): ${errBody.substring(0, 150)}`);
       }
 
       // SINKRONISASI ANTI-DOUBLE-CHAT:
-      // 1. Mark any pending cron reminders for this phone as 'sent' so the 10 AM cron will NEVER double-chat them!
+      // 1. Mark any pending cron reminders for this phone as 'sent'
       await pool.query(
         `UPDATE crm_reminders 
          SET status = 'sent', sent_at = now(), updated_at = now() 
@@ -285,14 +349,14 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
            OR customer_phone = $2 
            OR REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') = $1
          ) AND status = 'pending'`,
-        [rawPhone, '0' + rawPhone.slice(2)]
+        [rawPhone, "0" + rawPhone.slice(2)]
       );
 
       // 2. Insert or update the sent history
       await pool.query(
         `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
          VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
-        [data.customerName, rawPhone, data.favoriteHoney || 'Madu Araa']
+        [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
       );
 
       await pool.end();

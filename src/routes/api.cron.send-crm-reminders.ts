@@ -38,7 +38,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
           }
 
           const crmConfig = crmConfigRes.rows[0].value;
-          const { enabled, delayDays, template: crmTemplate, maxDailyLimit } = crmConfig || {};
+          const { enabled, delayDays, template: crmTemplate, maxDailyLimit, imageUrl: crmImageUrl } = crmConfig || {};
           const dailyLimit = Number(maxDailyLimit) || 50;
 
           // If CRM reminders are disabled, do not run the cron job
@@ -128,7 +128,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             return clean;
           };
 
-          // Helper to format date in Indonesian style
+          // Helper to format Indonesian date (e.g. "12 Juli 2026")
           const formatDateIndo = (dateStr: string): string => {
             if (!dateStr) return '';
             const date = new Date(dateStr);
@@ -139,34 +139,80 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             return `${day} ${months[monthIdx]} ${year}`;
           };
 
-          const wahaHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+          // Common headers for WAHA requests
+          const wahaHeaders: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
           if (apiKey) {
-            wahaHeaders['X-Api-Key'] = apiKey;
+            wahaHeaders['x-api-key'] = apiKey;
           }
 
-          // Helper to check if phone number exists on WhatsApp
+          // Check if phone number is registered on WhatsApp
           const checkNumberExists = async (phone: string): Promise<boolean> => {
             try {
               const phoneDigits = extractPhoneDigits(phone);
               const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 6000);
-              const res = await fetch(`${wahaUrl}/api/checkNumberStatus?session=${sessionName}&phone=${phoneDigits}`, {
+              const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+              const res = await fetch(`${wahaUrl}/api/contacts/check-exists?phone=${phoneDigits}&session=${sessionName}`, {
+                method: 'GET',
                 headers: wahaHeaders,
                 signal: controller.signal
               });
               clearTimeout(timeoutId);
-              if (!res.ok) return true; // If check fails, assume exists and try sending
-              const data = await res.json();
-              return data.numberExists !== false;
-            } catch {
-              return true; // If check errors, assume exists and try sending
+
+              if (res.ok) {
+                const data = await res.json();
+                return data.exists === true || data.numberExists === true;
+              }
+              return true; // if endpoint fails, assume valid and proceed to send
+            } catch (err) {
+              console.warn('[Cron CRM] Failed checking contact existence, proceeding anyway:', err);
+              return true;
             }
           };
 
-          // Helper to send message via WAHA with 6 seconds timeout
-          const sendMessage = async (to: string, text: string): Promise<{ success: boolean; error?: string; isNumberError?: boolean }> => {
-            const chatId = formatPhoneNumber(to);
+          // Send message via WAHA (supports Image + Caption or Text)
+          const sendMessage = async (phone: string, text: string): Promise<{ success: boolean; error?: string; isNumberError?: boolean }> => {
             try {
+              const chatId = formatPhoneNumber(phone);
+              const hasImage = !!(crmImageUrl && crmImageUrl.trim().startsWith('http'));
+
+              if (hasImage) {
+                const imgController = new AbortController();
+                const imgTimeoutId = setTimeout(() => imgController.abort(), 10000);
+
+                const imagePayload = {
+                  session: sessionName,
+                  chatId,
+                  file: {
+                    url: crmImageUrl.trim(),
+                    mimetype: 'image/jpeg',
+                    filename: 'promo-madu-araa.jpg'
+                  },
+                  caption: text
+                };
+
+                let imgRes = await fetch(`${wahaUrl}/api/sendImage`, {
+                  method: 'POST',
+                  headers: wahaHeaders,
+                  body: JSON.stringify(imagePayload),
+                  signal: imgController.signal
+                }).catch(() => null);
+
+                if (!imgRes || !imgRes.ok) {
+                  imgRes = await fetch(`${wahaUrl}/api/sendFile`, {
+                    method: 'POST',
+                    headers: wahaHeaders,
+                    body: JSON.stringify(imagePayload),
+                  }).catch(() => null);
+                }
+
+                clearTimeout(imgTimeoutId);
+                if (imgRes && imgRes.ok) return { success: true };
+              }
+
+              // Send text message (primary or fallback)
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), 6000);
 

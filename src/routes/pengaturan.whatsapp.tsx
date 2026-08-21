@@ -55,6 +55,7 @@ function WhatsAppPage() {
   const [crmEnabled, setCrmEnabled] = useState(true);
   const [crmDelayDays, setCrmDelayDays] = useState(45);
   const [crmMaxDailyLimit, setCrmMaxDailyLimit] = useState(50);
+  const [crmImageUrl, setCrmImageUrl] = useState("");
   const [crmTemplate, setCrmTemplate] = useState(`Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`);
   const crmTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -82,6 +83,7 @@ function WhatsAppPage() {
       if (dbCrmConfig.delayDays !== undefined) setCrmDelayDays(dbCrmConfig.delayDays);
       if (dbCrmConfig.template) setCrmTemplate(dbCrmConfig.template);
       if (dbCrmConfig.maxDailyLimit !== undefined) setCrmMaxDailyLimit(dbCrmConfig.maxDailyLimit);
+      if (dbCrmConfig.imageUrl !== undefined) setCrmImageUrl(dbCrmConfig.imageUrl);
     }
   }, [dbCrmConfig]);
 
@@ -131,7 +133,8 @@ function WhatsAppPage() {
             enabled: crmEnabled,
             delayDays: Number(crmDelayDays),
             template: crmTemplate.trim(),
-            maxDailyLimit: Number(crmMaxDailyLimit)
+            maxDailyLimit: Number(crmMaxDailyLimit),
+            imageUrl: crmImageUrl.trim()
           }
         });
       if (error) throw error;
@@ -154,7 +157,8 @@ function WhatsAppPage() {
             enabled: checked,
             delayDays: Number(crmDelayDays),
             template: crmTemplate.trim(),
-            maxDailyLimit: Number(crmMaxDailyLimit)
+            maxDailyLimit: Number(crmMaxDailyLimit),
+            imageUrl: crmImageUrl.trim()
           }
         });
       if (error) throw error;
@@ -1505,12 +1509,54 @@ function WhatsAppPage() {
                 <CardDescription>Format pesan pengingat repeat order.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* CRM Image Flyer URL */}
                 <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <Label htmlFor="crm-image-url" className="text-muted-foreground">Foto / Flyer Promo CRM (Opsional):</Label>
+                    {crmImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setCrmImageUrl("")}
+                        className="text-rose-500 hover:underline text-[10px]"
+                      >
+                        Hapus Foto
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="crm-image-url"
+                    value={crmImageUrl}
+                    onChange={(e) => setCrmImageUrl(e.target.value)}
+                    placeholder="https://.../flyer-panen-madu.jpg (kosongkan jika teks saja)"
+                    className="text-xs font-mono"
+                  />
+                  {crmImageUrl && (
+                    <div className="flex items-center gap-3 p-2 bg-muted/40 rounded-xl border border-muted/60">
+                      <img
+                        src={crmImageUrl}
+                        alt="Preview Flyer CRM"
+                        className="h-14 w-14 object-cover rounded-lg border shadow-xs"
+                        onError={(e) => {
+                          (e.target as any).style.display = "none";
+                        }}
+                      />
+                      <div className="text-[11px] text-muted-foreground">
+                        <span className="font-semibold text-foreground flex items-center gap-1">
+                          Foto Flyer Otomatis Aktif
+                        </span>
+                        <p>Cron jam 10 pagi akan otomatis mengirim gambar ini bersama caption teks ke konsumen.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="crm-template" className="text-xs font-semibold text-muted-foreground">Caption Teks Pesan CRM:</Label>
                   <textarea
                     id="crm-template"
                     ref={crmTextareaRef}
-                    rows={8}
-                    className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    rows={7}
+                    className="flex min-h-[140px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 font-sans"
                     value={crmTemplate}
                     onChange={(e) => setCrmTemplate(e.target.value)}
                     placeholder="Masukkan format pesan CRM..."

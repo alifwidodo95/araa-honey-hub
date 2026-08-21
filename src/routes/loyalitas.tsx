@@ -80,6 +80,7 @@ function LoyaltyPage() {
   // Send Confirmation / Preview Dialog State
   const [previewDialogCustomer, setPreviewDialogCustomer] = useState<any | null>(null);
   const [previewMessage, setPreviewMessage] = useState("");
+  const [previewImageUrl, setPreviewImageUrl] = useState("");
 
   // 1. Fetch Loyalty Statistics
   const { data: apiResponse, isLoading, isFetching, refetch } = useQuery({
@@ -184,14 +185,27 @@ function LoyaltyPage() {
     queryFn: async () => {
       try {
         const res = await getLoyaltyTemplates();
-        return res as { vip: string; potential: string; at_risk: string; all_repeat: string };
+        return res as {
+          vip: string;
+          potential: string;
+          at_risk: string;
+          all_repeat: string;
+          vip_image_url?: string;
+          potential_image_url?: string;
+          at_risk_image_url?: string;
+          all_repeat_image_url?: string;
+        };
       } catch (err) {
         console.error(err);
         return {
-          vip: "Halo Kak {nama}, terima kasih telah menjadi pelanggan prioritas Araa Honey ({total_order}x pemesanan)! 🍯 Pesanan terakhir Kakak pada {tanggal_order} ({madu_favorit}) mungkin sudah mulai habis ya Kak?",
-          potential: "Halo Kak {nama}, bagaimana rasa madu {madu_favorit} yang dipesan pada {tanggal_order} ({jeda_hari} hari lalu) Kak? 🍯",
-          at_risk: "Halo Kak {nama}, rindu menyapa Kakak sejak pesanan terakhir {madu_favorit} pada {tanggal_order}! 🍯",
-          all_repeat: "Halo Kak {nama}, salam sehat dari Araa Honey! Pesanan terakhir Kakak tercatat pada {tanggal_order}. 🍯",
+          vip: "Halo Kak {nama}, terima kasih telah menjadi pelanggan prioritas Araa Honey ({total_order}x pemesanan)! 🍯",
+          potential: "Halo Kak {nama}, bagaimana rasa madu {madu_favorit} yang dipesan pada {tanggal_order}? 🍯",
+          at_risk: "Halo Kak {nama}, rindu menyapa Kakak sejak pesanan {tanggal_order}! 🍯",
+          all_repeat: "Halo Kak {nama}, salam sehat dari Araa Honey! 🍯",
+          vip_image_url: "",
+          potential_image_url: "",
+          at_risk_image_url: "",
+          all_repeat_image_url: "",
         };
       }
     },
@@ -204,12 +218,25 @@ function LoyaltyPage() {
     potential: "",
     at_risk: "",
     all_repeat: "",
+    vip_image_url: "",
+    potential_image_url: "",
+    at_risk_image_url: "",
+    all_repeat_image_url: "",
   });
 
   // Sync templates on load
   useMemo(() => {
     if (templatesData) {
-      setTemplates(templatesData);
+      setTemplates({
+        vip: templatesData.vip || "",
+        potential: templatesData.potential || "",
+        at_risk: templatesData.at_risk || "",
+        all_repeat: templatesData.all_repeat || "",
+        vip_image_url: templatesData.vip_image_url || "",
+        potential_image_url: templatesData.potential_image_url || "",
+        at_risk_image_url: templatesData.at_risk_image_url || "",
+        all_repeat_image_url: templatesData.all_repeat_image_url || "",
+      });
     }
   }, [templatesData]);
 
@@ -220,7 +247,7 @@ function LoyaltyPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loyalty-crm-templates"] });
-      toast.success("✅ Template pesan CRM berhasil disimpan!");
+      toast.success("✅ Template pesan & flyer CRM berhasil disimpan!");
       setTemplateDialogOpen(false);
     },
     onError: (err: any) => {
@@ -230,11 +257,23 @@ function LoyaltyPage() {
 
   // Mutation to send Direct WhatsApp via WAHA
   const sendWhatsAppMutation = useMutation({
-    mutationFn: async ({ phone, customerName, message, favoriteHoney }: { phone: string; customerName: string; message: string; favoriteHoney?: string }) => {
-      return await sendDirectLoyaltyWhatsApp({ data: { phone, customerName, message, favoriteHoney } });
+    mutationFn: async ({
+      phone,
+      customerName,
+      message,
+      favoriteHoney,
+      imageUrl,
+    }: {
+      phone: string;
+      customerName: string;
+      message: string;
+      favoriteHoney?: string;
+      imageUrl?: string;
+    }) => {
+      return await sendDirectLoyaltyWhatsApp({ data: { phone, customerName, message, favoriteHoney, imageUrl } });
     },
     onSuccess: (_, variables) => {
-      toast.success(`✅ Pesan berhasil dikirim ke ${variables.customerName} (${variables.phone}) via WAHA!`);
+      toast.success(`✅ Pesan ${variables.imageUrl ? "bergambar " : ""}berhasil dikirim ke ${variables.customerName} (${variables.phone}) via WAHA!`);
       setSentMap((prev) => ({ ...prev, [variables.phone]: true }));
       queryClient.invalidateQueries({ queryKey: ["customer-loyalty-serverfn-stats"] });
       setPreviewDialogCustomer(null);
@@ -350,6 +389,8 @@ function LoyaltyPage() {
   const handleOpenSendDialog = (c: any) => {
     const formatted = formatCustomerMessage(c);
     setPreviewMessage(formatted);
+    const imgKey = `${activeTab}_image_url` as keyof typeof templates;
+    setPreviewImageUrl(templates[imgKey] || "");
     setPreviewDialogCustomer(c);
   };
 
@@ -361,6 +402,7 @@ function LoyaltyPage() {
       customerName: previewDialogCustomer.name,
       message: previewMessage,
       favoriteHoney: previewDialogCustomer.favoriteHoney,
+      imageUrl: previewImageUrl,
     });
   };
 
@@ -886,10 +928,64 @@ function LoyaltyPage() {
               </div>
             </div>
 
+            {/* Image Flyer Input */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                <span>URL Foto / Flyer Promo (Opsional):</span>
+                {templates[`${templateTab}_image_url` as keyof typeof templates] && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTemplates((prev) => ({
+                        ...prev,
+                        [`${templateTab}_image_url`]: "",
+                      }))
+                    }
+                    className="text-rose-500 hover:underline text-[10px]"
+                  >
+                    Hapus Gambar
+                  </button>
+                )}
+              </div>
+              <Input
+                value={templates[`${templateTab}_image_url` as keyof typeof templates] || ""}
+                onChange={(e) =>
+                  setTemplates((prev) => ({
+                    ...prev,
+                    [`${templateTab}_image_url`]: e.target.value,
+                  }))
+                }
+                placeholder="https://.../flyer-promo-madu.jpg (kosongkan jika teks saja)"
+                className="h-8 text-xs font-mono"
+              />
+              {templates[`${templateTab}_image_url` as keyof typeof templates] && (
+                <div className="flex items-center gap-3 p-2 bg-muted/40 rounded-xl border border-muted/60">
+                  <img
+                    src={templates[`${templateTab}_image_url` as keyof typeof templates]}
+                    alt="Preview Promo"
+                    className="h-14 w-14 object-cover rounded-lg border shadow-xs"
+                    onError={(e) => {
+                      (e.target as any).style.display = "none";
+                    }}
+                  />
+                  <div className="text-[11px] text-muted-foreground">
+                    <span className="font-semibold text-foreground flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      Foto Flyer Terpasang
+                    </span>
+                    <p>Gambar ini akan otomatis terkirim bersama caption teks di bawah saat CS klik Kirim WA.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Template Textarea */}
             <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                <span>Caption Teks WhatsApp:</span>
+              </div>
               <Textarea
-                rows={6}
+                rows={5}
                 value={templates[templateTab] || ""}
                 onChange={(e) =>
                   setTemplates((prev) => ({
@@ -919,7 +1015,7 @@ function LoyaltyPage() {
               className="text-xs h-8 bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
             >
               {saveTemplateMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Simpan Template
+              Simpan Template & Flyer
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -964,8 +1060,39 @@ function LoyaltyPage() {
                 </div>
               )}
 
+              {/* Image Preview Banner in Send Dialog */}
+              {previewImageUrl && (
+                <div className="relative rounded-xl overflow-hidden border border-emerald-500/30 bg-emerald-500/5 p-2.5 flex items-center gap-3">
+                  <img
+                    src={previewImageUrl}
+                    alt="Promo Preview"
+                    className="h-14 w-14 object-cover rounded-lg border shadow-2xs"
+                    onError={(e) => {
+                      (e.target as any).style.display = "none";
+                    }}
+                  />
+                  <div className="text-xs flex-1">
+                    <div className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Pesan Bergambar (Flyer Promo)
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Gambar akan dikirim bersama caption teks di bawah ke WA pelanggan.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewImageUrl("")}
+                    className="h-7 text-[11px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 px-2"
+                    title="Kirim sebagai teks saja tanpa gambar"
+                  >
+                    Hapus Foto
+                  </Button>
+                </div>
+              )}
+
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">Isi Pesan yang Akan Dikirim:</label>
+                <label className="text-[11px] font-semibold text-muted-foreground">Isi Caption Teks:</label>
                 <Textarea
                   rows={5}
                   value={previewMessage}
