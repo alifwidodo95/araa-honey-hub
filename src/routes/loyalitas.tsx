@@ -1,19 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { formatIDR } from "@/lib/theme";
+import { toast } from "sonner";
 import { 
   Repeat, Users, Crown, Clock, TrendingUp, Search, MessageSquare, 
   Sparkles, HeartHandshake, ShoppingBag, 
-  ExternalLink, ChevronLeft, ChevronRight, AlertCircle, RefreshCw
+  ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
+  Send, CheckCircle2, Loader2, Calendar
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
-import { getLoyaltyStats } from "@/lib/loyalty.functions";
+import { 
+  getLoyaltyStats, 
+  getLoyaltyTemplates, 
+  saveLoyaltyTemplates, 
+  sendDirectLoyaltyWhatsApp 
+} from "@/lib/loyalty.functions";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/loyalitas")({
@@ -40,13 +49,36 @@ interface RawTrend {
   repeat_omzet: number | string;
 }
 
+function formatDateIndo(dateStr: string) {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  } catch {
+    return dateStr.slice(0, 10);
+  }
+}
+
 function LoyaltyPage() {
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"vip" | "potential" | "at_risk" | "all_repeat">("vip");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  // Fetch loyalty data via Server Function with auto fallback
+  // Local state tracking sent customers
+  const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
+
+  // Template Settings Dialog State
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateTab, setTemplateTab] = useState<"vip" | "potential" | "at_risk" | "all_repeat">("vip");
+
+  // Send Confirmation / Preview Dialog State
+  const [previewDialogCustomer, setPreviewDialogCustomer] = useState<any | null>(null);
+  const [previewMessage, setPreviewMessage] = useState("");
+
+  // 1. Fetch Loyalty Statistics
   const { data: apiResponse, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["customer-loyalty-serverfn-stats"],
     queryFn: async () => {
@@ -80,7 +112,6 @@ function LoyaltyPage() {
         from += step;
       }
 
-      // Aggregate in browser fallback
       const now = new Date();
       const customerMap: Record<string, any> = {};
       const monthBuckets: Record<string, any> = {};
@@ -142,6 +173,71 @@ function LoyaltyPage() {
       };
     },
     staleTime: 5 * 60 * 1000,
+  });
+
+  // 2. Fetch Loyalty Message Templates
+  const { data: templatesData } = useQuery({
+    queryKey: ["loyalty-crm-templates"],
+    queryFn: async () => {
+      try {
+        const res = await getLoyaltyTemplates();
+        return res as { vip: string; potential: string; at_risk: string; all_repeat: string };
+      } catch (err) {
+        console.error(err);
+        return {
+          vip: "Halo Kak {nama}, terima kasih telah menjadi pelanggan prioritas Araa Honey ({total_order}x pemesanan)! 🍯 Pesanan terakhir Kakak pada {tanggal_order} ({madu_favorit}) mungkin sudah mulai habis ya Kak?",
+          potential: "Halo Kak {nama}, bagaimana rasa madu {madu_favorit} yang dipesan pada {tanggal_order} ({jeda_hari} hari lalu) Kak? 🍯",
+          at_risk: "Halo Kak {nama}, rindu menyapa Kakak sejak pesanan terakhir {madu_favorit} pada {tanggal_order}! 🍯",
+          all_repeat: "Halo Kak {nama}, salam sehat dari Araa Honey! Pesanan terakhir Kakak tercatat pada {tanggal_order}. 🍯",
+        };
+      }
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Local state for template form
+  const [templates, setTemplates] = useState({
+    vip: "",
+    potential: "",
+    at_risk: "",
+    all_repeat: "",
+  });
+
+  // Sync templates on load
+  useMemo(() => {
+    if (templatesData) {
+      setTemplates(templatesData);
+    }
+  }, [templatesData]);
+
+  // Mutation to save templates
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (newTemplates: typeof templates) => {
+      return await saveLoyaltyTemplates({ data: newTemplates });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["loyalty-crm-templates"] });
+      toast.success("✅ Template pesan CRM berhasil disimpan!");
+      setTemplateDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Gagal menyimpan template");
+    },
+  });
+
+  // Mutation to send Direct WhatsApp via WAHA
+  const sendWhatsAppMutation = useMutation({
+    mutationFn: async ({ phone, customerName, message }: { phone: string; customerName: string; message: string }) => {
+      return await sendDirectLoyaltyWhatsApp({ data: { phone, customerName, message } });
+    },
+    onSuccess: (_, variables) => {
+      toast.success(`✅ Pesan berhasil dikirim ke ${variables.customerName} (${variables.phone}) via WAHA!`);
+      setSentMap((prev) => ({ ...prev, [variables.phone]: true }));
+      setPreviewDialogCustomer(null);
+    },
+    onError: (err: any) => {
+      toast.error(`❌ Gagal mengirim WhatsApp: ${err.message}`);
+    },
   });
 
   // Process data and segments
@@ -211,7 +307,6 @@ function LoyaltyPage() {
         };
       });
 
-    // Current month repeat stats
     const nowMonthStr = new Date().toISOString().slice(0, 7);
     const currTrend = trends.find((t) => t.month === nowMonthStr) || trends[trends.length - 1];
     const currRepeatOmzet = currTrend ? currTrend.repeatOmzet : 0;
@@ -234,6 +329,35 @@ function LoyaltyPage() {
     };
   }, [apiResponse]);
 
+  // Format message for a specific customer based on the active tab template
+  const formatCustomerMessage = (c: any, tabKey = activeTab) => {
+    let tpl = templates[tabKey] || templates.vip;
+    return tpl
+      .replace(/{nama}/g, c.name || "Pelanggan")
+      .replace(/{tanggal_order}/g, formatDateIndo(c.lastOrderDate))
+      .replace(/{jeda_hari}/g, String(c.daysSinceLastOrder))
+      .replace(/{madu_favorit}/g, c.favoriteHoney || "Madu Araa")
+      .replace(/{total_order}/g, String(c.orderCount))
+      .replace(/{total_belanja}/g, formatIDR(c.totalSpent));
+  };
+
+  // Open Preview & Direct Send Dialog
+  const handleOpenSendDialog = (c: any) => {
+    const formatted = formatCustomerMessage(c);
+    setPreviewMessage(formatted);
+    setPreviewDialogCustomer(c);
+  };
+
+  // Execute Direct Send via WAHA
+  const handleExecuteSend = () => {
+    if (!previewDialogCustomer) return;
+    sendWhatsAppMutation.mutate({
+      phone: previewDialogCustomer.phone,
+      customerName: previewDialogCustomer.name,
+      message: previewMessage,
+    });
+  };
+
   // Filtered Customers based on active tab and search
   const filteredCustomers = useMemo(() => {
     let list = customers;
@@ -253,7 +377,6 @@ function LoyaltyPage() {
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.phone.includes(q) || c.favoriteHoney.toLowerCase().includes(q));
     }
 
-    // Default sorting: VIP by totalSpent desc, Potential by daysSince asc, At Risk by daysSince asc
     return list.sort((a, b) => {
       if (activeTab === "vip" || activeTab === "all_repeat") {
         return b.totalSpent - a.totalSpent;
@@ -266,18 +389,11 @@ function LoyaltyPage() {
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
   const paginatedCustomers = filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const handleOpenWhatsApp = (c: any) => {
-    let message = "";
-    if (c.orderCount >= 3) {
-      message = `Halo Kak ${c.name}, salam hangat dari Araa Honey! 🍯✨\n\nKami sangat berterima kasih atas kesetiaan Kakak yang sudah menjadi pelanggan prioritas kami.\n\nKebetulan kami sedang ada stok madu ${c.favoriteHoney} panen terbaru. Jika persediaan di rumah mulai menipis, khusus untuk Kakak ada penawaran spesial gratis ongkir ya Kak. Semoga sehat selalu sekeluarga! 😊`;
-    } else if (activeTab === "potential") {
-      message = `Halo Kak ${c.name}, semoga sehat selalu ya Kak! 🍯😊\n\nSekadar menyapa, bagaimana rasa madu ${c.favoriteHoney} yang dipesan sekitar ${c.daysSinceLastOrder} hari yang lalu Kak? Semoga cocok dan bermanfaat untuk kesehatan ya.\n\nJika stok madunya sudah mulai menipis, Kakak bisa langsung pesan kembali lewat chat ini ya Kak. Terima kasih banyak Kak!`;
-    } else {
-      message = `Halo Kak ${c.name}, semoga sehat selalu sekeluarga ya! 🍯\n\nSudah lama tidak bersilaturahmi nih Kak. Kami rindu menyapa Kakak pelanggan setia Araa Honey. Khusus minggu ini kami ada promo diskon spesial untuk pemesanan ulang varian ${c.favoriteHoney}. Boleh kami bantu amankan stoknya Kak? 😊`;
-    }
-
-    const url = `https://wa.me/${c.phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
+  const insertVariable = (varName: string) => {
+    setTemplates((prev) => ({
+      ...prev,
+      [templateTab]: prev[templateTab] + varName,
+    }));
   };
 
   return (
@@ -290,20 +406,32 @@ function LoyaltyPage() {
             Loyalitas & Analisis Repeat Order
           </h2>
           <p className="text-sm text-muted-foreground">
-            Analisis tingkat pembelian berulang, segmentasi loyalitas pelanggan, dan strategi CRM personal.
+            Analisis tingkat pembelian berulang, segmentasi loyalitas pelanggan, dan pengiriman pesan CRM 1-klik via WAHA.
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="gap-2 self-start sm:self-auto h-9 text-xs"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
-          Perbarui Data
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTemplateDialogOpen(true)}
+            className="gap-2 h-9 text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
+          >
+            <Settings2 className="w-4 h-4" />
+            Atur Template Pesan
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="gap-2 h-9 text-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            Perbarui
+          </Button>
+        </div>
       </div>
 
       {/* 4 KPI Cards */}
@@ -418,10 +546,10 @@ function LoyaltyPage() {
           <div>
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <Users className="w-4 h-4 text-amber-500" />
-              Segmentasi Pelanggan & Tindakan CRM
+              Segmentasi Pelanggan & Tindakan CRM 1-Klik
             </CardTitle>
             <CardDescription className="text-xs">
-              Pilih segmen audiens untuk melihat daftar kontak dan mengirimkan pesan WhatsApp personal sekali klik.
+              Pilih segmen audiens untuk melihat daftar kontak dan mengirimkan pesan WhatsApp otomatis melalui WAHA server.
             </CardDescription>
           </div>
 
@@ -520,57 +648,69 @@ function LoyaltyPage() {
                     <TableHead className="py-2.5">Nama & Kontak</TableHead>
                     <TableHead className="py-2.5 text-center">Frekuensi</TableHead>
                     <TableHead className="py-2.5 text-right">Total Belanja (LTV)</TableHead>
-                    <TableHead className="py-2.5 text-center">Jeda Terakhir</TableHead>
+                    <TableHead className="py-2.5 text-center">Order Terakhir</TableHead>
                     <TableHead className="py-2.5">Madu Favorit</TableHead>
-                    <TableHead className="py-2.5 text-center">Aksi CRM</TableHead>
+                    <TableHead className="py-2.5 text-center">Aksi CRM WAHA</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedCustomers.map((c) => (
-                    <TableRow key={c.phone} className="text-xs hover:bg-muted/20">
-                      <TableCell className="py-2.5 font-medium">
-                        <div className="font-semibold text-foreground">{c.name}</div>
-                        <div className="text-[11px] text-muted-foreground">{c.phone}</div>
-                      </TableCell>
-                      <TableCell className="py-2.5 text-center">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                          c.orderCount >= 3 
-                            ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
-                            : c.orderCount === 2 
-                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                            : "bg-muted text-muted-foreground"
-                        }`}>
-                          {c.orderCount >= 3 && <Crown className="w-3 h-3" />}
-                          {c.orderCount}x Order
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-2.5 text-right font-bold text-foreground">
-                        {formatIDR(c.totalSpent)}
-                      </TableCell>
-                      <TableCell className="py-2.5 text-center">
-                        <span className="font-medium">{c.daysSinceLastOrder} hari lalu</span>
-                        <div className="text-[10px] text-muted-foreground">{c.lastOrderDate.slice(0, 10)}</div>
-                      </TableCell>
-                      <TableCell className="py-2.5">
-                        <span className="inline-block bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-md text-[11px]">
-                          {c.favoriteHoney}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-2.5 text-center">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleOpenWhatsApp(c)}
-                          className="h-7 text-[11px] gap-1.5 font-semibold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
-                          title="Kirim pesan WhatsApp personal"
-                        >
-                          <MessageSquare className="w-3 h-3" />
-                          Chat WA
-                          <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {paginatedCustomers.map((c) => {
+                    const isSent = sentMap[c.phone];
+                    return (
+                      <TableRow key={c.phone} className="text-xs hover:bg-muted/20">
+                        <TableCell className="py-2.5 font-medium">
+                          <div className="font-semibold text-foreground">{c.name}</div>
+                          <div className="text-[11px] text-muted-foreground">{c.phone}</div>
+                        </TableCell>
+                        <TableCell className="py-2.5 text-center">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            c.orderCount >= 3 
+                              ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                              : c.orderCount === 2 
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
+                            {c.orderCount >= 3 && <Crown className="w-3 h-3" />}
+                            {c.orderCount}x Order
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2.5 text-right font-bold text-foreground">
+                          {formatIDR(c.totalSpent)}
+                        </TableCell>
+                        <TableCell className="py-2.5 text-center">
+                          <span className="font-semibold">{c.daysSinceLastOrder} hari lalu</span>
+                          <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1 mt-0.5">
+                            <Calendar className="w-2.5 h-2.5" />
+                            {formatDateIndo(c.lastOrderDate)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <span className="inline-block bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-md text-[11px]">
+                            {c.favoriteHoney}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2.5 text-center">
+                          {isSent ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Terkirim
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenSendDialog(c)}
+                              className="h-7 text-[11px] gap-1.5 font-semibold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
+                              title="Kirim pesan otomatis via WAHA"
+                            >
+                              <Send className="w-3 h-3" />
+                              Kirim WA
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -609,6 +749,193 @@ function LoyaltyPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* 1. Modal Dialog: Atur Template Pesan CRM */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Settings2 className="w-5 h-5 text-amber-500" />
+              Kostumisasi Template Pesan WhatsApp CRM
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Atur format pesan untuk setiap segmen. Sisipkan variabel dinamis untuk memuat data pelanggan otomatis.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Template Segment Selector */}
+            <div className="grid grid-cols-4 gap-1.5 bg-muted/40 p-1 rounded-xl">
+              <Button
+                size="sm"
+                variant={templateTab === "vip" ? "default" : "ghost"}
+                onClick={() => setTemplateTab("vip")}
+                className={`h-7 text-xs font-semibold rounded-lg ${templateTab === "vip" ? "bg-purple-600 text-white" : ""}`}
+              >
+                Super VIP
+              </Button>
+              <Button
+                size="sm"
+                variant={templateTab === "potential" ? "default" : "ghost"}
+                onClick={() => setTemplateTab("potential")}
+                className={`h-7 text-xs font-semibold rounded-lg ${templateTab === "potential" ? "bg-amber-600 text-white" : ""}`}
+              >
+                Re-Order (30-60H)
+              </Button>
+              <Button
+                size="sm"
+                variant={templateTab === "at_risk" ? "default" : "ghost"}
+                onClick={() => setTemplateTab("at_risk")}
+                className={`h-7 text-xs font-semibold rounded-lg ${templateTab === "at_risk" ? "bg-rose-600 text-white" : ""}`}
+              >
+                At-Risk (&gt;65H)
+              </Button>
+              <Button
+                size="sm"
+                variant={templateTab === "all_repeat" ? "default" : "ghost"}
+                onClick={() => setTemplateTab("all_repeat")}
+                className={`h-7 text-xs font-semibold rounded-lg ${templateTab === "all_repeat" ? "bg-emerald-600 text-white" : ""}`}
+              >
+                Semua Repeat
+              </Button>
+            </div>
+
+            {/* Variable Pills */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-muted-foreground">Klik untuk menyisipkan variabel dinamis:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { tag: "{nama}", desc: "Nama Pelanggan" },
+                  { tag: "{tanggal_order}", desc: "Tgl Order Terakhir (Contoh: 12 Juli 2026)" },
+                  { tag: "{jeda_hari}", desc: "Jeda Hari (Contoh: 40)" },
+                  { tag: "{madu_favorit}", desc: "Varian Madu (Contoh: Akasia)" },
+                  { tag: "{total_order}", desc: "Total Order (Contoh: 3)" },
+                  { tag: "{total_belanja}", desc: "Total Belanja (LTV)" },
+                ].map((v) => (
+                  <button
+                    key={v.tag}
+                    type="button"
+                    onClick={() => insertVariable(v.tag)}
+                    className="inline-flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-mono text-[11px] px-2 py-0.5 rounded-md border border-amber-500/20 transition-colors"
+                    title={v.desc}
+                  >
+                    <span>{v.tag}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Template Textarea */}
+            <div className="space-y-1">
+              <Textarea
+                rows={6}
+                value={templates[templateTab] || ""}
+                onChange={(e) =>
+                  setTemplates((prev) => ({
+                    ...prev,
+                    [templateTab]: e.target.value,
+                  }))
+                }
+                placeholder="Tulis format pesan WhatsApp..."
+                className="text-xs leading-relaxed font-sans"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTemplateDialogOpen(false)}
+              className="text-xs h-8"
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => saveTemplateMutation.mutate(templates)}
+              disabled={saveTemplateMutation.isPending}
+              className="text-xs h-8 bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+            >
+              {saveTemplateMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Simpan Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 2. Modal Dialog: Quick Preview & Direct Send via WAHA */}
+      <Dialog open={!!previewDialogCustomer} onOpenChange={(open) => !open && setPreviewDialogCustomer(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Send className="w-5 h-5 text-emerald-500" />
+              Kirim Pesan WhatsApp Langsung (WAHA)
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Pesan akan langsung dikirim dari server WAHA Araa Honey ke nomor penerima.
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewDialogCustomer && (
+            <div className="space-y-3 py-2">
+              <div className="bg-muted/40 p-3 rounded-xl space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Penerima:</span>
+                  <span className="font-bold text-foreground">{previewDialogCustomer.name} ({previewDialogCustomer.phone})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Order Terakhir:</span>
+                  <span className="font-medium text-foreground">{formatDateIndo(previewDialogCustomer.lastOrderDate)} ({previewDialogCustomer.daysSinceLastOrder} hari lalu)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Madu Favorit:</span>
+                  <span className="font-medium text-amber-600 dark:text-amber-400">{previewDialogCustomer.favoriteHoney}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground">Isi Pesan yang Akan Dikirim:</label>
+                <Textarea
+                  rows={5}
+                  value={previewMessage}
+                  onChange={(e) => setPreviewMessage(e.target.value)}
+                  className="text-xs font-sans leading-relaxed"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPreviewDialogCustomer(null)}
+              className="text-xs h-8"
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleExecuteSend}
+              disabled={sendWhatsAppMutation.isPending}
+              className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-bold"
+            >
+              {sendWhatsAppMutation.isPending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Mengirim via WAHA...
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  Kirim Sekarang 🚀
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
