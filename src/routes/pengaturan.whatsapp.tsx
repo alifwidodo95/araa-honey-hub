@@ -285,7 +285,7 @@ function WhatsAppPage() {
         .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
         .replace(/{last_order_date}/g, formatDateIndo(reminder.orders?.created_at) || '');
 
-      const success = await sendWhatsAppMessage(reminder.customer_phone, formattedMessage);
+      const success = await sendWhatsAppMessage(reminder.customer_phone, formattedMessage, crmImageUrl);
 
       if (success) {
         const { error } = await supabase
@@ -770,13 +770,54 @@ function WhatsAppPage() {
     return `${clean}@c.us`;
   };
 
-  // Send Single WA Message via WAHA
-  const sendWhatsAppMessage = async (to: string, message: string): Promise<boolean> => {
+  // Send Single WA Message via WAHA (supports Text or Image + Caption)
+  const sendWhatsAppMessage = async (to: string, message: string, imageUrl?: string): Promise<boolean> => {
     const chatId = formatPhoneNumber(to);
+    const hasImage = !!(imageUrl && imageUrl.trim().startsWith("http"));
     
-    // WAHA v2 endpoint: POST /api/sendText or POST /api/messages/sendText
-    // Let's try /api/sendText first as it is default
     try {
+      if (hasImage) {
+        const imagePayload = {
+          session: sessionName,
+          chatId: chatId,
+          file: {
+            url: imageUrl.trim(),
+            mimetype: "image/jpeg",
+            filename: "promo-madu-araa.jpg"
+          },
+          caption: message
+        };
+
+        // Try /api/sendImage first
+        let imgRes = await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sendImage`,
+            method: "POST",
+            headers: getWahaHeaders(),
+            body: imagePayload
+          })
+        });
+
+        if (imgRes.ok) return true;
+
+        // Try fallback /api/sendFile
+        const sendFileRes = await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sendFile`,
+            method: "POST",
+            headers: getWahaHeaders(),
+            body: imagePayload
+          })
+        });
+
+        if (sendFileRes.ok) return true;
+      }
+
+      // Send plain text (or fallback if image fails)
       const res = await fetch("/api/waha-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -793,7 +834,7 @@ function WhatsAppPage() {
       });
       if (res.ok) return true;
 
-      // Fallback endpoint
+      // Fallback text endpoint
       const fallbackRes = await fetch("/api/waha-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
