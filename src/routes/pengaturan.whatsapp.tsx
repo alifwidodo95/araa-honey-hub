@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
-  XCircle, Trash2, Clock, Calendar, Bell
+  XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2
 } from "lucide-react";
 
 export const Route = createFileRoute("/pengaturan/whatsapp")({
@@ -56,8 +56,58 @@ function WhatsAppPage() {
   const [crmDelayDays, setCrmDelayDays] = useState(45);
   const [crmMaxDailyLimit, setCrmMaxDailyLimit] = useState(50);
   const [crmImageUrl, setCrmImageUrl] = useState("");
+  const [uploadingFlyer, setUploadingFlyer] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [crmTemplate, setCrmTemplate] = useState(`Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`);
   const crmTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Handle uploading flyer image to Supabase Storage
+  const handleUploadFlyer = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("File harus berupa gambar (JPG, PNG, WEBP).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran gambar maksimal 5MB.");
+      return;
+    }
+
+    setUploadingFlyer(true);
+    try {
+      const fileExt = file.name.split(".").pop() || "jpg";
+      const fileName = `crm_flyer_${Date.now()}.${fileExt}`;
+      const filePath = `flyers/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from("crm-media")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("crm-media")
+        .getPublicUrl(filePath);
+
+      if (publicUrlData?.publicUrl) {
+        setCrmImageUrl(publicUrlData.publicUrl);
+        toast.success("Foto flyer promo berhasil diunggah!");
+      }
+    } catch (err: any) {
+      console.error("Gagal upload flyer:", err);
+      toast.error(err.message || "Gagal mengunggah foto flyer.");
+    } finally {
+      setUploadingFlyer(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   // Fetch CRM Config from Supabase
   const { data: dbCrmConfig, refetch: refetchCrmConfig } = useQuery({
@@ -1462,7 +1512,7 @@ function WhatsAppPage() {
                       <Input 
                         id="crm-limit"
                         type="number"
-                        placeholder="50" 
+                        placeholder="100" 
                         value={crmMaxDailyLimit} 
                         onChange={(e) => setCrmMaxDailyLimit(Number(e.target.value))}
                         className="w-full"
@@ -1471,6 +1521,14 @@ function WhatsAppPage() {
                     </div>
                   </div>
                 </div>
+
+                <Button 
+                  onClick={handleSaveCrmConfig} 
+                  size="sm"
+                  className="w-full mt-2 bg-honey hover:bg-honey-dark text-honey-foreground font-semibold text-xs"
+                >
+                  Simpan Pengaturan CRM (Jeda & Batas)
+                </Button>
 
                 <div className="border-t pt-3 mt-3 space-y-2">
                   <Label className="text-xs font-semibold text-muted-foreground">Info Cron Pengingat CRM:</Label>
@@ -1509,42 +1567,77 @@ function WhatsAppPage() {
                 <CardDescription>Format pesan pengingat repeat order.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* CRM Image Flyer URL */}
-                <div className="space-y-1.5">
+                {/* CRM Image Flyer Upload & URL */}
+                <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-semibold">
-                    <Label htmlFor="crm-image-url" className="text-muted-foreground">Foto / Flyer Promo CRM (Opsional):</Label>
+                    <Label htmlFor="crm-image-url" className="text-muted-foreground flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-honey" /> Foto / Flyer Promo CRM (Opsional):
+                    </Label>
                     {crmImageUrl && (
                       <button
                         type="button"
                         onClick={() => setCrmImageUrl("")}
-                        className="text-rose-500 hover:underline text-[10px]"
+                        className="text-rose-500 hover:underline text-[10px] flex items-center gap-1 cursor-pointer"
                       >
-                        Hapus Foto
+                        <Trash2 className="w-3 h-3" /> Hapus Foto
                       </button>
                     )}
                   </div>
-                  <Input
-                    id="crm-image-url"
-                    value={crmImageUrl}
-                    onChange={(e) => setCrmImageUrl(e.target.value)}
-                    placeholder="https://.../flyer-panen-madu.jpg (kosongkan jika teks saja)"
-                    className="text-xs font-mono"
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleUploadFlyer}
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    className="hidden"
+                    id="crm-flyer-input"
                   />
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFlyer}
+                      className="shrink-0 text-xs font-semibold border-amber-500/40 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {uploadingFlyer ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Mengunggah Foto...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>Pilih Foto dari Galeri / Laptop</span>
+                        </>
+                      )}
+                    </Button>
+                    <Input
+                      id="crm-image-url"
+                      value={crmImageUrl}
+                      onChange={(e) => setCrmImageUrl(e.target.value)}
+                      placeholder="Atau tempel link gambar di sini..."
+                      className="text-xs font-mono"
+                    />
+                  </div>
+
                   {crmImageUrl && (
-                    <div className="flex items-center gap-3 p-2 bg-muted/40 rounded-xl border border-muted/60">
+                    <div className="flex items-center gap-3 p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20">
                       <img
                         src={crmImageUrl}
                         alt="Preview Flyer CRM"
-                        className="h-14 w-14 object-cover rounded-lg border shadow-xs"
+                        className="h-16 w-16 object-cover rounded-lg border border-amber-500/30 shadow-xs"
                         onError={(e) => {
                           (e.target as any).style.display = "none";
                         }}
                       />
-                      <div className="text-[11px] text-muted-foreground">
-                        <span className="font-semibold text-foreground flex items-center gap-1">
-                          Foto Flyer Otomatis Aktif
+                      <div className="text-[11px] text-muted-foreground space-y-0.5">
+                        <span className="font-semibold text-foreground flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                          <CheckCircle className="w-3.5 h-3.5" /> Foto Flyer Siap Dikirim
                         </span>
-                        <p>Cron jam 10 pagi akan otomatis mengirim gambar ini bersama caption teks ke konsumen.</p>
+                        <p className="line-clamp-2">Pesan WhatsApp otomatis akan melampirkan flyer ini bersama template teks di bawah.</p>
                       </div>
                     </div>
                   )}
