@@ -305,6 +305,32 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               continue;
             }
 
+            // Double check: If customer has already placed a newer repeat order, cancel this reminder and skip
+            const normPhone = formatPhoneNumber(reminder.customer_phone).replace('@c.us', '');
+            const newerOrderCheck = await pool.query(
+              `SELECT id FROM orders 
+               WHERE public.normalize_phone(customer_phone) = $1 
+                 AND channel = 'whatsapp' 
+                 AND returned = FALSE 
+                 AND created_at > $2 
+               LIMIT 1`,
+              [normPhone, reminder.last_order_date]
+            );
+
+            if (newerOrderCheck.rows.length > 0) {
+              await pool.query(
+                "UPDATE crm_reminders SET status = 'cancelled', updated_at = now() WHERE id = $1",
+                [reminder.id]
+              );
+              results.push({
+                id: reminder.id,
+                customer: reminder.customer_name,
+                status: 'CANCELLED_REPEAT_ORDER',
+                reason: 'Customer has already placed a newer order'
+              });
+              continue;
+            }
+
             // Check if number exists on WhatsApp before sending
             const numberExists = await checkNumberExists(reminder.customer_phone);
             if (!numberExists) {
