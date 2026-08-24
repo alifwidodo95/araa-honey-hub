@@ -150,6 +150,23 @@ export const Route = createFileRoute('/api/meta/reply-comment')({
           } else {
             const errText = await metaRes.text();
             console.error(`[Meta Reply API Error] Meta call failed:`, errText);
+            
+            // Check if comment was deleted on Facebook/Instagram (Error code 100 / subcode 33 / does not exist)
+            if (errText.includes('does not exist') || errText.includes('error_subcode":33')) {
+              await pool.query(`
+                UPDATE meta_comments
+                SET replied = true, reply_message = '[Komentar telah dihapus di Facebook/Instagram]', replied_at = now(), replied_by = 'deleted'
+                WHERE id = $1
+              `, [commentId]);
+              await pool.end();
+              return new Response(JSON.stringify({ 
+                error: 'Komentar ini sudah dihapus oleh pengguna/Facebook di Meta sehingga tidak dapat dibalas lagi. Status komentar telah otomatis ditandai selesai.' 
+              }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' },
+              });
+            }
+
             await pool.end();
             return new Response(JSON.stringify({ error: `Meta API Error: ${errText}` }), {
               status: 500,
