@@ -7,6 +7,7 @@ export const Route = createFileRoute('/api/biteship/search-area')({
         try {
           const url = new URL(request.url);
           const searchInput = url.searchParams.get('input') || '';
+          const customApiKey = url.searchParams.get('apiKey') || '';
           
           if (!searchInput.trim()) {
             return new Response(JSON.stringify({ areas: [] }), {
@@ -15,11 +16,25 @@ export const Route = createFileRoute('/api/biteship/search-area')({
             });
           }
 
-          const biteshipKey = process.env.BITESHIP_API_KEY;
+          let biteshipKey = customApiKey || process.env.BITESHIP_API_KEY;
+
+          // If no key passed and not in env, check app_settings in DB
+          if (!biteshipKey && process.env.DATABASE_URL) {
+            try {
+              const { Pool } = await import('pg');
+              const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+              const configRes = await pool.query("SELECT value FROM app_settings WHERE key = 'meta_ai_settings'");
+              await pool.end();
+              biteshipKey = configRes.rows[0]?.value?.biteship_api_key;
+            } catch (dbErr) {
+              console.warn('[Biteship Search Area] DB lookup failed:', dbErr);
+            }
+          }
+
           if (!biteshipKey) {
-            console.error('[Biteship Search Area] BITESHIP_API_KEY is not configured in environment');
-            return new Response(JSON.stringify({ error: 'Biteship API Key is not configured' }), {
-              status: 500,
+            console.error('[Biteship Search Area] BITESHIP_API_KEY is not configured');
+            return new Response(JSON.stringify({ error: 'Biteship API Key is not configured', areas: [] }), {
+              status: 400,
               headers: { 'Content-Type': 'application/json' },
             });
           }

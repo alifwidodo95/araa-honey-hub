@@ -88,7 +88,7 @@ function MetaCommentsPage() {
     setIsSearchingOrigin(true);
     const timeout = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/biteship/search-area?input=${encodeURIComponent(searchOriginQuery)}`);
+        const res = await fetch(`/api/biteship/search-area?input=${encodeURIComponent(searchOriginQuery)}&apiKey=${encodeURIComponent(biteshipApiKey)}`);
         if (res.ok) {
           const data = await res.json();
           setOriginSearchResults(data.areas || []);
