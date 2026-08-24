@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
+import { generateAiCommentReply } from '@/lib/meta-ai-reply';
 
 export const Route = createFileRoute('/api/webhooks/meta-comments')({
   server: {
@@ -185,27 +186,26 @@ Gunakan info ini untuk menjawab secara cerdas dan meyakinkan jika ditanya mengen
                 if (auto_reply_enabled && isAutoReplyActiveForPost && !alreadyReplied && openaiApiKey && page_access_token) {
                   console.log(`[Meta Webhook] Generating AI reply for comment ${commentId}: "${message}"`);
                   
-                  // Call OpenAI API
-                  const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${openaiApiKey}`
-                    },
-                    body: JSON.stringify({
-                      model: 'gpt-4o',
-                      messages: [
-                        { role: 'system', content: finalSystemInstruction },
-                        { role: 'user', content: `Nama Pengirim: ${username}\nKomentar: "${message}"` }
-                      ],
-                      temperature: 0.7,
-                      max_tokens: 150
-                    })
-                  });
-
-                  if (aiRes.ok) {
-                    const aiData = await aiRes.json() as any;
-                    const replyText = aiData.choices?.[0]?.message?.content?.trim();
+                  try {
+                    const replyText = await generateAiCommentReply({
+                      commentId,
+                      username,
+                      commentMessage: message,
+                      csWhatsappNumber: cs_whatsapp_number,
+                      systemInstruction: system_instruction,
+                      openaiApiKey,
+                      retailPricesText: pricesText,
+                      biteshipEnabled: aiConfig.biteship_enabled ?? true,
+                      biteshipApiKey: aiConfig.biteship_api_key || process.env.BITESHIP_API_KEY || '',
+                      biteshipOriginAreaId: aiConfig.biteship_origin_area_id || 'IDNP10IDNC243IDND2494',
+                      biteshipOriginName: aiConfig.biteship_origin_name || 'Gudang Utama',
+                      biteshipDefaultWeight: aiConfig.biteship_default_weight || 1000,
+                      discountConfig: {
+                        discountType: aiConfig.discount_type || 'fixed',
+                        discountValue: aiConfig.discount_value !== undefined ? Number(aiConfig.discount_value) : 10000,
+                        discountNote: aiConfig.discount_note || 'Subsidi ongkir promo toko'
+                      }
+                    });
 
                     if (replyText) {
                       console.log(`[Meta Webhook] AI generated response: "${replyText}". Posting to Meta...`);
@@ -240,9 +240,8 @@ Gunakan info ini untuk menjawab secara cerdas dan meyakinkan jika ditanya mengen
                         console.error(`[Meta Webhook Error] Failed to post reply to Meta:`, metaErrText);
                       }
                     }
-                  } else {
-                    const aiErrText = await aiRes.text();
-                    console.error(`[Meta Webhook Error] OpenAI call failed:`, aiErrText);
+                  } catch (aiErr) {
+                    console.error(`[Meta Webhook Error] AI generation/posting failed for comment ${commentId}:`, aiErr);
                   }
                 } else {
                   console.log(`[Meta Webhook] Auto-reply skipped for comment ${commentId}. Reason: auto_reply_enabled=${auto_reply_enabled}, isAutoReplyActiveForPost=${isAutoReplyActiveForPost}, alreadyReplied=${alreadyReplied}, hasOpenAIKey=${!!openaiApiKey}, hasPageToken=${!!page_access_token}`);

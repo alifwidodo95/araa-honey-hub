@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { 
   MessageSquare, Facebook, Instagram, Settings, RefreshCw, 
   Send, CheckCircle, AlertTriangle, Save, Sliders, Bot, Eye, EyeOff,
-  User, Check, X
+  User, Check, X, Truck, Tag, Percent, MapPin, Package, Loader2
 } from "lucide-react";
 
 export const Route = createFileRoute("/meta-comments")({
@@ -61,6 +62,45 @@ function MetaCommentsPage() {
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+
+  // Biteship & Shipping Discount States
+  const [biteshipEnabled, setBiteshipEnabled] = useState(true);
+  const [biteshipApiKey, setBiteshipApiKey] = useState("");
+  const [showBiteshipKey, setShowBiteshipKey] = useState(false);
+  const [biteshipOriginAreaId, setBiteshipOriginAreaId] = useState("IDNP10IDNC243IDND2494");
+  const [biteshipOriginName, setBiteshipOriginName] = useState("Ngablak, Magelang, Jawa Tengah. 56194");
+  const [biteshipDefaultWeight, setBiteshipDefaultWeight] = useState(1000);
+  const [discountType, setDiscountType] = useState<"fixed" | "percentage" | "none">("fixed");
+  const [discountValue, setDiscountValue] = useState(10000);
+  const [discountNote, setDiscountNote] = useState("Subsidi ongkir promo toko");
+
+  // Origin Location Search State
+  const [searchOriginQuery, setSearchOriginQuery] = useState("Ngablak, Magelang, Jawa Tengah. 56194");
+  const [originSearchResults, setOriginSearchResults] = useState<any[]>([]);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
+
+  // Debounce search origin area
+  useEffect(() => {
+    if (!searchOriginQuery.trim() || searchOriginQuery === biteshipOriginName) {
+      setOriginSearchResults([]);
+      return;
+    }
+    setIsSearchingOrigin(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/biteship/search-area?input=${encodeURIComponent(searchOriginQuery)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setOriginSearchResults(data.areas || []);
+        }
+      } catch (err) {
+        console.error("Gagal cari area Biteship:", err);
+      } finally {
+        setIsSearchingOrigin(false);
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [searchOriginQuery, biteshipOriginName]);
 
   // Quick Reply States (Mapped by comment ID)
   const [quickReplies, setQuickReplies] = useState<Record<string, string>>({});
@@ -156,6 +196,17 @@ function MetaCommentsPage() {
       if (rawSettings.facebook_page_id) setFacebookPageId(rawSettings.facebook_page_id);
       if (rawSettings.instagram_account_id) setInstagramAccountId(rawSettings.instagram_account_id);
       if (rawSettings.openai_api_key) setOpenaiApiKey(rawSettings.openai_api_key);
+      if (rawSettings.biteship_enabled !== undefined) setBiteshipEnabled(rawSettings.biteship_enabled);
+      if (rawSettings.biteship_api_key) setBiteshipApiKey(rawSettings.biteship_api_key);
+      if (rawSettings.biteship_origin_area_id) setBiteshipOriginAreaId(rawSettings.biteship_origin_area_id);
+      if (rawSettings.biteship_origin_name) {
+        setBiteshipOriginName(rawSettings.biteship_origin_name);
+        setSearchOriginQuery(rawSettings.biteship_origin_name);
+      }
+      if (rawSettings.biteship_default_weight) setBiteshipDefaultWeight(Number(rawSettings.biteship_default_weight));
+      if (rawSettings.discount_type) setDiscountType(rawSettings.discount_type);
+      if (rawSettings.discount_value !== undefined) setDiscountValue(Number(rawSettings.discount_value));
+      if (rawSettings.discount_note) setDiscountNote(rawSettings.discount_note);
     }
   }, [rawSettings]);
 
@@ -169,7 +220,15 @@ function MetaCommentsPage() {
         page_access_token: pageAccessToken,
         facebook_page_id: facebookPageId,
         instagram_account_id: instagramAccountId,
-        openai_api_key: openaiApiKey.trim()
+        openai_api_key: openaiApiKey.trim(),
+        biteship_enabled: biteshipEnabled,
+        biteship_api_key: biteshipApiKey.trim(),
+        biteship_origin_area_id: biteshipOriginAreaId.trim(),
+        biteship_origin_name: biteshipOriginName.trim(),
+        biteship_default_weight: Number(biteshipDefaultWeight) || 1000,
+        discount_type: discountType,
+        discount_value: Number(discountValue) || 0,
+        discount_note: discountNote.trim()
       };
 
       const { error } = await supabase
@@ -861,6 +920,164 @@ function MetaCommentsPage() {
                   >
                     <Save className="h-4 w-4 mr-2" />
                     Simpan Pengaturan
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Biteship Shipping Rates & Promo Discount Settings Card */}
+            <Card className="shadow-sm border">
+              <CardHeader className="border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-honey" />
+                  Integrasi Cek Ongkir Biteship & Promo Diskon Ongkir
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Ketika konsumen menanyakan ongkir di komentar FB/IG Ads, AI akan otomatis mengecek tarif Biteship dan menyebutkan harga promo setelah diskon subsidi toko.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-semibold text-slate-800">Cek Ongkir Otomatis Aktif</Label>
+                    <span className="text-xs text-muted-foreground block">
+                      Jika aktif, AI akan mencari tarif real-time via Biteship saat ada kata kunci ongkir di komentar.
+                    </span>
+                  </div>
+                  <Switch
+                    checked={biteshipEnabled}
+                    onCheckedChange={setBiteshipEnabled}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="biteship-key" className="flex items-center justify-between">
+                    <span>Biteship API Key (Live / Test)</span>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowBiteshipKey(!showBiteshipKey)}
+                      className="text-honey hover:underline text-xs font-semibold flex items-center gap-1"
+                    >
+                      {showBiteshipKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showBiteshipKey ? "Sembunyikan" : "Tampilkan"}
+                    </button>
+                  </Label>
+                  <Input
+                    id="biteship-key"
+                    type={showBiteshipKey ? "text" : "password"}
+                    placeholder="biteship_live.xxx (Kosongkan jika menggunakan key default sistem)"
+                    value={biteshipApiKey}
+                    onChange={(e) => setBiteshipApiKey(e.target.value)}
+                    className="text-sm font-mono focus-visible:ring-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5 relative">
+                  <Label htmlFor="biteship-origin">Gudang Asal Pengiriman (Origin)</Label>
+                  <div className="relative">
+                    <Input
+                      id="biteship-origin"
+                      placeholder="Ketik nama kecamatan atau kota gudang..."
+                      value={searchOriginQuery}
+                      onChange={(e) => setSearchOriginQuery(e.target.value)}
+                      className="text-sm focus-visible:ring-amber-500 pr-10"
+                    />
+                    {isSearchingOrigin && (
+                      <div className="absolute right-3 top-2.5 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  {originSearchResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto p-1">
+                      {originSearchResults.map((area: any) => (
+                        <button
+                          key={area.id}
+                          type="button"
+                          onClick={() => {
+                            setBiteshipOriginAreaId(area.id);
+                            setBiteshipOriginName(area.name);
+                            setSearchOriginQuery(area.name);
+                            setOriginSearchResults([]);
+                          }}
+                          className="w-full text-left p-2.5 text-xs hover:bg-amber-50 rounded flex items-center gap-2 border-b last:border-0 cursor-pointer"
+                        >
+                          <MapPin className="h-3.5 w-3.5 text-honey shrink-0" />
+                          <span className="font-medium text-slate-800">{area.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-muted-foreground block font-mono">
+                    ID Area Terpilih: {biteshipOriginAreaId || "—"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="discount-type">Skema Diskon Ongkir</Label>
+                    <Select value={discountType} onValueChange={(val: any) => setDiscountType(val)}>
+                      <SelectTrigger id="discount-type">
+                        <SelectValue placeholder="Pilih Skema" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixed">Potongan Tetap (Rp)</SelectItem>
+                        <SelectItem value="percentage">Diskon Persen (%)</SelectItem>
+                        <SelectItem value="none">Tanpa Diskon (Tarif Normal)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="discount-value">
+                      {discountType === "percentage" ? "Besaran Diskon (%)" : "Nominal Potongan (Rp)"}
+                    </Label>
+                    <Input
+                      id="discount-value"
+                      type="number"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(Number(e.target.value))}
+                      placeholder={discountType === "percentage" ? "50" : "10000"}
+                      className="text-sm focus-visible:ring-amber-500 font-mono"
+                      disabled={discountType === "none"}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="default-weight">Berat Standar (Gram)</Label>
+                    <Input
+                      id="default-weight"
+                      type="number"
+                      value={biteshipDefaultWeight}
+                      onChange={(e) => setBiteshipDefaultWeight(Number(e.target.value))}
+                      placeholder="1000"
+                      className="text-sm focus-visible:ring-amber-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="discount-note">Keterangan Promo yang Disebutkan AI</Label>
+                  <Input
+                    id="discount-note"
+                    value={discountNote}
+                    onChange={(e) => setDiscountNote(e.target.value)}
+                    placeholder="Contoh: Subsidi ongkir Rp 10.000 khusus promo hari ini"
+                    className="text-sm focus-visible:ring-amber-500"
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    Contoh kalimat yang akan dirangkai AI: <em>"Ongkir normal Rp 24.000, tapi karena ada subsidi promo toko jadi <strong>hanya Rp 14.000</strong>..."</em>
+                  </span>
+                </div>
+
+                <div className="flex justify-end items-center pt-2">
+                  <Button 
+                    onClick={() => saveSettingsMutation.mutate()} 
+                    disabled={saveSettingsMutation.isPending}
+                    className="bg-amber-500 hover:bg-amber-600 text-white font-medium"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Simpan Pengaturan Cek Ongkir
                   </Button>
                 </div>
               </CardContent>

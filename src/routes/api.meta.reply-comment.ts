@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
+import { generateAiCommentReply } from '@/lib/meta-ai-reply';
 
 export const Route = createFileRoute('/api/meta/reply-comment')({
   server: {
@@ -82,53 +83,27 @@ export const Route = createFileRoute('/api/meta/reply-comment')({
               pricesText += `- Madu ${r.honey_type} ${r.size_name}: Rp ${Number(r.price).toLocaleString('id-ID')}\n`;
             });
 
-            const finalSystemInstruction = `
-Kamu adalah Asisten Customer Service AI ramah bernama Jarvis untuk toko Madu Araa (Araa Honey).
-Tugasmu adalah menjawab komentar konsumen di Facebook Page atau Instagram dengan santun, singkat (maksimal 2 kalimat), dan solutif.
-
-[KONTAK RESMI TOKO]
-Nomor WhatsApp CS: ${cs_whatsapp_number} (Arahkan konsumen untuk klik link wa.me/${cs_whatsapp_number.replace(/[^0-9]/g, '')} jika ingin memesan).
-
-[DAFTAR HARGA RETAIL MADU ARAA HARI INI]
-${pricesText}
-
-[PANDUAN KHUSUS DARI OWNER]
-${system_instruction}
-
-[ATURAN PENTING]
-1. Jangan berasumsi tentang harga reseller, hanya gunakan daftar harga di atas untuk eceran/retail.
-2. Jawab dengan singkat, padat, dan ramah dalam Bahasa Indonesia yang santun.
-`;
-
-            console.log(`[Meta Reply API] Requesting OpenAI reply for comment ${commentId}`);
-            const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openaiApiKey}`
-              },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                  { role: 'system', content: finalSystemInstruction },
-                  { role: 'user', content: `Nama Pengirim: ${commentUsername}\nKomentar: "${commentMsg}"` }
-                ],
-                temperature: 0.7,
-                max_tokens: 150
-              })
-            });
-
-            if (aiRes.ok) {
-              const aiData = await aiRes.json() as any;
-              replyText = aiData.choices?.[0]?.message?.content?.trim();
-              finalRepliedBy = 'ai';
-              if (!replyText) {
-                throw new Error('AI generated an empty reply text');
+            console.log(`[Meta Reply API] Generating AI reply for comment ${commentId}`);
+            replyText = await generateAiCommentReply({
+              commentId,
+              username: commentUsername,
+              commentMessage: commentMsg,
+              csWhatsappNumber: cs_whatsapp_number,
+              systemInstruction: system_instruction,
+              openaiApiKey,
+              retailPricesText: pricesText,
+              biteshipEnabled: aiConfig.biteship_enabled ?? true,
+              biteshipApiKey: aiConfig.biteship_api_key || process.env.BITESHIP_API_KEY || '',
+              biteshipOriginAreaId: aiConfig.biteship_origin_area_id || 'IDNP10IDNC243IDND2494',
+              biteshipOriginName: aiConfig.biteship_origin_name || 'Gudang Utama',
+              biteshipDefaultWeight: aiConfig.biteship_default_weight || 1000,
+              discountConfig: {
+                discountType: aiConfig.discount_type || 'fixed',
+                discountValue: aiConfig.discount_value !== undefined ? Number(aiConfig.discount_value) : 10000,
+                discountNote: aiConfig.discount_note || 'Subsidi ongkir promo toko'
               }
-            } else {
-              const aiErrText = await aiRes.text();
-              throw new Error(`OpenAI API failed: ${aiErrText}`);
-            }
+            });
+            finalRepliedBy = 'ai';
           }
 
           if (!replyText) {

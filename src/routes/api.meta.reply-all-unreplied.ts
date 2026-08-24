@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
+import { generateAiCommentReply } from '@/lib/meta-ai-reply';
 
 export const Route = createFileRoute('/api/meta/reply-all-unreplied')({
   server: {
@@ -66,24 +67,6 @@ export const Route = createFileRoute('/api/meta/reply-all-unreplied')({
             pricesText += `- Madu ${r.honey_type} ${r.size_name}: Rp ${Number(r.price).toLocaleString('id-ID')}\n`;
           });
 
-          const finalSystemInstruction = `
-Kamu adalah Asisten Customer Service AI ramah bernama Jarvis untuk toko Madu Araa (Araa Honey).
-Tugasmu adalah menjawab komentar konsumen di Facebook Page atau Instagram dengan santun, singkat (maksimal 2 kalimat), dan solutif.
-
-[KONTAK RESMI TOKO]
-Nomor WhatsApp CS: ${cs_whatsapp_number} (Arahkan konsumen untuk klik link wa.me/${cs_whatsapp_number.replace(/[^0-9]/g, '')} jika ingin memesan).
-
-[DAFTAR HARGA RETAIL MADU ARAA HARI INI]
-${pricesText}
-
-[PANDUAN KHUSUS DARI OWNER]
-${system_instruction}
-
-[ATURAN PENTING]
-1. Jangan berasumsi tentang harga reseller, hanya gunakan daftar harga di atas untuk eceran/retail.
-2. Jawab dengan singkat, padat, dan ramah dalam Bahasa Indonesia yang santun.
-`;
-
           // Fetch all unreplied comments for this channel
           const commentsRes = await pool.query(`
             SELECT c.id, c.post_id, c.username, c.message, c.channel, COALESCE(p.auto_reply_active, true) as auto_reply_active
@@ -111,31 +94,26 @@ ${system_instruction}
 
           for (const comment of commentsToProcess) {
             try {
-              // 1. Call OpenAI
-              const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${openaiApiKey}`
-                },
-                body: JSON.stringify({
-                  model: 'gpt-4o-mini',
-                  messages: [
-                    { role: 'system', content: finalSystemInstruction },
-                    { role: 'user', content: `Nama Pengirim: ${comment.username}\nKomentar: "${comment.message}"` }
-                  ],
-                  temperature: 0.7,
-                  max_tokens: 150
-                })
+              // Generate AI reply with Biteship check
+              const replyText = await generateAiCommentReply({
+                commentId: comment.id,
+                username: comment.username,
+                commentMessage: comment.message,
+                csWhatsappNumber: cs_whatsapp_number,
+                systemInstruction: system_instruction,
+                openaiApiKey,
+                retailPricesText: pricesText,
+                biteshipEnabled: aiConfig.biteship_enabled ?? true,
+                biteshipApiKey: aiConfig.biteship_api_key || process.env.BITESHIP_API_KEY || '',
+                biteshipOriginAreaId: aiConfig.biteship_origin_area_id || 'IDNP10IDNC243IDND2494',
+                biteshipOriginName: aiConfig.biteship_origin_name || 'Gudang Utama',
+                biteshipDefaultWeight: aiConfig.biteship_default_weight || 1000,
+                discountConfig: {
+                  discountType: aiConfig.discount_type || 'fixed',
+                  discountValue: aiConfig.discount_value !== undefined ? Number(aiConfig.discount_value) : 10000,
+                  discountNote: aiConfig.discount_note || 'Subsidi ongkir promo toko'
+                }
               });
-
-              if (!aiRes.ok) {
-                const aiErrText = await aiRes.text();
-                throw new Error(`OpenAI error: ${aiErrText}`);
-              }
-
-              const aiData = await aiRes.json() as any;
-              const replyText = aiData.choices?.[0]?.message?.content?.trim();
 
               if (!replyText) {
                 throw new Error('AI generated an empty reply');
