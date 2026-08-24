@@ -17,9 +17,12 @@ import { formatIDR } from "@/lib/theme";
 import { 
   Megaphone, Key, ShieldAlert, CheckCircle, RefreshCw, AlertCircle,
   TrendingUp, Users, MousePointerClick, Percent, Target, CirclePlay, CirclePause, Eye,
-  Database
+  Database, Bot, Sparkles, Send, Lightbulb, CheckCircle2, AlertOctagon, Film,
+  MessageSquare, Copy, ExternalLink, Loader2, Award, Zap
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
+import { generateAIAdsAnalysis } from "@/lib/ai-ads-analyzer";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 export const Route = createFileRoute("/meta-ads")({
   component: () => (
@@ -697,6 +700,121 @@ function MetaAdsPage() {
     return spend > 0 ? totalRevenue / spend : 0;
   }, [totalRevenue, summaryMetrics.spend]);
 
+  // Telegram Configuration & State
+  const [tgBotToken, setTgBotToken] = useState("8968515154:AAGP9rbB1Gjj7Psg1Dt4n5OmkEw2cN3ofwg");
+  const [tgChatId, setTgChatId] = useState("7835561039");
+  const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [testingBot, setTestingBot] = useState(false);
+
+  // Fetch Telegram Config from DB
+  const { data: tgConfig, refetch: refetchTgConfig } = useQuery({
+    queryKey: ["telegram-ads-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "telegram_ads_config")
+        .maybeSingle();
+      if (error && error.code !== "PGRST116") console.error("Gagal memuat setting telegram:", error);
+      return (data?.value as any) || {};
+    }
+  });
+
+  useEffect(() => {
+    if (tgConfig) {
+      if (tgConfig.botToken) setTgBotToken(tgConfig.botToken);
+      if (tgConfig.chatId) setTgChatId(tgConfig.chatId);
+    }
+  }, [tgConfig]);
+
+  // Real Sales Data bundle for AI
+  const realSalesBundle = useMemo(() => ({
+    totalRevenue: totalRevenue,
+    totalOrders: isSimulation ? summaryMetrics.conversions : (dbOrders ?? []).length,
+    totalCogs: totalCogs,
+    totalNetProfit: totalNetProfit,
+    realRoas: totalRoas
+  }), [totalRevenue, isSimulation, summaryMetrics.conversions, dbOrders, totalCogs, totalNetProfit, totalRoas]);
+
+  // Generate AI Ads Analysis on the fly
+  const aiAnalysis = useMemo(() => {
+    const periodLabel = dateRange === "1d" ? "Hari Ini" : dateRange === "7d" ? "7 Hari Terakhir" : "30 Hari Terakhir";
+    return generateAIAdsAnalysis(
+      campaignsList,
+      adSetsList,
+      adsList,
+      realSalesBundle,
+      periodLabel
+    );
+  }, [campaignsList, adSetsList, adsList, realSalesBundle, dateRange]);
+
+  // Dispatch Report to Telegram
+  const handleSendTelegramReport = async () => {
+    if (!tgBotToken || !tgChatId) {
+      toast.error("Bot Token dan Chat ID Telegram wajib diisi.");
+      return;
+    }
+    setSendingTelegram(true);
+    try {
+      const res = await sendTelegramMessage(tgBotToken, tgChatId, aiAnalysis.telegramFormattedText, "Markdown");
+      if (res.success) {
+        toast.success("Laporan Analisa AI berhasil dikirim ke Telegram!");
+      } else {
+        toast.error("Gagal kirim ke Telegram: " + res.error);
+      }
+    } catch (err: any) {
+      toast.error("Error Telegram: " + err.message);
+    } finally {
+      setSendingTelegram(false);
+    }
+  };
+
+  // Test Telegram Bot
+  const handleTestBot = async () => {
+    if (!tgBotToken || !tgChatId) {
+      toast.error("Bot Token dan Chat ID Telegram wajib diisi.");
+      return;
+    }
+    setTestingBot(true);
+    try {
+      const res = await sendTelegramMessage(
+        tgBotToken,
+        tgChatId,
+        "🍯 *Tes Notifikasi Bot Telegram*\n\nKoneksi bot *Araa Honey Intelligence* aktif & siap menerima laporan harian!",
+        "Markdown"
+      );
+      if (res.success) {
+        toast.success("Pesan tes berhasil diterima di Telegram!");
+      } else {
+        toast.error("Gagal tes bot: " + res.error);
+      }
+    } catch (err: any) {
+      toast.error("Error tes bot: " + err.message);
+    } finally {
+      setTestingBot(false);
+    }
+  };
+
+  // Save Telegram Config to Supabase
+  const handleSaveTelegramConfig = async () => {
+    try {
+      const { error } = await supabase.from("app_settings").upsert({
+        key: "telegram_ads_config",
+        value: {
+          botToken: tgBotToken.trim(),
+          chatId: tgChatId.trim(),
+          enabled: true
+        },
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+      toast.success("Pengaturan Telegram berhasil disimpan!");
+      refetchTgConfig();
+    } catch (err: any) {
+      toast.error("Gagal simpan setting Telegram: " + err.message);
+    }
+  };
+
   const chartData = useMemo(() => {
     if (isSimulation) {
       const daysCount = dateList.length;
@@ -1112,6 +1230,9 @@ function MetaAdsPage() {
               <TabsTrigger value="campaigns">Kampanye</TabsTrigger>
               <TabsTrigger value="adsets">Set Iklan (Adsets)</TabsTrigger>
               <TabsTrigger value="ads">Iklan (Ads)</TabsTrigger>
+              <TabsTrigger value="ai-analysis" className="gap-1.5 font-semibold text-amber-700 dark:text-amber-400">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Analisa AI & Telegram
+              </TabsTrigger>
             </TabsList>
           </CardHeader>
 
@@ -1286,6 +1407,272 @@ function MetaAdsPage() {
                 </TableBody>
               </Table>
             </div>
+          </TabsContent>
+
+          {/* AI Intelligence & Telegram Tab */}
+          <TabsContent value="ai-analysis" className="m-0 p-6 space-y-6 bg-slate-50/50 dark:bg-slate-900/20">
+            {/* Top Score Banner */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 bg-linear-to-r from-amber-500/10 via-honey/10 to-emerald-500/10 border border-honey/30 rounded-2xl">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-honey/20 border border-honey/40 flex items-center justify-center text-honey-dark shrink-0 shadow-xs">
+                  <Bot className="w-7 h-7 text-honey" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-lg text-foreground">Asisten AI Media Buyer Araa Honey</h3>
+                    <Badge variant={aiAnalysis.summary.healthStatus === "Sangat Sehat" ? "success" : aiAnalysis.summary.healthStatus === "Cukup Sehat" ? "warning" : "destructive"}>
+                      {aiAnalysis.summary.healthStatus} ({aiAnalysis.summary.healthScore}/100)
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Evaluasi performa iklan berdasarkan <strong>{aiAnalysis.summary.periodText}</strong> dipadukan dengan data penjualan riil dari database.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+                <Button
+                  onClick={handleSendTelegramReport}
+                  disabled={sendingTelegram}
+                  className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  {sendingTelegram ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Kirim Laporan ke Telegram</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestBot}
+                  disabled={testingBot}
+                  className="text-xs border-muted-foreground/30 hover:bg-muted cursor-pointer"
+                >
+                  {testingBot ? "Menguji..." : "Tes Bot"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Comparison Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3.5 bg-background rounded-xl border shadow-xs space-y-1">
+                <span className="text-[11px] text-muted-foreground font-semibold">Total Biaya Iklan</span>
+                <p className="text-base font-bold text-amber-600 dark:text-amber-400">{formatIDR(aiAnalysis.summary.totalSpend)}</p>
+                <span className="text-[10px] text-muted-foreground">Budget Meta Ads</span>
+              </div>
+              <div className="p-3.5 bg-background rounded-xl border shadow-xs space-y-1">
+                <span className="text-[11px] text-muted-foreground font-semibold">Omzet Riil Database</span>
+                <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">{formatIDR(aiAnalysis.summary.realRevenue)}</p>
+                <span className="text-[10px] text-muted-foreground">{aiAnalysis.summary.totalOrders} Pesanan Transaksi</span>
+              </div>
+              <div className="p-3.5 bg-background rounded-xl border shadow-xs space-y-1">
+                <span className="text-[11px] text-muted-foreground font-semibold">Laba Bersih Real</span>
+                <p className={`text-base font-bold ${aiAnalysis.summary.realNetProfit >= 0 ? "text-sky-600 dark:text-sky-400" : "text-rose-600"}`}>
+                  {formatIDR(aiAnalysis.summary.realNetProfit)}
+                </p>
+                <span className="text-[10px] text-muted-foreground">Setelah HPP & Iklan</span>
+              </div>
+              <div className="p-3.5 bg-background rounded-xl border shadow-xs space-y-1">
+                <span className="text-[11px] text-muted-foreground font-semibold">Real ROAS Nyata</span>
+                <p className="text-base font-bold text-violet-600 dark:text-violet-400">{aiAnalysis.summary.realRoas.toFixed(2)}x</p>
+                <span className="text-[10px] text-muted-foreground">Target Min: 3.0x</span>
+              </div>
+            </div>
+
+            {/* Section 1: Deep Creative ADS-Level Diagnostics */}
+            <Card className="rounded-xl border shadow-xs">
+              <CardHeader className="pb-3 border-b border-muted/30">
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <Film className="w-4 h-4 text-honey" />
+                  Pembedahan Mendalam Tingkat ADS (Kreatif / Video / Foto)
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  AI menganalisis rasio klik (CTR), efisiensi biaya, dan kecocokan pesan iklan terhadap closing penjualan.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {aiAnalysis.creativeInsights.map((ci) => (
+                  <div 
+                    key={ci.adId}
+                    className={`p-4 rounded-xl border transition-all ${
+                      ci.status === "WINNER" 
+                        ? "bg-emerald-500/5 border-emerald-500/30" 
+                        : ci.status === "WARNING" 
+                        ? "bg-amber-500/5 border-amber-500/30" 
+                        : ci.status === "FATIGUE" 
+                        ? "bg-rose-500/5 border-rose-500/30" 
+                        : "bg-muted/20 border-border"
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-border/50">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-foreground">{ci.adName}</span>
+                          <Badge 
+                            variant={
+                              ci.status === "WINNER" 
+                                ? "success" 
+                                : ci.status === "WARNING" 
+                                ? "warning" 
+                                : ci.status === "FATIGUE" 
+                                ? "destructive" 
+                                : "secondary"
+                            } 
+                            className="text-[10px]"
+                          >
+                            {ci.status === "WINNER" ? "⭐ IKLAN PEMENANG" : ci.status === "WARNING" ? "⚠️ PERLU PERBAIKAN" : ci.status === "FATIGUE" ? "🔄 CREATIVE FATIGUE" : "⏳ LEARNING PHASE"}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground font-mono">{ci.adsetName}</p>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs font-semibold">
+                        <div>
+                          <span className="text-muted-foreground block text-[10px]">Spend</span>
+                          <span className="font-mono">{formatIDR(ci.spend)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px]">CTR Link</span>
+                          <span className={ci.ctr >= 1.5 ? "text-emerald-600 font-bold" : "text-foreground"}>{ci.ctr.toFixed(2)}%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 text-xs">
+                      <div className="space-y-1">
+                        <span className="font-semibold text-muted-foreground text-[11px] flex items-center gap-1">
+                          <Eye className="w-3 h-3 text-sky-500" /> Diagnosa AI:
+                        </span>
+                        <p className="text-foreground/90 leading-relaxed bg-background/60 p-2.5 rounded-lg border border-border/60">
+                          {ci.diagnosis}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="font-semibold text-honey-dark text-[11px] flex items-center gap-1">
+                          <Lightbulb className="w-3 h-3 text-honey" /> Rekomendasi Aksi Media Buyer:
+                        </span>
+                        <p className="text-foreground/90 leading-relaxed bg-honey/10 dark:bg-honey/5 p-2.5 rounded-lg border border-honey/20 font-medium">
+                          {ci.actionRecommendation}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Section 2 & 3: Action Plan + New Creative Ideation */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Daily Action Plan */}
+              <Card className="rounded-xl border shadow-xs">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-bold flex items-center gap-2">
+                    <Target className="w-4 h-4 text-emerald-500" />
+                    Rencana Tindakan Taktis Hari Ini
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2.5 text-xs">
+                  {aiAnalysis.nextDayActionPlan.map((action, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-muted/40 border border-muted/60">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="leading-relaxed font-medium">{action}</span>
+                    </div>
+                  ))}
+                  {aiAnalysis.campaignInsights.budgetRecommendations.map((bRec, idx) => (
+                    <div key={'b-' + idx} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+                      <Zap className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <span className="leading-relaxed font-medium">{bRec}</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* New Creative Ideation */}
+              <Card className="rounded-xl border shadow-xs">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-bold flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Ide Konsep Iklan Baru (Creative Ideation)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-xs">
+                  {aiAnalysis.creativeIdeas.map((idea, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-background border shadow-2xs space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-foreground flex items-center gap-1.5">
+                          <Film className="w-3.5 h-3.5 text-honey" /> {idea.title}
+                        </span>
+                        <Badge variant="outline" className="text-[9px] bg-honey/5 border-honey/30 text-honey-dark font-medium">
+                          {idea.angle}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground italic bg-muted/30 p-2 rounded border border-muted/50">
+                        {idea.hook}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        🎯 Target: <strong>{idea.targetAudience}</strong>
+                      </p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Section 4: Telegram Settings & Automation Config */}
+            <Card className="rounded-xl border shadow-xs">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-sky-500" />
+                  Pengaturan Bot Telegram & Jadwal Otomatis
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Konfigurasikan Bot Telegram agar laporan AI di atas dikirim otomatis ke akun Telegram Anda setiap hari.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tg-token" className="text-xs font-semibold">Bot Token Telegram:</Label>
+                    <Input
+                      id="tg-token"
+                      value={tgBotToken}
+                      onChange={(e) => setTgBotToken(e.target.value)}
+                      placeholder="8968515154:AAGP..."
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tg-chat-id" className="text-xs font-semibold">Chat ID Telegram:</Label>
+                    <Input
+                      id="tg-chat-id"
+                      value={tgChatId}
+                      onChange={(e) => setTgChatId(e.target.value)}
+                      placeholder="7835561039"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button 
+                    onClick={handleSaveTelegramConfig} 
+                    size="sm"
+                    className="bg-honey hover:bg-honey-dark text-honey-foreground font-semibold text-xs cursor-pointer"
+                  >
+                    Simpan Pengaturan Telegram
+                  </Button>
+                </div>
+
+                <div className="border-t pt-3 space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground">Info Cron Laporan Harian Telegram:</Label>
+                  <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded border border-border/80 text-[10px] space-y-1 font-mono select-all">
+                    <div className="text-slate-500 dark:text-slate-400 break-all font-semibold">GET https://app.araahoney.my.id/api/cron/send-ads-report</div>
+                    <div className="text-slate-400 dark:text-slate-500 break-all">Header: Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-normal">
+                    Daftarkan URL di atas ke <strong>cron-job.org</strong> setiap hari jam <strong>08:00 WIB</strong> untuk menerima ringkasan otomatis setiap pagi ke Telegram Big Bos.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </Card>
