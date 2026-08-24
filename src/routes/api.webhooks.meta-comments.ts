@@ -180,7 +180,7 @@ Gunakan info ini untuk menjawab secara cerdas dan meyakinkan jika ditanya mengen
                 const alreadyReplied = insertRes.rows[0]?.replied;
 
                 // Process AI Auto-reply
-                const openaiApiKey = process.env.OPENAI_API_KEY;
+                const openaiApiKey = aiConfig.openai_api_key || process.env.OPENAI_API_KEY;
 
                 if (auto_reply_enabled && isAutoReplyActiveForPost && !alreadyReplied && openaiApiKey && page_access_token) {
                   console.log(`[Meta Webhook] Generating AI reply for comment ${commentId}: "${message}"`);

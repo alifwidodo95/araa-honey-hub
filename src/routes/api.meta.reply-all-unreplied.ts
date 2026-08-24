@@ -44,10 +44,10 @@ export const Route = createFileRoute('/api/meta/reply-all-unreplied')({
             });
           }
 
-          const openaiApiKey = process.env.OPENAI_API_KEY;
+          const openaiApiKey = aiConfig.openai_api_key || process.env.OPENAI_API_KEY;
           if (!openaiApiKey) {
             await pool.end();
-            return new Response(JSON.stringify({ error: 'OpenAI API Key is missing in environment variables.' }), {
+            return new Response(JSON.stringify({ error: 'OpenAI API Key belum dikonfigurasi. Silakan isi di Pengaturan AI Asisten.' }), {
               status: 500,
               headers: { 'Content-Type': 'application/json' },
             });

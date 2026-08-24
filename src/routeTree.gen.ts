@@ -43,7 +43,9 @@ import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 import { Route as ApiCronSendCrmRemindersRouteImport } from './routes/api.cron.send-crm-reminders'
+import { Route as ApiCronSendAdsReportRouteImport } from './routes/api.cron.send-ads-report'
 import { Route as ApiBiteshipSearchAreaRouteImport } from './routes/api.biteship.search-area'
+import { Route as ApiAiAnalyzeAdsRouteImport } from './routes/api.ai.analyze-ads'
 
 const WhatsappAiRoute = WhatsappAiRouteImport.update({
   id: '/whatsapp-ai',
@@ -216,9 +218,19 @@ const ApiCronSendCrmRemindersRoute = ApiCronSendCrmRemindersRouteImport.update({
   path: '/api/cron/send-crm-reminders',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSendAdsReportRoute = ApiCronSendAdsReportRouteImport.update({
+  id: '/api/cron/send-ads-report',
+  path: '/api/cron/send-ads-report',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBiteshipSearchAreaRoute = ApiBiteshipSearchAreaRouteImport.update({
   id: '/api/biteship/search-area',
   path: '/api/biteship/search-area',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiAnalyzeAdsRoute = ApiAiAnalyzeAdsRouteImport.update({
+  id: '/api/ai/analyze-ads',
+  path: '/api/ai/analyze-ads',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -248,7 +260,9 @@ export interface FileRoutesByFullPath {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/ai/analyze-ads': typeof ApiAiAnalyzeAdsRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/send-ads-report': typeof ApiCronSendAdsReportRoute
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
@@ -285,7 +299,9 @@ export interface FileRoutesByTo {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/ai/analyze-ads': typeof ApiAiAnalyzeAdsRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/send-ads-report': typeof ApiCronSendAdsReportRoute
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
@@ -323,7 +339,9 @@ export interface FileRoutesById {
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
+  '/api/ai/analyze-ads': typeof ApiAiAnalyzeAdsRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/send-ads-report': typeof ApiCronSendAdsReportRoute
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
@@ -362,7 +380,9 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/ai/analyze-ads'
     | '/api/biteship/search-area'
+    | '/api/cron/send-ads-report'
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
@@ -399,7 +419,9 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/ai/analyze-ads'
     | '/api/biteship/search-area'
+    | '/api/cron/send-ads-report'
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
@@ -436,7 +458,9 @@ export interface FileRouteTypes {
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
+    | '/api/ai/analyze-ads'
     | '/api/biteship/search-area'
+    | '/api/cron/send-ads-report'
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
@@ -474,7 +498,9 @@ export interface RootRouteChildren {
   StokBahanBakuRoute: typeof StokBahanBakuRoute
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
+  ApiAiAnalyzeAdsRoute: typeof ApiAiAnalyzeAdsRoute
   ApiBiteshipSearchAreaRoute: typeof ApiBiteshipSearchAreaRoute
+  ApiCronSendAdsReportRoute: typeof ApiCronSendAdsReportRoute
   ApiCronSendCrmRemindersRoute: typeof ApiCronSendCrmRemindersRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
@@ -726,11 +752,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSendCrmRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/send-ads-report': {
+      id: '/api/cron/send-ads-report'
+      path: '/api/cron/send-ads-report'
+      fullPath: '/api/cron/send-ads-report'
+      preLoaderRoute: typeof ApiCronSendAdsReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/biteship/search-area': {
       id: '/api/biteship/search-area'
       path: '/api/biteship/search-area'
       fullPath: '/api/biteship/search-area'
       preLoaderRoute: typeof ApiBiteshipSearchAreaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/analyze-ads': {
+      id: '/api/ai/analyze-ads'
+      path: '/api/ai/analyze-ads'
+      fullPath: '/api/ai/analyze-ads'
+      preLoaderRoute: typeof ApiAiAnalyzeAdsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -762,7 +802,9 @@ const rootRouteChildren: RootRouteChildren = {
   StokBahanBakuRoute: StokBahanBakuRoute,
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
+  ApiAiAnalyzeAdsRoute: ApiAiAnalyzeAdsRoute,
   ApiBiteshipSearchAreaRoute: ApiBiteshipSearchAreaRoute,
+  ApiCronSendAdsReportRoute: ApiCronSendAdsReportRoute,
   ApiCronSendCrmRemindersRoute: ApiCronSendCrmRemindersRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,

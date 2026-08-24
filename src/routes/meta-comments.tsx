@@ -58,7 +58,9 @@ function MetaCommentsPage() {
   const [pageAccessToken, setPageAccessToken] = useState("");
   const [facebookPageId, setFacebookPageId] = useState("");
   const [instagramAccountId, setInstagramAccountId] = useState("");
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [showToken, setShowToken] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
 
   // Quick Reply States (Mapped by comment ID)
   const [quickReplies, setQuickReplies] = useState<Record<string, string>>({});
@@ -153,6 +155,7 @@ function MetaCommentsPage() {
       if (rawSettings.page_access_token) setPageAccessToken(rawSettings.page_access_token);
       if (rawSettings.facebook_page_id) setFacebookPageId(rawSettings.facebook_page_id);
       if (rawSettings.instagram_account_id) setInstagramAccountId(rawSettings.instagram_account_id);
+      if (rawSettings.openai_api_key) setOpenaiApiKey(rawSettings.openai_api_key);
     }
   }, [rawSettings]);
 
@@ -165,7 +168,8 @@ function MetaCommentsPage() {
         system_instruction: systemInstruction,
         page_access_token: pageAccessToken,
         facebook_page_id: facebookPageId,
-        instagram_account_id: instagramAccountId
+        instagram_account_id: instagramAccountId,
+        openai_api_key: openaiApiKey.trim()
       };
 
       const { error } = await supabase
@@ -796,6 +800,31 @@ function MetaCommentsPage() {
                     checked={autoReplyEnabled}
                     onCheckedChange={setAutoReplyEnabled}
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="openai-key" className="flex items-center justify-between">
+                    <span>OpenAI API Key (ChatGPT GPT-4o-mini)</span>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                      className="text-honey hover:underline text-xs font-semibold flex items-center gap-1"
+                    >
+                      {showOpenaiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {showOpenaiKey ? "Sembunyikan" : "Tampilkan"}
+                    </button>
+                  </Label>
+                  <Input
+                    id="openai-key"
+                    type={showOpenaiKey ? "text" : "password"}
+                    placeholder="Masukkan sk-proj-... API Key dari platform.openai.com"
+                    value={openaiApiKey}
+                    onChange={(e) => setOpenaiApiKey(e.target.value)}
+                    className="text-sm font-mono focus-visible:ring-amber-500"
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    Digunakan untuk memproses balasan otomatis cerdas saat konsumen bertanya di Facebook / Instagram Ads.
+                  </span>
                 </div>
 
                 <div className="space-y-1.5">
