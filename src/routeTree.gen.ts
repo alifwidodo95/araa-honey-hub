@@ -13,7 +13,6 @@ import { Route as WhatsappAiRouteImport } from './routes/whatsapp-ai'
 import { Route as ReturRouteImport } from './routes/retur'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PenjualanRouteImport } from './routes/penjualan'
-import { Route as PengeluaranPribadiRouteImport } from './routes/pengeluaran-pribadi'
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
 import { Route as MetaCommentsRouteImport } from './routes/meta-comments'
 import { Route as MetaAdsRouteImport } from './routes/meta-ads'
@@ -65,11 +64,6 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const PenjualanRoute = PenjualanRouteImport.update({
   id: '/penjualan',
   path: '/penjualan',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PengeluaranPribadiRoute = PengeluaranPribadiRouteImport.update({
-  id: '/pengeluaran-pribadi',
-  path: '/pengeluaran-pribadi',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PengeluaranRoute = PengeluaranRouteImport.update({
@@ -244,7 +238,6 @@ export interface FileRoutesByFullPath {
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
-  '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
   '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
@@ -283,7 +276,6 @@ export interface FileRoutesByTo {
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
-  '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
   '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
@@ -323,7 +315,6 @@ export interface FileRoutesById {
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
-  '/pengeluaran-pribadi': typeof PengeluaranPribadiRoute
   '/penjualan': typeof PenjualanRoute
   '/privacy': typeof PrivacyRoute
   '/retur': typeof ReturRoute
@@ -364,7 +355,6 @@ export interface FileRouteTypes {
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
-    | '/pengeluaran-pribadi'
     | '/penjualan'
     | '/privacy'
     | '/retur'
@@ -403,7 +393,6 @@ export interface FileRouteTypes {
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
-    | '/pengeluaran-pribadi'
     | '/penjualan'
     | '/privacy'
     | '/retur'
@@ -442,7 +431,6 @@ export interface FileRouteTypes {
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
-    | '/pengeluaran-pribadi'
     | '/penjualan'
     | '/privacy'
     | '/retur'
@@ -482,7 +470,6 @@ export interface RootRouteChildren {
   MetaAdsRoute: typeof MetaAdsRoute
   MetaCommentsRoute: typeof MetaCommentsRoute
   PengeluaranRoute: typeof PengeluaranRoute
-  PengeluaranPribadiRoute: typeof PengeluaranPribadiRoute
   PenjualanRoute: typeof PenjualanRoute
   PrivacyRoute: typeof PrivacyRoute
   ReturRoute: typeof ReturRoute
@@ -540,13 +527,6 @@ declare module '@tanstack/react-router' {
       path: '/penjualan'
       fullPath: '/penjualan'
       preLoaderRoute: typeof PenjualanRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pengeluaran-pribadi': {
-      id: '/pengeluaran-pribadi'
-      path: '/pengeluaran-pribadi'
-      fullPath: '/pengeluaran-pribadi'
-      preLoaderRoute: typeof PengeluaranPribadiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pengeluaran': {
@@ -786,7 +766,6 @@ const rootRouteChildren: RootRouteChildren = {
   MetaAdsRoute: MetaAdsRoute,
   MetaCommentsRoute: MetaCommentsRoute,
   PengeluaranRoute: PengeluaranRoute,
-  PengeluaranPribadiRoute: PengeluaranPribadiRoute,
   PenjualanRoute: PenjualanRoute,
   PrivacyRoute: PrivacyRoute,
   ReturRoute: ReturRoute,

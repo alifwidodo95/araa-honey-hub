@@ -25,7 +25,6 @@ const navStaff = [
 
 const navOwnerOnly = [
   { to: "/keuangan", label: "Keuangan", icon: TrendingUp },
-  { to: "/pengeluaran-pribadi", label: "Pengeluaran Pribadi", icon: Wallet },
   { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone }, // Added Meta Ads Manager
   { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
   { to: "/whatsapp-ai", label: "Asisten WA AI", icon: Bot },

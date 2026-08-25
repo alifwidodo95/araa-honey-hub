@@ -23,7 +23,6 @@ const ALL_PERMISSIONS = [
   { key: "stok", label: "Manajemen Stok (Bahan Baku & Kemasan)" },
   { key: "pengeluaran", label: "Biaya Operasional Toko" },
   { key: "keuangan", label: "Keuangan (Laporan Laba/Rugi & Grafik)" },
-  { key: "pengeluaran_pribadi", label: "Pengeluaran Pribadi Owner" },
   { key: "meta_ads", label: "Meta Ads Manager" },
   { key: "import_riwayat", label: "Impor Riwayat (Upload Massal)" },
   { key: "pengaturan_harga", label: "Pengaturan Harga Produk" },

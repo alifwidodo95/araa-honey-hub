@@ -50,7 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               stok: true,
               pengeluaran: true,
               keuangan: true,
-              pengeluaran_pribadi: true,
               meta_ads: true,
               import_riwayat: true,
               pengaturan_harga: true,

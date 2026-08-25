@@ -52,7 +52,7 @@ export const Route = createFileRoute('/api/telegram-webhook')({
 
           // 2. Handle /start or /help /info
           if (text === '/start' || text.toLowerCase() === '/help' || text === '/info') {
-            const helpText = `👋 *Halo Big Bos!*\n\nJarvis siap mencatat pengeluaran pribadi Anda secara otomatis.\n\n*Format Input:*\n\`[Kategori] [Nominal] [Catatan]\`\n\n*Contoh:*\n\`Belanja 150000 Susu anak\`\n\`Makan 50000 Nasi goreng\`\n\nKategori pertama otomatis akan dikapitalisasi. Jarvis akan mendeteksi angka pertama sebagai nominal, dan sisa teks sebagai catatan.`;
+            const helpText = `👋 *Halo Big Bos!*\n\nJarvis siap mencatat biaya operasional bisnis Anda secara otomatis.\n\n*Format Input:*\n\`[Kategori] [Nominal] [Catatan]\`\n\n*Contoh:*\n\`Operasional 150000 Pembelian lakban & bubble wrap\`\n\`Listrik 250000 Tagihan listrik toko\`\n\nKategori pertama otomatis akan dikapitalisasi. Jarvis akan mendeteksi angka pertama sebagai nominal, dan sisa teks sebagai catatan.`;
             await sendTelegramMessage(chatId, helpText);
             return new Response('OK', { status: 200 });
           }
@@ -61,7 +61,7 @@ export const Route = createFileRoute('/api/telegram-webhook')({
           // Matches: category (letters and spaces, no digits), followed by space, digits (amount), followed by optional space and note
           const match = text.match(/^([a-zA-Z\-_]+)\s+(\d+)(?:\s+(.+))?$/i);
           if (!match) {
-            const invalidText = `⚠️ *Format Tidak Sesuai*\n\nHarap gunakan format:\n\`[Kategori] [Nominal] [Catatan]\`\n\n*Contoh:*\n\`Belanja 200000 Susu anak\`\n\n*(Catatan: Kategori tidak boleh mengandung spasi langsung sebelum nominal. Gunakan tanda hubung jika ingin menggabung kata, contoh: Belanja-Bulanan)*`;
+            const invalidText = `⚠️ *Format Tidak Sesuai*\n\nHarap gunakan format:\n\`[Kategori] [Nominal] [Catatan]\`\n\n*Contoh:*\n\`Operasional 200000 Pembelian lakban\`\n\n*(Catatan: Kategori tidak boleh mengandung spasi langsung sebelum nominal. Gunakan tanda hubung jika ingin menggabung kata, contoh: Biaya-Packing)*`;
             await sendTelegramMessage(chatId, invalidText);
             return new Response('OK', { status: 200 });
           }
@@ -79,7 +79,7 @@ export const Route = createFileRoute('/api/telegram-webhook')({
             return new Response('OK', { status: 200 });
           }
 
-                    // 5. Connect and Write to Supabase via Postgres client
+          // 5. Connect and Write to Supabase via Postgres client
           const { default: pg } = await import('pg');
           const cleanedDbUrl = dbUrl.split('?')[0];
           const pool = new pg.Pool({
@@ -102,9 +102,9 @@ export const Route = createFileRoute('/api/telegram-webhook')({
             const wibTime = new Date(utc + (3600000 * 7));
             const occurredOn = wibTime.toISOString().slice(0, 10); // YYYY-MM-DD
 
-            // Insert row
+            // Insert row into expenses_business
             await pool.query(
-              `INSERT INTO expenses_personal (category, amount, note, occurred_on, owner_id) 
+              `INSERT INTO expenses_business (category, amount, note, occurred_on, created_by) 
                VALUES ($1, $2, $3, $4, $5)`,
               [category, amount, note, occurredOn, ownerId]
             );
