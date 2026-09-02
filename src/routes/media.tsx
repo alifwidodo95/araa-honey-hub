@@ -1,19 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { 
-  Image as ImageIcon, Video, Copy, ExternalLink, Trash2, Plus, 
-  Search, HardDrive, Filter, Check, UploadCloud, Film, FileImage, Loader2
+  Image as ImageIcon, Copy, ExternalLink, Trash2, Plus, 
+  Search, HardDrive, Filter, Check, UploadCloud, Film, FileImage, Loader2, X, Files
 } from "lucide-react";
 
 export const Route = createFileRoute("/media")({
@@ -56,6 +57,15 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+function cleanFilenameToTitle(filename: string): string {
+  const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+  return nameWithoutExt
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function MediaGalleryPage() {
   const qc = useQueryClient();
   
@@ -65,12 +75,18 @@ function MediaGalleryPage() {
   const [selectedType, setSelectedType] = useState<"all" | "image" | "video">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Upload Dialog States
+  // Upload Dialog States (Bulk / Single Upload)
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [uploadTitle, setUploadTitle] = useState("");
+  const [titlePrefix, setTitlePrefix] = useState("");
   const [uploadCategory, setUploadCategory] = useState("Testimoni");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number;
+    total: number;
+    currentFileName: string;
+    percentage: number;
+  }>({ current: 0, total: 0, currentFileName: "", percentage: 0 });
 
   // Delete Confirmation State
   const [deletingMedia, setDeletingMedia] = useState<MediaItem | null>(null);
@@ -116,6 +132,36 @@ function MediaGalleryPage() {
   const totalVideos = mediaList.filter((m) => m.file_type === "video").length;
   const totalSizeBytes = mediaList.reduce((sum, m) => sum + (Number(m.file_size) || 0), 0);
 
+  // Computed summary for selected upload files
+  const selectedSummary = useMemo(() => {
+    if (selectedFiles.length === 0) return null;
+    const photosCount = selectedFiles.filter((f) => f.type.startsWith("image/")).length;
+    const videosCount = selectedFiles.filter((f) => f.type.startsWith("video/")).length;
+    const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    return {
+      count: selectedFiles.length,
+      photosCount,
+      videosCount,
+      totalSizeFormatted: formatBytes(totalSize),
+    };
+  }, [selectedFiles]);
+
+  // Handle File Selection (Appends new files, prevents exact duplicates)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const newFiles = Array.from(e.target.files);
+    setSelectedFiles((prev) => {
+      const existingNames = new Set(prev.map((f) => `${f.name}-${f.size}`));
+      const uniqueNew = newFiles.filter((f) => !existingNames.has(`${f.name}-${f.size}`));
+      return [...prev, ...uniqueNew];
+    });
+  };
+
+  // Remove single file from queue
+  const handleRemoveSelectedFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Copy Link Handler
   const handleCopyLink = (url: string, id: string) => {
     navigator.clipboard.writeText(url);
@@ -124,56 +170,89 @@ function MediaGalleryPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Upload Mutation
+  // Bulk Upload Batch Submission
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadTitle.trim()) {
-      toast.error("Judul media wajib diisi!");
-      return;
-    }
-    if (!selectedFile) {
-      toast.error("Pilih berkas foto/video terlebih dahulu!");
+    if (selectedFiles.length === 0) {
+      toast.error("Pilih setidaknya 1 berkas foto/video untuk diunggah!");
       return;
     }
 
     setIsUploading(true);
-    try {
-      // Read file to base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (err) => reject(err);
-      });
-      reader.readAsDataURL(selectedFile);
-      const fileBase64 = await base64Promise;
+    const total = selectedFiles.length;
+    let successCount = 0;
+    let failCount = 0;
 
-      const res = await fetch("/api/media/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: uploadTitle.trim(),
-          category: uploadCategory,
-          fileName: selectedFile.name,
-          fileBase64,
-          mimeType: selectedFile.type,
-        }),
+    for (let i = 0; i < total; i++) {
+      const file = selectedFiles[i];
+      const currentNum = i + 1;
+      const percentage = Math.round((currentNum / total) * 100);
+
+      setUploadProgress({
+        current: currentNum,
+        total,
+        currentFileName: file.name,
+        percentage,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Gagal mengunggah ke server VPS.");
+      // Formulate title for this file
+      let finalTitle = "";
+      if (titlePrefix.trim()) {
+        finalTitle = total === 1 ? titlePrefix.trim() : `${titlePrefix.trim()} (${currentNum})`;
+      } else {
+        finalTitle = cleanFilenameToTitle(file.name);
       }
 
-      toast.success("Berkas media berhasil diunggah langsung ke VPS!");
+      try {
+        // Read file to base64
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+        });
+        reader.readAsDataURL(file);
+        const fileBase64 = await base64Promise;
+
+        const res = await fetch("/api/media/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: finalTitle,
+            category: uploadCategory,
+            fileName: file.name,
+            fileBase64,
+            mimeType: file.type,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Gagal mengunggah ${file.name}`);
+        }
+        successCount++;
+      } catch (err: any) {
+        console.error(`Upload error for file ${file.name}:`, err);
+        failCount++;
+      }
+    }
+
+    setIsUploading(false);
+    setUploadProgress({ current: 0, total: 0, currentFileName: "", percentage: 0 });
+
+    if (successCount > 0) {
+      toast.success(
+        total === 1
+          ? "Berkas media berhasil diunggah langsung ke VPS!"
+          : `Berhasil mengunggah ${successCount} dari ${total} berkas massal ke VPS!`
+      );
       setIsUploadOpen(false);
-      setUploadTitle("");
-      setSelectedFile(null);
+      setTitlePrefix("");
+      setSelectedFiles([]);
       refetch();
-    } catch (err: any) {
-      console.error("Upload error:", err);
-      toast.error(err.message || "Terjadi kesalahan saat upload.");
-    } finally {
-      setIsUploading(false);
+    }
+
+    if (failCount > 0) {
+      toast.error(`${failCount} berkas gagal diunggah. Silakan coba lagi.`);
     }
   };
 
@@ -213,40 +292,30 @@ function MediaGalleryPage() {
             Galeri Media & Testimoni
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Simpan foto & video testimoni langsung di server VPS untuk digunakan di Landing Page (100% Hemat Kuota Supabase).
+            Simpan foto & video testimoni langsung di VPS untuk Landing Page (Dukungan Upload Massal & 100% Hemat Kuota Supabase).
           </p>
         </div>
 
         {/* Upload Trigger Button */}
-        <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+        <Dialog open={isUploadOpen} onOpenChange={(open) => !isUploading && setIsUploadOpen(open)}>
           <DialogTrigger asChild>
             <Button className="bg-honey hover:bg-honey-dark text-slate-900 font-bold shadow-md">
-              <Plus className="h-4 w-4 mr-2" />
-              Upload Media Baru
+              <UploadCloud className="h-4 w-4 mr-2" />
+              Upload Massal / Single
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <UploadCloud className="h-5 w-5 text-honey" />
-                Upload Media ke Server VPS
+                Upload Media ke Server VPS (Single / Massal)
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleUploadSubmit} className="space-y-4 pt-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="media-title">Judul / Catatan Media</Label>
-                <Input
-                  id="media-title"
-                  placeholder="Contoh: Testimoni Akasia Bu Rina Dumai"
-                  value={uploadTitle}
-                  onChange={(e) => setUploadTitle(e.target.value)}
-                  required
-                />
-              </div>
 
+            <form onSubmit={handleUploadSubmit} className="space-y-4 pt-2 overflow-y-auto flex-1 pr-1">
               <div className="space-y-1.5">
                 <Label htmlFor="media-category">Kategori Media</Label>
-                <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                <Select value={uploadCategory} onValueChange={setUploadCategory} disabled={isUploading}>
                   <SelectTrigger id="media-category">
                     <SelectValue placeholder="Pilih Kategori" />
                   </SelectTrigger>
@@ -261,45 +330,110 @@ function MediaGalleryPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>File Berkas (Foto atau Video)</Label>
+                <Label htmlFor="media-title">Judul / Awalan Judul Opsional</Label>
+                <Input
+                  id="media-title"
+                  placeholder="Opsional (Kosongkan untuk pakai nama asli berkas)"
+                  value={titlePrefix}
+                  onChange={(e) => setTitlePrefix(e.target.value)}
+                  disabled={isUploading}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Jika dikosongkan, judul akan otomatis dirapikan dari nama asli file.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Pilih Foto / Video (Bisa Pilih Banyak Sekaligus)</Label>
                 <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-4 text-center hover:border-amber-500 transition-colors bg-slate-50 dark:bg-slate-900/50">
                   <input
                     type="file"
                     accept="image/*,video/*"
-                    id="file-input"
+                    multiple
+                    id="file-input-bulk"
                     className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        setSelectedFile(e.target.files[0]);
-                      }
-                    }}
+                    disabled={isUploading}
+                    onChange={handleFileChange}
                   />
-                  <label htmlFor="file-input" className="cursor-pointer space-y-2 block">
+                  <label htmlFor="file-input-bulk" className="cursor-pointer space-y-2 block">
                     <div className="mx-auto h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center text-honey">
-                      <UploadCloud className="h-5 w-5" />
+                      <Files className="h-5 w-5" />
                     </div>
-                    {selectedFile ? (
-                      <div>
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[250px] mx-auto">
-                          {selectedFile.name}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {formatBytes(selectedFile.size)} • {selectedFile.type}
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          Klik untuk memilih foto / video (.jpg, .png, .mp4, .webm)
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          File akan langsung dikirim & disimpan di disk VPS Nginx.
-                        </p>
-                      </div>
-                    )}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        Klik atau seret file ke sini untuk upload massal
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Dukungan banyak foto (.jpg, .png) & video (.mp4) sekaligus.
+                      </p>
+                    </div>
                   </label>
                 </div>
               </div>
+
+              {/* Selected Files Queue Preview */}
+              {selectedSummary && (
+                <div className="space-y-2 bg-slate-100 dark:bg-slate-900 p-3 rounded-xl border">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <span className="flex items-center gap-1.5">
+                      <Files className="h-4 w-4 text-amber-500" />
+                      Antrean Upload ({selectedSummary.count} Berkas)
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-normal">
+                      {selectedSummary.photosCount > 0 && `${selectedSummary.photosCount} Foto `}
+                      {selectedSummary.videosCount > 0 && `${selectedSummary.videosCount} Video `}
+                      • Total {selectedSummary.totalSizeFormatted}
+                    </span>
+                  </div>
+
+                  {/* Scrollable File List */}
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {selectedFiles.map((file, idx) => (
+                      <div
+                        key={`${file.name}-${file.size}-${idx}`}
+                        className="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded-lg text-xs border"
+                      >
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          {file.type.startsWith("video/") ? (
+                            <Film className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+                          ) : (
+                            <FileImage className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          )}
+                          <span className="truncate text-slate-800 dark:text-slate-200 font-medium" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            ({formatBytes(file.size)})
+                          </span>
+                        </div>
+                        {!isUploading && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSelectedFile(idx)}
+                            className="text-slate-400 hover:text-rose-500 shrink-0 p-0.5"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Upload Progress Bar */}
+              {isUploading && (
+                <div className="space-y-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-xl">
+                  <div className="flex justify-between text-xs font-bold text-amber-900 dark:text-amber-200">
+                    <span>Proses Upload Massal ke VPS...</span>
+                    <span>{uploadProgress.percentage}% ({uploadProgress.current}/{uploadProgress.total})</span>
+                  </div>
+                  <Progress value={uploadProgress.percentage} className="h-2 bg-amber-200 dark:bg-amber-950" />
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 truncate">
+                    Mengunggah: <strong>{uploadProgress.currentFileName}</strong>
+                  </p>
+                </div>
+              )}
 
               <DialogFooter className="pt-2">
                 <Button
@@ -312,16 +446,16 @@ function MediaGalleryPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isUploading || !selectedFile || !uploadTitle.trim()}
+                  disabled={isUploading || selectedFiles.length === 0}
                   className="bg-honey hover:bg-honey-dark text-slate-900 font-bold"
                 >
                   {isUploading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Mengunggah ke VPS...
+                      Mengunggah {uploadProgress.current}/{uploadProgress.total}...
                     </>
                   ) : (
-                    "Mulai Upload"
+                    `Mulai Upload Massal (${selectedFiles.length} Berkas)`
                   )}
                 </Button>
               </DialogFooter>
@@ -480,7 +614,7 @@ function MediaGalleryPage() {
               className="bg-honey hover:bg-honey-dark text-slate-900 font-bold text-xs"
             >
               <Plus className="h-4 w-4 mr-1" />
-              Upload Berkas Sekarang
+              Upload Berkas Massal
             </Button>
           </CardContent>
         </Card>
