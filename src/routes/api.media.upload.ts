@@ -1,13 +1,9 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
-import { Client } from 'ssh2';
 import pg from 'pg';
 
-const VPS_HOST = '43.133.136.171';
-const VPS_USER = 'ubuntu';
-const VPS_PASS = 'quantum-49#-matrix';
-const VPS_MEDIA_DIR = '/var/www/media';
-const PUBLIC_MEDIA_BASE_URL = 'https://waha.araahoney.my.id/media';
+const VPS_UPLOAD_URL = 'https://waha.araahoney.my.id/media-upload';
+const VPS_SECRET_KEY = 'araahoney_vps_media_key_123';
 
 export const Route = createFileRoute('/api/media/upload')({
   server: {
@@ -37,44 +33,29 @@ export const Route = createFileRoute('/api/media/upload')({
           
           const timestamp = Date.now();
           const finalFileName = `${timestamp}-${cleanName}`;
-          const targetVpsPath = `${VPS_MEDIA_DIR}/${finalFileName}`;
-          const publicUrl = `${PUBLIC_MEDIA_BASE_URL}/${finalFileName}`;
 
-          // Decode base64 to buffer
-          const base64Clean = fileBase64.replace(/^data:[^;]+;base64,/, '');
-          const buffer = Buffer.from(base64Clean, 'base64');
-          const fileSize = buffer.length;
+          // 1. Upload to VPS via HTTP Proxy endpoint
+          console.log(`[Media Upload API] Uploading ${finalFileName} to VPS...`);
 
-          const fileType = (mimeType || '').startsWith('video/') ? 'video' : 'image';
-
-          // 1. Upload to VPS via SSH
-          console.log(`[Media Upload API] Uploading ${finalFileName} (${fileSize} bytes) to VPS ${VPS_HOST}...`);
-
-          const conn = new Client();
-          await new Promise<void>((resolve, reject) => {
-            conn.on('ready', () => {
-              conn.exec(`cat > "${targetVpsPath}"`, (err, stream) => {
-                if (err) return reject(err);
-                stream.on('close', (code) => {
-                  if (code === 0) resolve();
-                  else reject(new Error(`SSH exit code: ${code}`));
-                });
-                stream.on('error', reject);
-                stream.write(buffer);
-                stream.end();
-              });
-            });
-            conn.on('error', reject);
-            conn.connect({
-              host: VPS_HOST,
-              port: 22,
-              username: VPS_USER,
-              password: VPS_PASS,
-              readyTimeout: 30000,
-            });
+          const vpsRes = await fetch(VPS_UPLOAD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              secretKey: VPS_SECRET_KEY,
+              fileName: finalFileName,
+              fileBase64
+            })
           });
 
-          conn.end();
+          const vpsData = await vpsRes.json();
+          if (!vpsRes.ok || !vpsData.success) {
+            throw new Error(vpsData.error || 'Gagal mengunggah berkas ke VPS.');
+          }
+
+          const publicUrl = vpsData.publicUrl;
+          const fileSize = vpsData.fileSize || 0;
+          const fileType = (mimeType || '').startsWith('video/') ? 'video' : 'image';
+
           console.log(`[Media Upload API] Uploaded to VPS successfully: ${publicUrl}`);
 
           // 2. Insert record into Supabase PostgreSQL database
