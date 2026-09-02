@@ -16,6 +16,7 @@ import { Route as PenjualanRouteImport } from './routes/penjualan'
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
 import { Route as MetaCommentsRouteImport } from './routes/meta-comments'
 import { Route as MetaAdsRouteImport } from './routes/meta-ads'
+import { Route as MediaRouteImport } from './routes/media'
 import { Route as LoyalitasRouteImport } from './routes/loyalitas'
 import { Route as KeuanganRouteImport } from './routes/keuangan'
 import { Route as ImportRiwayatRouteImport } from './routes/import-riwayat'
@@ -39,6 +40,8 @@ import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-
 import { Route as ApiMetaSubscribePageRouteImport } from './routes/api.meta.subscribe-page'
 import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply-comment'
 import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.reply-all-unreplied'
+import { Route as ApiMediaUploadRouteImport } from './routes/api.media.upload'
+import { Route as ApiMediaDeleteRouteImport } from './routes/api.media.delete'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 import { Route as ApiCronSendCrmRemindersRouteImport } from './routes/api.cron.send-crm-reminders'
@@ -79,6 +82,11 @@ const MetaCommentsRoute = MetaCommentsRouteImport.update({
 const MetaAdsRoute = MetaAdsRouteImport.update({
   id: '/meta-ads',
   path: '/meta-ads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MediaRoute = MediaRouteImport.update({
+  id: '/media',
+  path: '/media',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoyalitasRoute = LoyalitasRouteImport.update({
@@ -197,6 +205,16 @@ const ApiMetaReplyAllUnrepliedRoute =
     path: '/api/meta/reply-all-unreplied',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiMediaUploadRoute = ApiMediaUploadRouteImport.update({
+  id: '/api/media/upload',
+  path: '/api/media/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMediaDeleteRoute = ApiMediaDeleteRouteImport.update({
+  id: '/api/media/delete',
+  path: '/api/media/delete',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronSyncMetaAdsRoute = ApiCronSyncMetaAdsRouteImport.update({
   id: '/api/cron/sync-meta-ads',
   path: '/api/cron/sync-meta-ads',
@@ -235,6 +253,7 @@ export interface FileRoutesByFullPath {
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/loyalitas': typeof LoyalitasRoute
+  '/media': typeof MediaRoute
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -259,6 +278,8 @@ export interface FileRoutesByFullPath {
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/media/delete': typeof ApiMediaDeleteRoute
+  '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
@@ -273,6 +294,7 @@ export interface FileRoutesByTo {
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/loyalitas': typeof LoyalitasRoute
+  '/media': typeof MediaRoute
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -297,6 +319,8 @@ export interface FileRoutesByTo {
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/media/delete': typeof ApiMediaDeleteRoute
+  '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
@@ -312,6 +336,7 @@ export interface FileRoutesById {
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
   '/loyalitas': typeof LoyalitasRoute
+  '/media': typeof MediaRoute
   '/meta-ads': typeof MetaAdsRoute
   '/meta-comments': typeof MetaCommentsRoute
   '/pengeluaran': typeof PengeluaranRoute
@@ -336,6 +361,8 @@ export interface FileRoutesById {
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/media/delete': typeof ApiMediaDeleteRoute
+  '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
   '/api/meta/reply-comment': typeof ApiMetaReplyCommentRoute
   '/api/meta/subscribe-page': typeof ApiMetaSubscribePageRoute
@@ -352,6 +379,7 @@ export interface FileRouteTypes {
     | '/import-riwayat'
     | '/keuangan'
     | '/loyalitas'
+    | '/media'
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
@@ -376,6 +404,8 @@ export interface FileRouteTypes {
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/media/delete'
+    | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
     | '/api/meta/reply-comment'
     | '/api/meta/subscribe-page'
@@ -390,6 +420,7 @@ export interface FileRouteTypes {
     | '/import-riwayat'
     | '/keuangan'
     | '/loyalitas'
+    | '/media'
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
@@ -414,6 +445,8 @@ export interface FileRouteTypes {
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/media/delete'
+    | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
     | '/api/meta/reply-comment'
     | '/api/meta/subscribe-page'
@@ -428,6 +461,7 @@ export interface FileRouteTypes {
     | '/import-riwayat'
     | '/keuangan'
     | '/loyalitas'
+    | '/media'
     | '/meta-ads'
     | '/meta-comments'
     | '/pengeluaran'
@@ -452,6 +486,8 @@ export interface FileRouteTypes {
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/media/delete'
+    | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
     | '/api/meta/reply-comment'
     | '/api/meta/subscribe-page'
@@ -467,6 +503,7 @@ export interface RootRouteChildren {
   ImportRiwayatRoute: typeof ImportRiwayatRoute
   KeuanganRoute: typeof KeuanganRoute
   LoyalitasRoute: typeof LoyalitasRoute
+  MediaRoute: typeof MediaRoute
   MetaAdsRoute: typeof MetaAdsRoute
   MetaCommentsRoute: typeof MetaCommentsRoute
   PengeluaranRoute: typeof PengeluaranRoute
@@ -491,6 +528,8 @@ export interface RootRouteChildren {
   ApiCronSendCrmRemindersRoute: typeof ApiCronSendCrmRemindersRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
+  ApiMediaDeleteRoute: typeof ApiMediaDeleteRoute
+  ApiMediaUploadRoute: typeof ApiMediaUploadRoute
   ApiMetaReplyAllUnrepliedRoute: typeof ApiMetaReplyAllUnrepliedRoute
   ApiMetaReplyCommentRoute: typeof ApiMetaReplyCommentRoute
   ApiMetaSubscribePageRoute: typeof ApiMetaSubscribePageRoute
@@ -548,6 +587,13 @@ declare module '@tanstack/react-router' {
       path: '/meta-ads'
       fullPath: '/meta-ads'
       preLoaderRoute: typeof MetaAdsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/media': {
+      id: '/media'
+      path: '/media'
+      fullPath: '/media'
+      preLoaderRoute: typeof MediaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/loyalitas': {
@@ -711,6 +757,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMetaReplyAllUnrepliedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/media/upload': {
+      id: '/api/media/upload'
+      path: '/api/media/upload'
+      fullPath: '/api/media/upload'
+      preLoaderRoute: typeof ApiMediaUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/media/delete': {
+      id: '/api/media/delete'
+      path: '/api/media/delete'
+      fullPath: '/api/media/delete'
+      preLoaderRoute: typeof ApiMediaDeleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/sync-meta-ads': {
       id: '/api/cron/sync-meta-ads'
       path: '/api/cron/sync-meta-ads'
@@ -763,6 +823,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImportRiwayatRoute: ImportRiwayatRoute,
   KeuanganRoute: KeuanganRoute,
   LoyalitasRoute: LoyalitasRoute,
+  MediaRoute: MediaRoute,
   MetaAdsRoute: MetaAdsRoute,
   MetaCommentsRoute: MetaCommentsRoute,
   PengeluaranRoute: PengeluaranRoute,
@@ -787,6 +848,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronSendCrmRemindersRoute: ApiCronSendCrmRemindersRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
+  ApiMediaDeleteRoute: ApiMediaDeleteRoute,
+  ApiMediaUploadRoute: ApiMediaUploadRoute,
   ApiMetaReplyAllUnrepliedRoute: ApiMetaReplyAllUnrepliedRoute,
   ApiMetaReplyCommentRoute: ApiMetaReplyCommentRoute,
   ApiMetaSubscribePageRoute: ApiMetaSubscribePageRoute,
