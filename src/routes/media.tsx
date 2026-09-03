@@ -204,31 +204,41 @@ function MediaGalleryPage() {
       }
 
       try {
-        // Read file to base64
-        const reader = new FileReader();
-        const base64Promise = new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = (err) => reject(err);
-        });
-        reader.readAsDataURL(file);
-        const fileBase64 = await base64Promise;
-
-        const res = await fetch("/api/media/upload", {
+        // 1. Direct Binary Stream Upload to VPS (Bypasses Vercel 4.5MB Serverless Limit!)
+        const res = await fetch("https://waha.araahoney.my.id/media-upload", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: finalTitle,
-            category: uploadCategory,
-            fileName: file.name,
-            fileBase64,
-            mimeType: file.type,
-          }),
+          headers: {
+            "x-secret-key": "araahoney_vps_media_key_123",
+            "x-filename": encodeURIComponent(file.name),
+          },
+          body: file,
         });
 
         const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || `Gagal mengunggah ${file.name}`);
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || `Gagal mengunggah ${file.name} ke VPS.`);
         }
+
+        const publicUrl = data.publicUrl;
+        const finalFileName = data.fileName;
+        const fileSize = data.fileSize || file.size;
+        const fileType = file.type.startsWith("video/") ? "video" : "image";
+
+        // 2. Insert record metadata into Supabase
+        const { error: dbError } = await supabase.from("media_library" as any).insert({
+          title: finalTitle,
+          file_name: finalFileName,
+          file_url: publicUrl,
+          file_type: fileType,
+          mime_type: file.type || "application/octet-stream",
+          file_size: fileSize,
+          category: uploadCategory,
+        });
+
+        if (dbError) {
+          throw new Error(`Gagal menyimpan data ke database: ${dbError.message}`);
+        }
+
         successCount++;
       } catch (err: any) {
         console.error(`Upload error for file ${file.name}:`, err);
@@ -252,7 +262,7 @@ function MediaGalleryPage() {
     }
 
     if (failCount > 0) {
-      toast.error(`${failCount} berkas gagal diunggah. Silakan coba lagi.`);
+      toast.error(`${failCount} berkas gagal diunggah. Silakan periksa koneksi internet.`);
     }
   };
 
@@ -260,19 +270,27 @@ function MediaGalleryPage() {
   const handleDeleteMedia = async () => {
     if (!deletingMedia) return;
     try {
-      const res = await fetch("/api/media/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: deletingMedia.id,
-          fileName: deletingMedia.file_name,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Gagal menghapus media.");
+      // 1. Delete from VPS
+      try {
+        await fetch("https://waha.araahoney.my.id/media-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            secretKey: "araahoney_vps_media_key_123",
+            fileName: deletingMedia.file_name,
+          }),
+        });
+      } catch (vpsErr) {
+        console.warn("Failed to delete file from VPS:", vpsErr);
       }
+
+      // 2. Delete from Supabase
+      const { error: dbErr } = await supabase
+        .from("media_library" as any)
+        .delete()
+        .eq("id", deletingMedia.id);
+
+      if (dbErr) throw dbErr;
 
       toast.success("Berkas media berhasil dihapus dari VPS & Database!");
       setDeletingMedia(null);
