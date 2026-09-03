@@ -182,6 +182,7 @@ function MediaGalleryPage() {
     const total = selectedFiles.length;
     let successCount = 0;
     let failCount = 0;
+    let lastError = "";
 
     for (let i = 0; i < total; i++) {
       const file = selectedFiles[i];
@@ -242,6 +243,7 @@ function MediaGalleryPage() {
         successCount++;
       } catch (err: any) {
         console.error(`Upload error for file ${file.name}:`, err);
+        lastError = err?.message || String(err);
         failCount++;
       }
     }
@@ -262,7 +264,7 @@ function MediaGalleryPage() {
     }
 
     if (failCount > 0) {
-      toast.error(`${failCount} berkas gagal diunggah. Silakan periksa koneksi internet.`);
+      toast.error(`${failCount} berkas gagal diunggah: ${lastError || "Periksa koneksi internet Anda."}`);
     }
   };
 
