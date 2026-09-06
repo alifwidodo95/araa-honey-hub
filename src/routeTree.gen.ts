@@ -18,6 +18,7 @@ import { Route as MetaCommentsRouteImport } from './routes/meta-comments'
 import { Route as MetaAdsRouteImport } from './routes/meta-ads'
 import { Route as MediaRouteImport } from './routes/media'
 import { Route as LoyalitasRouteImport } from './routes/loyalitas'
+import { Route as LaporanRouteImport } from './routes/laporan'
 import { Route as KeuanganRouteImport } from './routes/keuangan'
 import { Route as ImportRiwayatRouteImport } from './routes/import-riwayat'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -92,6 +93,11 @@ const MediaRoute = MediaRouteImport.update({
 const LoyalitasRoute = LoyalitasRouteImport.update({
   id: '/loyalitas',
   path: '/loyalitas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LaporanRoute = LaporanRouteImport.update({
+  id: '/laporan',
+  path: '/laporan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KeuanganRoute = KeuanganRouteImport.update({
@@ -252,6 +258,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
+  '/laporan': typeof LaporanRoute
   '/loyalitas': typeof LoyalitasRoute
   '/media': typeof MediaRoute
   '/meta-ads': typeof MetaAdsRoute
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
+  '/laporan': typeof LaporanRoute
   '/loyalitas': typeof LoyalitasRoute
   '/media': typeof MediaRoute
   '/meta-ads': typeof MetaAdsRoute
@@ -335,6 +343,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/import-riwayat': typeof ImportRiwayatRoute
   '/keuangan': typeof KeuanganRoute
+  '/laporan': typeof LaporanRoute
   '/loyalitas': typeof LoyalitasRoute
   '/media': typeof MediaRoute
   '/meta-ads': typeof MetaAdsRoute
@@ -378,6 +387,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/import-riwayat'
     | '/keuangan'
+    | '/laporan'
     | '/loyalitas'
     | '/media'
     | '/meta-ads'
@@ -419,6 +429,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/import-riwayat'
     | '/keuangan'
+    | '/laporan'
     | '/loyalitas'
     | '/media'
     | '/meta-ads'
@@ -460,6 +471,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/import-riwayat'
     | '/keuangan'
+    | '/laporan'
     | '/loyalitas'
     | '/media'
     | '/meta-ads'
@@ -502,6 +514,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   ImportRiwayatRoute: typeof ImportRiwayatRoute
   KeuanganRoute: typeof KeuanganRoute
+  LaporanRoute: typeof LaporanRoute
   LoyalitasRoute: typeof LoyalitasRoute
   MediaRoute: typeof MediaRoute
   MetaAdsRoute: typeof MetaAdsRoute
@@ -601,6 +614,13 @@ declare module '@tanstack/react-router' {
       path: '/loyalitas'
       fullPath: '/loyalitas'
       preLoaderRoute: typeof LoyalitasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/laporan': {
+      id: '/laporan'
+      path: '/laporan'
+      fullPath: '/laporan'
+      preLoaderRoute: typeof LaporanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/keuangan': {
@@ -822,6 +842,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   ImportRiwayatRoute: ImportRiwayatRoute,
   KeuanganRoute: KeuanganRoute,
+  LaporanRoute: LaporanRoute,
   LoyalitasRoute: LoyalitasRoute,
   MediaRoute: MediaRoute,
   MetaAdsRoute: MetaAdsRoute,

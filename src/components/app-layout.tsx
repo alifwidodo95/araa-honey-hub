@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -24,9 +24,10 @@ const navStaff = [
 ];
 
 const navOwnerOnly = [
+  { to: "/laporan", label: "Laporan", icon: BarChart3 },
   { to: "/keuangan", label: "Keuangan", icon: TrendingUp },
   { to: "/media", label: "Media & Testimoni", icon: ImageIcon },
-  { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone }, // Added Meta Ads Manager
+  { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone },
   { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
   { to: "/whatsapp-ai", label: "Asisten WA AI", icon: Bot },
   { to: "/import-riwayat", label: "Impor Riwayat", icon: Database },
