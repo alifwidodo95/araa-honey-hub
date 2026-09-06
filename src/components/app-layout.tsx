@@ -8,33 +8,109 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3, ChevronDown
 } from "lucide-react";
 import { Button } from "./ui/button";
 
-const navStaff = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/penjualan", label: "Penjualan", icon: ShoppingCart },
-  { to: "/loyalitas", label: "Loyalitas & Repeat", icon: HeartHandshake },
-  { to: "/retur", label: "Retur Pesanan", icon: RotateCcw },
-  { to: "/stok/bahan-baku", label: "Bahan Baku", icon: Package },
-  { to: "/stok/pindah-wadah", label: "Pindah Wadah", icon: ArrowLeftRight },
-  { to: "/stok/kemasan", label: "Kemasan & Packing", icon: Boxes },
-  { to: "/pengeluaran", label: "Biaya Operasional", icon: Receipt },
-];
+type NavItem = {
+  to: string;
+  label: string;
+  icon: any;
+};
 
-const navOwnerOnly = [
-  { to: "/laporan", label: "Laporan", icon: BarChart3 },
-  { to: "/keuangan", label: "Keuangan", icon: TrendingUp },
-  { to: "/media", label: "Media & Testimoni", icon: ImageIcon },
-  { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone },
-  { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
-  { to: "/whatsapp-ai", label: "Asisten WA AI", icon: Bot },
-  { to: "/import-riwayat", label: "Impor Riwayat", icon: Database },
-  { to: "/pengaturan/whatsapp", label: "Integrasi WhatsApp", icon: MessageSquare },
-  { to: "/pengaturan/harga", label: "Pengaturan Harga", icon: Settings },
-  { to: "/pengaturan/lumpsum", label: "Lumpsum Bulanan", icon: Settings },
-  { to: "/pengaturan/staf", label: "Akun Staf", icon: Lock },
+type NavGroup = {
+  id: string;
+  label: string;
+  icon: any;
+  items: NavItem[];
+};
+
+type NavEntry =
+  | { type: "item"; item: NavItem }
+  | { type: "group"; group: NavGroup };
+
+const navStructure: NavEntry[] = [
+  // Standalone Items (Sering dibuka)
+  {
+    type: "item",
+    item: { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  },
+  {
+    type: "item",
+    item: { to: "/penjualan", label: "Penjualan", icon: ShoppingCart },
+  },
+  // 1. Pelanggan & Pesanan
+  {
+    type: "group",
+    group: {
+      id: "pelanggan",
+      label: "Pelanggan & Pesanan",
+      icon: HeartHandshake,
+      items: [
+        { to: "/loyalitas", label: "Loyalitas & Repeat", icon: HeartHandshake },
+        { to: "/retur", label: "Retur Pesanan", icon: RotateCcw },
+      ],
+    },
+  },
+  // 2. Stok & Gudang
+  {
+    type: "group",
+    group: {
+      id: "stok",
+      label: "Stok & Gudang",
+      icon: Package,
+      items: [
+        { to: "/stok/bahan-baku", label: "Bahan Baku (Dandang)", icon: Package },
+        { to: "/stok/pindah-wadah", label: "Pindah Wadah", icon: ArrowLeftRight },
+        { to: "/stok/kemasan", label: "Kemasan & Packing", icon: Boxes },
+      ],
+    },
+  },
+  // 3. Finansial & Laporan
+  {
+    type: "group",
+    group: {
+      id: "finansial",
+      label: "Finansial & Laporan",
+      icon: TrendingUp,
+      items: [
+        { to: "/laporan", label: "Laporan Konsumsi", icon: BarChart3 },
+        { to: "/keuangan", label: "Keuangan & Laba", icon: TrendingUp },
+        { to: "/pengeluaran", label: "Biaya Operasional", icon: Receipt },
+      ],
+    },
+  },
+  // 4. Pemasaran & AI
+  {
+    type: "group",
+    group: {
+      id: "pemasaran",
+      label: "Pemasaran & AI",
+      icon: Megaphone,
+      items: [
+        { to: "/media", label: "Media & Testimoni", icon: ImageIcon },
+        { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone },
+        { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
+        { to: "/whatsapp-ai", label: "Asisten WA AI", icon: Bot },
+      ],
+    },
+  },
+  // 5. Pengaturan & Sistem
+  {
+    type: "group",
+    group: {
+      id: "pengaturan",
+      label: "Pengaturan & Sistem",
+      icon: Settings,
+      items: [
+        { to: "/pengaturan/whatsapp", label: "Integrasi WhatsApp", icon: MessageSquare },
+        { to: "/pengaturan/harga", label: "Pengaturan Harga", icon: Settings },
+        { to: "/pengaturan/lumpsum", label: "Lumpsum Bulanan", icon: Settings },
+        { to: "/pengaturan/staf", label: "Akun Staf", icon: Lock },
+        { to: "/import-riwayat", label: "Impor Riwayat", icon: Database },
+      ],
+    },
+  },
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -124,13 +200,171 @@ export function AppLayout({ children }: { children: ReactNode }) {
     return to.replace(/^\//, "").replace(/\//g, "_");
   };
 
-  const allItems = [...navStaff, ...navOwnerOnly];
-  const items = allItems.filter((item) => hasPermission(getPermissionKey(item.to)));
+  const filteredNav = navStructure
+    .map((entry) => {
+      if (entry.type === "item") {
+        return hasPermission(getPermissionKey(entry.item.to)) ? entry : null;
+      }
+      const allowedItems = entry.group.items.filter((it) =>
+        hasPermission(getPermissionKey(it.to))
+      );
+      if (allowedItems.length === 0) return null;
+      return {
+        type: "group" as const,
+        group: {
+          ...entry.group,
+          items: allowedItems,
+        },
+      };
+    })
+    .filter(Boolean) as NavEntry[];
+
+  // Auto-expand active group on initial load & route change
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const entry of navStructure) {
+      if (entry.type === "group") {
+        const hasActive = entry.group.items.some(
+          (it) => pathname === it.to || pathname.startsWith(it.to + "/")
+        );
+        if (hasActive) initial[entry.group.id] = true;
+      }
+    }
+    return initial;
+  });
+
+  useEffect(() => {
+    for (const entry of navStructure) {
+      if (entry.type === "group") {
+        const hasActive = entry.group.items.some(
+          (it) => pathname === it.to || pathname.startsWith(it.to + "/")
+        );
+        if (hasActive) {
+          setOpenGroups((prev) => (prev[entry.group.id] ? prev : { ...prev, [entry.group.id]: true }));
+        }
+      }
+    }
+  }, [pathname]);
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
+  const getItemBadge = (to: string) => {
+    if (to === "/stok/bahan-baku") return dandangAlerts;
+    if (to === "/stok/kemasan") return packagingAlerts;
+    return 0;
+  };
+
+  const getGroupBadge = (group: NavGroup) => {
+    return group.items.reduce((acc, it) => acc + getItemBadge(it.to), 0);
+  };
 
   const handleLogout = async () => {
     await signOut();
     navigate({ to: "/auth", replace: true });
   };
+
+  const renderNav = (onNavigate?: () => void) => (
+    <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
+      {filteredNav.map((entry) => {
+        if (entry.type === "item") {
+          const it = entry.item;
+          const Icon = it.icon;
+          const active = pathname === it.to || pathname.startsWith(it.to + "/");
+          const badgeCount = getItemBadge(it.to);
+          return (
+            <Link
+              key={it.to}
+              to={it.to}
+              onClick={onNavigate}
+              className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg font-medium transition-all ${
+                active
+                  ? "liquid-honey-active shadow-sm"
+                  : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">{it.label}</span>
+              {badgeCount > 0 && (
+                <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                  {badgeCount}
+                </span>
+              )}
+            </Link>
+          );
+        }
+
+        const group = entry.group;
+        const GroupIcon = group.icon;
+        const isOpen = !!openGroups[group.id];
+        const isGroupActive = group.items.some(
+          (it) => pathname === it.to || pathname.startsWith(it.to + "/")
+        );
+        const groupBadge = getGroupBadge(group);
+
+        return (
+          <div key={group.id} className="space-y-1">
+            <button
+              type="button"
+              onClick={() => toggleGroup(group.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all text-left group cursor-pointer ${
+                isGroupActive
+                  ? "text-amber-500 font-semibold bg-amber-500/10"
+                  : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+              }`}
+            >
+              <GroupIcon className={`h-4 w-4 shrink-0 transition-colors ${isGroupActive ? "text-amber-500" : "text-sidebar-foreground/70 group-hover:text-sidebar-foreground"}`} />
+              <span className="flex-1 truncate">{group.label}</span>
+              {groupBadge > 0 && (
+                <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse mr-1">
+                  {groupBadge}
+                </span>
+              )}
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 transition-transform duration-200 opacity-60 ${
+                  isOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {isOpen && (
+              <div className="pl-4 ml-3 space-y-1 border-l-2 border-amber-500/20 py-0.5">
+                {group.items.map((it) => {
+                  const SubIcon = it.icon;
+                  const active = pathname === it.to || pathname.startsWith(it.to + "/");
+                  const badgeCount = getItemBadge(it.to);
+                  return (
+                    <Link
+                      key={it.to}
+                      to={it.to}
+                      onClick={onNavigate}
+                      className={`flex items-center gap-2.5 px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
+                        active
+                          ? "bg-amber-500/15 text-amber-500 font-semibold shadow-xs"
+                          : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/40"
+                      }`}
+                    >
+                      <SubIcon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-amber-500" : "opacity-70"}`} />
+                      <span className="flex-1 truncate">{it.label}</span>
+                      {badgeCount > 0 && (
+                        <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                          {badgeCount}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
 
   return (
     <div className="min-h-screen flex w-full bg-background overflow-hidden">
@@ -150,34 +384,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {items.map((it) => {
-            const Icon = it.icon;
-            const active = pathname === it.to || pathname.startsWith(it.to + "/");
-            let badgeCount = 0;
-            if (it.to === "/stok/bahan-baku") badgeCount = dandangAlerts;
-            if (it.to === "/stok/kemasan") badgeCount = packagingAlerts;
-            return (
-              <Link
-                key={it.to}
-                to={it.to}
-                className={`flex items-center gap-3 px-3 py-2 text-sm liquid-honey-item ${
-                  active
-                    ? "liquid-honey-active"
-                    : "text-sidebar-foreground/85"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="flex-1">{it.label}</span>
-                {badgeCount > 0 && (
-                  <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                    {badgeCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+        {renderNav()}
         <div className="p-3 border-t border-sidebar-border space-y-2">
           <div className="text-xs opacity-70 px-2 truncate">{user?.email}</div>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-border/40 hover:text-sidebar-foreground">
@@ -223,35 +430,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-            {items.map((it) => {
-              const Icon = it.icon;
-              const active = pathname === it.to || pathname.startsWith(it.to + "/");
-              let badgeCount = 0;
-              if (it.to === "/stok/bahan-baku") badgeCount = dandangAlerts;
-              if (it.to === "/stok/kemasan") badgeCount = packagingAlerts;
-              return (
-                <Link
-                  key={it.to}
-                  to={it.to}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2 text-sm liquid-honey-item ${
-                    active
-                      ? "liquid-honey-active"
-                      : "text-sidebar-foreground/85"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="flex-1">{it.label}</span>
-                  {badgeCount > 0 && (
-                    <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                      {badgeCount}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
+          {renderNav(() => setSidebarOpen(false))}
           <div className="p-3 border-t border-sidebar-border space-y-2">
             <div className="text-xs opacity-70 px-2 truncate">{user?.email}</div>
             <Button variant="ghost" size="sm" onClick={() => { setSidebarOpen(false); handleLogout(); }} className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-border/40 hover:text-sidebar-foreground">
