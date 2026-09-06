@@ -81,33 +81,51 @@ function Page() {
   const startDate = new Date(year, month - 1, 1).toISOString();
   const endDate = new Date(year, month, 1).toISOString();
 
-  // 1. Query: orders in selected period with items & product_sizes
+  // 1. Query: ALL orders in selected period (paginate past Supabase 1000-row default limit)
   const { data: orderItems, isLoading } = useQuery({
     queryKey: ["laporan-konsumsi-madu", selectedPeriod],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select(
-          `
-          id,
-          created_at,
-          order_items (
-            id,
-            qty,
-            honey_type,
-            size_id,
-            product_sizes:size_id (
-              name,
-              weight_grams
-            )
-          )
-        `
-        )
-        .gte("created_at", startDate)
-        .lt("created_at", endDate);
+      const PAGE_SIZE = 1000;
+      let allData: any[] = [];
+      let from = 0;
+      let hasMore = true;
 
-      if (error) throw error;
-      return data ?? [];
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("orders")
+          .select(
+            `
+            id,
+            created_at,
+            order_items (
+              id,
+              qty,
+              honey_type,
+              size_id,
+              product_sizes:size_id (
+                name,
+                weight_grams
+              )
+            )
+          `
+          )
+          .gte("created_at", startDate)
+          .lt("created_at", endDate)
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (error) throw error;
+
+        const rows = data ?? [];
+        allData = allData.concat(rows);
+
+        if (rows.length < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          from += PAGE_SIZE;
+        }
+      }
+
+      return allData;
     },
   });
 
@@ -162,14 +180,26 @@ function Page() {
         const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString();
         const label = MONTHS_INDO[d.getMonth()];
 
-        const { data } = await supabase
-          .from("orders")
-          .select(`order_items(qty, honey_type, size_id, product_sizes:size_id(name, weight_grams))`)
-          .gte("created_at", start)
-          .lt("created_at", end);
+        // Paginate to bypass Supabase 1000-row limit
+        const PAGE_SIZE = 1000;
+        let allOrders: any[] = [];
+        let from = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data: page } = await supabase
+            .from("orders")
+            .select(`order_items(qty, honey_type, size_id, product_sizes:size_id(name, weight_grams))`)
+            .gte("created_at", start)
+            .lt("created_at", end)
+            .range(from, from + PAGE_SIZE - 1);
+          const rows = page ?? [];
+          allOrders = allOrders.concat(rows);
+          if (rows.length < PAGE_SIZE) hasMore = false;
+          else from += PAGE_SIZE;
+        }
 
         const byVariant: Record<string, number> = {};
-        for (const order of data ?? []) {
+        for (const order of allOrders) {
           for (const item of (order.order_items as any[]) ?? []) {
             const v = item.honey_type || "Lainnya";
             const g = ((item.product_sizes as any)?.weight_grams || 0) * (item.qty || 1);
