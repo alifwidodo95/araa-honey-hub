@@ -81,7 +81,7 @@ function Page() {
   const startDate = new Date(year, month - 1, 1).toISOString();
   const endDate = new Date(year, month, 1).toISOString();
 
-  // 1. Query: orders in the selected period, with their items & product sizes
+  // 1. Query: orders in selected period with items & product_sizes
   const { data: orderItems, isLoading } = useQuery({
     queryKey: ["laporan-konsumsi-madu", selectedPeriod],
     queryFn: async () => {
@@ -90,22 +90,21 @@ function Page() {
         .select(
           `
           id,
-          order_date,
+          created_at,
           order_items (
             id,
-            quantity,
+            qty,
             honey_type,
-            size_grams,
-            product_sizes (
-              size_grams,
-              honey_type
+            size_id,
+            product_sizes:size_id (
+              name,
+              weight_grams
             )
           )
         `
         )
-        .gte("order_date", startDate)
-        .lt("order_date", endDate)
-        .not("status", "eq", "cancelled");
+        .gte("created_at", startDate)
+        .lt("created_at", endDate);
 
       if (error) throw error;
       return data ?? [];
@@ -121,23 +120,18 @@ function Page() {
       ),
   });
 
-  // 3. Aggregate: total kg per honey variant for selected month
+  // 3. Aggregate: total kg per honey variant
   const consumptionByVariant = useMemo(() => {
     if (!orderItems) return [];
     const map: Record<string, number> = {};
 
     for (const order of orderItems) {
       for (const item of (order.order_items as any[]) ?? []) {
-        const variantName: string =
-          item.honey_type ||
-          (item.product_sizes as any)?.honey_type ||
-          "Lainnya";
-        const sizeGrams: number =
-          item.size_grams ||
-          (item.product_sizes as any)?.size_grams ||
-          0;
-        const qty: number = item.quantity || 1;
-        const totalGrams = sizeGrams * qty;
+        const variantName: string = item.honey_type || "Lainnya";
+        const weightGrams: number =
+          (item.product_sizes as any)?.weight_grams || 0;
+        const qty: number = item.qty || 1;
+        const totalGrams = weightGrams * qty;
 
         map[variantName] = (map[variantName] ?? 0) + totalGrams;
       }
@@ -170,17 +164,15 @@ function Page() {
 
         const { data } = await supabase
           .from("orders")
-          .select(`order_items(quantity, size_grams, honey_type, product_sizes(size_grams, honey_type))`)
-          .gte("order_date", start)
-          .lt("order_date", end)
-          .not("status", "eq", "cancelled");
+          .select(`order_items(qty, honey_type, size_id, product_sizes:size_id(name, weight_grams))`)
+          .gte("created_at", start)
+          .lt("created_at", end);
 
         const byVariant: Record<string, number> = {};
         for (const order of data ?? []) {
           for (const item of (order.order_items as any[]) ?? []) {
-            const v =
-              item.honey_type || (item.product_sizes as any)?.honey_type || "Lainnya";
-            const g = (item.size_grams || (item.product_sizes as any)?.size_grams || 0) * (item.quantity || 1);
+            const v = item.honey_type || "Lainnya";
+            const g = ((item.product_sizes as any)?.weight_grams || 0) * (item.qty || 1);
             byVariant[v] = (byVariant[v] ?? 0) + g;
           }
         }
