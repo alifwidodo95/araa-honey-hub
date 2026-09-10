@@ -16,7 +16,7 @@ import {
   Repeat, Users, Crown, Clock, TrendingUp, Search, MessageSquare, 
   Sparkles, HeartHandshake, ShoppingBag, 
   ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
-  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, CheckSquare, Square, Filter
+  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, CheckSquare, Square, Filter, PackageCheck
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { 
@@ -465,6 +465,29 @@ function LoyaltyPage() {
     });
   };
 
+  // Eligibility check for CRM action & bulk selection (Smart Cooldown Protection)
+  const isEligibleForCrm = (c: {
+    isValidWa?: boolean;
+    daysSinceLastOrder: number;
+    minCycle: number;
+    lastCrmSentAt?: string | null;
+    phone: string;
+  }) => {
+    if (!c.isValidWa) return false;
+    // Must have reached minimum consumption cycle
+    if (c.daysSinceLastOrder < c.minCycle) return false;
+    // If already sent in this current session
+    if (sentMap[c.phone]) return false;
+    // If sent within the last 30 days
+    if (c.lastCrmSentAt) {
+      const sentDate = new Date(c.lastCrmSentAt);
+      const now = new Date();
+      const daysSinceCrm = Math.floor((now.getTime() - sentDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSinceCrm < 30) return false;
+    }
+    return true;
+  };
+
   // Toggle selection for a single customer
   const handleToggleSelectPhone = (phone: string) => {
     setSelectedPhones((prev) =>
@@ -491,9 +514,10 @@ function LoyaltyPage() {
       list = list.filter((c) => !c.lastCrmSentAt && !sentMap[c.phone]);
     } else if (crmFilter === "need_followup") {
       list = list.filter((c) => {
-        if (!c.lastCrmSentAt && !sentMap[c.phone]) return true;
+        if (c.daysSinceLastOrder < c.minCycle) return false;
         if (sentMap[c.phone]) return false;
-        const days = Math.floor((new Date().getTime() - new Date(c.lastCrmSentAt!).getTime()) / (1000 * 60 * 60 * 24));
+        if (!c.lastCrmSentAt) return true;
+        const days = Math.floor((new Date().getTime() - new Date(c.lastCrmSentAt).getTime()) / (1000 * 60 * 60 * 24));
         return days >= 30;
       });
     } else if (crmFilter === "contacted") {
@@ -535,15 +559,17 @@ function LoyaltyPage() {
 
   // Toggle selection for all eligible customers on current page
   const handleToggleSelectAllPage = () => {
-    const validPagePhones = paginatedCustomers
-      .filter((c) => c.isValidWa)
+    const eligiblePagePhones = paginatedCustomers
+      .filter(isEligibleForCrm)
       .map((c) => c.phone);
-    const allSelected = validPagePhones.length > 0 && validPagePhones.every((p) => selectedPhones.includes(p));
+    if (eligiblePagePhones.length === 0) return;
+
+    const allSelected = eligiblePagePhones.every((p) => selectedPhones.includes(p));
 
     if (allSelected) {
-      setSelectedPhones((prev) => prev.filter((p) => !validPagePhones.includes(p)));
+      setSelectedPhones((prev) => prev.filter((p) => !eligiblePagePhones.includes(p)));
     } else {
-      setSelectedPhones((prev) => Array.from(new Set([...prev, ...validPagePhones])));
+      setSelectedPhones((prev) => Array.from(new Set([...prev, ...eligiblePagePhones])));
     }
   };
 
@@ -554,7 +580,7 @@ function LoyaltyPage() {
     bulkAbortRef.current = false;
 
     const targets = customers.filter(
-      (c) => selectedPhones.includes(c.phone) && c.isValidWa
+      (c) => selectedPhones.includes(c.phone) && isEligibleForCrm(c)
     );
     const total = targets.length;
     let successCount = 0;
@@ -1037,11 +1063,11 @@ function LoyaltyPage() {
                     <TableHead className="w-10 text-center py-2.5">
                       <Checkbox
                         checked={
-                          paginatedCustomers.filter(c => c.isValidWa).length > 0 &&
-                          paginatedCustomers.filter(c => c.isValidWa).every(c => selectedPhones.includes(c.phone))
+                          paginatedCustomers.filter(isEligibleForCrm).length > 0 &&
+                          paginatedCustomers.filter(isEligibleForCrm).every(c => selectedPhones.includes(c.phone))
                         }
                         onCheckedChange={handleToggleSelectAllPage}
-                        title="Pilih semua pelanggan di halaman ini"
+                        title="Pilih semua pelanggan yang siap di-follow up di halaman ini"
                       />
                     </TableHead>
                     <TableHead className="py-2.5">Nama & Kontak</TableHead>
@@ -1072,7 +1098,7 @@ function LoyaltyPage() {
                         <TableCell className="text-center py-2.5">
                           <Checkbox
                             checked={isSelected}
-                            disabled={!c.isValidWa}
+                            disabled={!isEligibleForCrm(c)}
                             onCheckedChange={() => handleToggleSelectPhone(c.phone)}
                           />
                         </TableCell>
@@ -1130,6 +1156,22 @@ function LoyaltyPage() {
                               <ShieldAlert className="w-3 h-3 text-muted-foreground" />
                               Disensor
                             </span>
+                          ) : c.daysSinceLastOrder <= 7 ? (
+                            <span 
+                              className="inline-flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-md font-medium border border-sky-500/20" 
+                              title={`Pesanan baru selesai ${c.daysSinceLastOrder} hari lalu (${c.lastOrderGrams >= 1000 ? (c.lastOrderGrams/1000).toFixed(1) + ' kg' : c.lastOrderGrams + ' gr'}). Belum saatnya follow-up.`}
+                            >
+                              <PackageCheck className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                              Baru Selesai Order
+                            </span>
+                          ) : c.daysSinceLastOrder < c.minCycle ? (
+                            <span 
+                              className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-md font-medium border border-amber-500/20" 
+                              title={`Madu masih dikonsumsi. Siklus re-order diperkirakan ~${c.minCycle - c.daysSinceLastOrder} hari lagi (${c.cycleLabel}).`}
+                            >
+                              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                              Sedang Konsumsi (~{c.minCycle - c.daysSinceLastOrder}h lagi)
+                            </span>
                           ) : isSent || isSentToday ? (
                             <span 
                               className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md" 
@@ -1161,7 +1203,7 @@ function LoyaltyPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleOpenSendDialog(c)}
-                              className="h-7 text-[11px] gap-1.5 font-semibold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
+                              className="h-7 text-[11px] gap-1.5 font-semibold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700 shadow-2xs"
                               title="Kirim pesan otomatis via WAHA"
                             >
                               <Send className="w-3 h-3" />
