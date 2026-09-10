@@ -16,19 +16,28 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
     });
 
     const query = `
-      WITH cleaned_orders AS (
+      WITH order_weights AS (
+        SELECT 
+          oi.order_id,
+          SUM(oi.qty * COALESCE(ps.weight_grams, 1000)) as order_grams,
+          MAX(oi.honey_type) as honey_type
+        FROM order_items oi
+        LEFT JOIN product_sizes ps ON ps.id = oi.size_id
+        GROUP BY oi.order_id
+      ),
+      cleaned_orders AS (
         SELECT 
           o.id,
           o.customer_name,
+          o.customer_phone as raw_phone_uncleaned,
           REGEXP_REPLACE(o.customer_phone, '[^0-9]', '', 'g') as raw_phone,
           o.subtotal_gross,
           o.created_at,
           TO_CHAR(o.created_at, 'YYYY-MM') as order_month,
-          COALESCE(
-            (SELECT oi.honey_type FROM order_items oi WHERE oi.order_id = o.id LIMIT 1),
-            'Madu Araa'
-          ) as honey_type
+          COALESCE(ow.honey_type, 'Madu Araa') as honey_type,
+          COALESCE(ow.order_grams, 1000) as order_grams
         FROM orders o
+        LEFT JOIN order_weights ow ON ow.order_id = o.id
         WHERE o.returned = false 
           AND o.customer_phone IS NOT NULL 
           AND TRIM(o.customer_phone) != ''
@@ -37,6 +46,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
         SELECT 
           id,
           customer_name,
+          raw_phone_uncleaned,
           CASE 
             WHEN raw_phone LIKE '0%' THEN '62' || SUBSTRING(raw_phone FROM 2)
             WHEN raw_phone LIKE '8%' THEN '62' || raw_phone
@@ -45,7 +55,8 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           subtotal_gross,
           created_at,
           order_month,
-          honey_type
+          honey_type,
+          order_grams
         FROM cleaned_orders
         WHERE LENGTH(raw_phone) >= 9
       ),
@@ -78,7 +89,13 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           MAX(n.created_at) as last_order_date,
           EXTRACT(DAY FROM (NOW() - MAX(n.created_at)))::int as days_since_last_order,
           MODE() WITHIN GROUP (ORDER BY n.honey_type) as favorite_honey,
-          MAX(s.last_crm_sent_at) as last_crm_sent_at
+          MAX(s.last_crm_sent_at) as last_crm_sent_at,
+          COALESCE((ARRAY_AGG(n.order_grams ORDER BY n.created_at DESC))[1], 1000)::int as last_order_grams,
+          CASE 
+            WHEN BOOL_OR(n.raw_phone_uncleaned LIKE '%*%') THEN false
+            WHEN LENGTH(n.phone) < 10 THEN false
+            ELSE true
+          END as is_valid_wa
         FROM normalized_orders n
         LEFT JOIN sent_crm s ON n.phone = s.phone
         GROUP BY n.phone
@@ -96,10 +113,23 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
         GROUP BY n.order_month
         ORDER BY n.order_month DESC
         LIMIT 6
+      ),
+      crm_conversions AS (
+        SELECT 
+          COUNT(DISTINCT r.id)::int as total_crm_sent,
+          COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > r.sent_at AND n.created_at <= r.sent_at + INTERVAL '30 days')::int as converted_customers,
+          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > r.sent_at AND n.created_at <= r.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue
+        FROM crm_reminders r
+        LEFT JOIN normalized_orders n ON (
+          r.customer_phone = n.phone 
+          OR r.customer_phone = ('0' || SUBSTRING(n.phone FROM 3))
+        )
+        WHERE r.status = 'sent' AND r.sent_at IS NOT NULL
       )
       SELECT 
         (SELECT json_agg(c) FROM customer_agg c) as all_customers,
-        (SELECT json_agg(m) FROM monthly_summary m) as monthly_trends;
+        (SELECT json_agg(m) FROM monthly_summary m) as monthly_trends,
+        (SELECT row_to_json(conv) FROM crm_conversions conv) as crm_stats;
     `;
 
     const res = await pool.query(query);
@@ -107,10 +137,12 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
 
     const allCustomers = res.rows[0]?.all_customers || [];
     const monthlyTrends = res.rows[0]?.monthly_trends || [];
+    const crmStats = res.rows[0]?.crm_stats || { total_crm_sent: 0, converted_customers: 0, crm_revenue: 0 };
 
     return {
       customers: allCustomers,
       trends: monthlyTrends,
+      crmStats,
     };
   } catch (error: any) {
     console.error("[getLoyaltyStats Error]:", error);

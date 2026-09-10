@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatIDR } from "@/lib/theme";
 import { toast } from "sonner";
 import { 
   Repeat, Users, Crown, Clock, TrendingUp, Search, MessageSquare, 
   Sparkles, HeartHandshake, ShoppingBag, 
   ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
-  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown
+  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, CheckSquare, Square, Filter
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { 
@@ -40,6 +41,8 @@ interface RawCustomer {
   days_since_last_order: number;
   favorite_honey: string;
   last_crm_sent_at?: string | null;
+  last_order_grams?: number | null;
+  is_valid_wa?: boolean;
 }
 
 interface RawTrend {
@@ -66,12 +69,28 @@ function LoyaltyPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"vip" | "potential" | "at_risk" | "all_repeat">("vip");
+  const [crmFilter, setCrmFilter] = useState<"all" | "uncontacted" | "need_followup" | "contacted">("all");
+  const [hideInvalidPhone, setHideInvalidPhone] = useState(true);
   const [sortBy, setSortBy] = useState<"oldest" | "newest" | "spent_desc" | "count_desc">("oldest");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
   // Local state tracking sent customers
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
+
+  // Bulk Selection & Batch Send State
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    current: number;
+    total: number;
+    currentName: string;
+    countdown: number;
+    successCount: number;
+    failedCount: number;
+  }>({ current: 0, total: 0, currentName: "", countdown: 0, successCount: 0, failedCount: 0 });
+  const bulkAbortRef = useRef(false);
 
   // Template Settings Dialog State
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -298,6 +317,31 @@ function LoyaltyPage() {
       const orderCount = Number(c.order_count) || 1;
       const totalSpent = Number(c.total_spent) || 0;
       const daysSince = Number(c.days_since_last_order) || 0;
+      const lastGrams = Number(c.last_order_grams) || 1000;
+      const isValidWa = c.is_valid_wa !== false;
+
+      // Smart Consumption Cycle Calculation
+      let minCycle = 38;
+      let maxCycle = 65;
+      let cycleLabel = "~50 hari";
+
+      if (lastGrams <= 250) {
+        minCycle = 10;
+        maxCycle = 25;
+        cycleLabel = "~15 hari";
+      } else if (lastGrams <= 500) {
+        minCycle = 25;
+        maxCycle = 45;
+        cycleLabel = "~35 hari";
+      } else if (lastGrams <= 1000) {
+        minCycle = 38;
+        maxCycle = 65;
+        cycleLabel = "~50 hari";
+      } else {
+        minCycle = 60;
+        maxCycle = 95;
+        cycleLabel = "~75 hari";
+      }
 
       if (orderCount >= 2) {
         repeatCount += 1;
@@ -305,9 +349,9 @@ function LoyaltyPage() {
 
       if (orderCount >= 3) {
         vipCount += 1;
-      } else if (orderCount === 1 && daysSince >= 25 && daysSince <= 65) {
+      } else if (orderCount === 1 && daysSince >= minCycle && daysSince <= maxCycle) {
         potentialCount += 1;
-      } else if (orderCount === 1 && daysSince > 65) {
+      } else if (orderCount === 1 && daysSince > maxCycle) {
         atRiskCount += 1;
       }
 
@@ -321,6 +365,11 @@ function LoyaltyPage() {
         daysSinceLastOrder: daysSince,
         favoriteHoney: c.favorite_honey || "Madu Araa",
         lastCrmSentAt: c.last_crm_sent_at || null,
+        lastOrderGrams: lastGrams,
+        cycleLabel,
+        minCycle,
+        maxCycle,
+        isValidWa,
       };
     });
 
@@ -356,6 +405,12 @@ function LoyaltyPage() {
     const currRepeatOmzet = currTrend ? currTrend.repeatOmzet : 0;
     const currRepeatPct = currTrend ? currTrend.repeatOmzetPct : 0;
 
+    const rawCrmStats = (apiResponse as any)?.crmStats || {};
+    const totalCrmSent = Number(rawCrmStats.total_crm_sent) || 0;
+    const convertedCustomers = Number(rawCrmStats.converted_customers) || 0;
+    const crmRevenue = Number(rawCrmStats.crm_revenue) || 0;
+    const crmConversionRate = totalCrmSent > 0 ? Number(((convertedCustomers / totalCrmSent) * 100).toFixed(1)) : 0;
+
     return {
       customers: formattedCustomers,
       summaryStats: {
@@ -368,6 +423,10 @@ function LoyaltyPage() {
         avgIntervalDays: 38,
         currentMonthRepeatOmzet: currRepeatOmzet,
         currentMonthRepeatPct: currRepeatPct,
+        totalCrmSent,
+        convertedCustomers,
+        crmRevenue,
+        crmConversionRate,
       },
       monthlyTrends: trends,
     };
@@ -406,18 +465,49 @@ function LoyaltyPage() {
     });
   };
 
-  // Filtered Customers based on active tab and search
+  // Toggle selection for a single customer
+  const handleToggleSelectPhone = (phone: string) => {
+    setSelectedPhones((prev) =>
+      prev.includes(phone) ? prev.filter((p) => p !== phone) : [...prev, phone]
+    );
+  };
+
+  // Filtered Customers based on active tab, search, CRM status, and validity
   const filteredCustomers = useMemo(() => {
     let list = customers;
 
     if (activeTab === "vip") {
       list = list.filter((c) => c.orderCount >= 3);
     } else if (activeTab === "potential") {
-      list = list.filter((c) => c.orderCount === 1 && c.daysSinceLastOrder >= 25 && c.daysSinceLastOrder <= 65);
+      list = list.filter((c) => c.orderCount === 1 && c.daysSinceLastOrder >= c.minCycle && c.daysSinceLastOrder <= c.maxCycle);
     } else if (activeTab === "at_risk") {
-      list = list.filter((c) => c.orderCount === 1 && c.daysSinceLastOrder > 65);
+      list = list.filter((c) => c.orderCount === 1 && c.daysSinceLastOrder > c.maxCycle);
     } else if (activeTab === "all_repeat") {
       list = list.filter((c) => c.orderCount >= 2);
+    }
+
+    // CRM Follow-Up Status Filter
+    if (crmFilter === "uncontacted") {
+      list = list.filter((c) => !c.lastCrmSentAt && !sentMap[c.phone]);
+    } else if (crmFilter === "need_followup") {
+      list = list.filter((c) => {
+        if (!c.lastCrmSentAt && !sentMap[c.phone]) return true;
+        if (sentMap[c.phone]) return false;
+        const days = Math.floor((new Date().getTime() - new Date(c.lastCrmSentAt!).getTime()) / (1000 * 60 * 60 * 24));
+        return days >= 30;
+      });
+    } else if (crmFilter === "contacted") {
+      list = list.filter((c) => {
+        if (sentMap[c.phone]) return true;
+        if (!c.lastCrmSentAt) return false;
+        const days = Math.floor((new Date().getTime() - new Date(c.lastCrmSentAt).getTime()) / (1000 * 60 * 60 * 24));
+        return days < 30;
+      });
+    }
+
+    // Filter invalid marketplace numbers
+    if (hideInvalidPhone) {
+      list = list.filter((c) => c.isValidWa);
     }
 
     if (searchTerm.trim()) {
@@ -427,9 +517,9 @@ function LoyaltyPage() {
 
     return list.sort((a, b) => {
       if (sortBy === "oldest") {
-        return b.daysSinceLastOrder - a.daysSinceLastOrder; // Jeda hari terbesar ke terkecil (Terlama ke Terbaru)
+        return b.daysSinceLastOrder - a.daysSinceLastOrder;
       } else if (sortBy === "newest") {
-        return a.daysSinceLastOrder - b.daysSinceLastOrder; // Jeda hari terkecil ke terbesar (Terbaru ke Terlama)
+        return a.daysSinceLastOrder - b.daysSinceLastOrder;
       } else if (sortBy === "spent_desc") {
         return b.totalSpent - a.totalSpent;
       } else if (sortBy === "count_desc") {
@@ -437,11 +527,101 @@ function LoyaltyPage() {
       }
       return b.daysSinceLastOrder - a.daysSinceLastOrder;
     });
-  }, [customers, activeTab, searchTerm, sortBy]);
+  }, [customers, activeTab, crmFilter, hideInvalidPhone, searchTerm, sortBy, sentMap]);
 
   // Pagination
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
   const paginatedCustomers = filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // Toggle selection for all eligible customers on current page
+  const handleToggleSelectAllPage = () => {
+    const validPagePhones = paginatedCustomers
+      .filter((c) => c.isValidWa)
+      .map((c) => c.phone);
+    const allSelected = validPagePhones.length > 0 && validPagePhones.every((p) => selectedPhones.includes(p));
+
+    if (allSelected) {
+      setSelectedPhones((prev) => prev.filter((p) => !validPagePhones.includes(p)));
+    } else {
+      setSelectedPhones((prev) => Array.from(new Set([...prev, ...validPagePhones])));
+    }
+  };
+
+  // Execute Bulk Send
+  const handleExecuteBulkSend = async () => {
+    if (selectedPhones.length === 0) return;
+    setIsBulkRunning(true);
+    bulkAbortRef.current = false;
+
+    const targets = customers.filter(
+      (c) => selectedPhones.includes(c.phone) && c.isValidWa
+    );
+    const total = targets.length;
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < total; i++) {
+      if (bulkAbortRef.current) break;
+
+      const c = targets[i];
+      setBulkProgress({
+        current: i + 1,
+        total,
+        currentName: c.name,
+        countdown: 0,
+        successCount,
+        failedCount,
+      });
+
+      const formatted = formatCustomerMessage(c);
+      const imgKey = `${activeTab}_image_url` as keyof typeof templates;
+      const imgUrl = templates[imgKey] || "";
+
+      try {
+        await sendDirectLoyaltyWhatsApp({
+          data: {
+            phone: c.phone,
+            customerName: c.name,
+            message: formatted,
+            favoriteHoney: c.favoriteHoney,
+            imageUrl: imgUrl,
+          },
+        });
+        setSentMap((prev) => ({ ...prev, [c.phone]: true }));
+        successCount++;
+      } catch (err: any) {
+        console.warn(`Bulk send error to ${c.phone}:`, err);
+        failedCount++;
+      }
+
+      setBulkProgress((prev) => ({
+        ...prev,
+        successCount,
+        failedCount,
+      }));
+
+      // Randomized safety delay (10-14 sec) to protect WhatsApp account from bans
+      if (i < total - 1 && !bulkAbortRef.current) {
+        const delay = Math.floor(Math.random() * 5) + 10;
+        for (let cd = delay; cd > 0; cd--) {
+          if (bulkAbortRef.current) break;
+          setBulkProgress((prev) => ({ ...prev, countdown: cd }));
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+    }
+
+    setIsBulkRunning(false);
+    setBulkModalOpen(false);
+    setSelectedPhones([]);
+    queryClient.invalidateQueries({ queryKey: ["customer-loyalty-serverfn-stats"] });
+    toast.success(`🎉 Selesai! Berhasil mengirim pesan ke ${successCount} pelanggan.`);
+  };
+
+  const handleStopBulkSend = () => {
+    bulkAbortRef.current = true;
+    toast.info("⏹️ Pengiriman massal dihentikan.");
+  };
 
   const insertVariable = (varName: string) => {
     setTemplates((prev) => ({
@@ -488,7 +668,7 @@ function LoyaltyPage() {
         </div>
       </div>
 
-      {/* 4 KPI Cards */}
+      {/* 4 KPI Cards Loyalitas Global */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1 */}
         <Card className="border-muted/60 bg-gradient-to-br from-card to-amber-500/[0.03]">
@@ -533,7 +713,7 @@ function LoyaltyPage() {
               {summaryStats.avgIntervalDays} Hari
             </div>
             <div className="text-[11px] text-muted-foreground">
-              Waktu ideal kirim pengingat: Hari ke-25 s/d 40
+              Dihitung otomatis per gramasi botol
             </div>
           </CardContent>
         </Card>
@@ -550,6 +730,57 @@ function LoyaltyPage() {
             </div>
             <div className="text-[11px] text-muted-foreground">
               Basis pelanggan paling loyal & stabil
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 3 KPI Cards: Metrik Hasil Nyata & Konversi CRM WhatsApp (ROI) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="border-emerald-500/30 bg-gradient-to-br from-card to-emerald-500/[0.04] shadow-2xs">
+          <CardContent className="p-4 flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <Send className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Pesan WA Terkirim</p>
+              <div className="text-xl font-extrabold text-foreground">
+                {summaryStats.totalCrmSent.toLocaleString("id-ID")} <span className="text-xs font-normal text-muted-foreground">Pesan</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Pesan CRM tercatat via WAHA</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-500/30 bg-gradient-to-br from-card to-amber-500/[0.04] shadow-2xs">
+          <CardContent className="p-4 flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <Target className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Repeat Pasca WA</p>
+              <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                {summaryStats.convertedCustomers.toLocaleString("id-ID")} Orang
+                <span className="text-xs px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold">
+                  {summaryStats.crmConversionRate}%
+                </span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Pelanggan beli kembali dalam 30 hari</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-blue-500/30 bg-gradient-to-br from-card to-blue-500/[0.04] shadow-2xs">
+          <CardContent className="p-4 flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Omzet Dihasilkan dari CRM</p>
+              <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
+                {formatIDR(summaryStats.crmRevenue)}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Omzet repeat order terselamatkan oleh CRM</p>
             </div>
           </CardContent>
         </Card>
@@ -603,7 +834,7 @@ function LoyaltyPage() {
               Segmentasi Pelanggan & Tindakan CRM 1-Klik
             </CardTitle>
             <CardDescription className="text-xs">
-              Pilih segmen audiens untuk melihat daftar kontak dan mengirimkan pesan WhatsApp otomatis melalui WAHA server.
+              Pilih segmen audiens, filter status kontak, dan kirimkan pesan WhatsApp 1-klik atau massal via WAHA server.
             </CardDescription>
           </div>
 
@@ -646,7 +877,7 @@ function LoyaltyPage() {
             {/* Tab 1 */}
             <Button
               variant={activeTab === "vip" ? "default" : "outline"}
-              onClick={() => { setActiveTab("vip"); setCurrentPage(1); }}
+              onClick={() => { setActiveTab("vip"); setCurrentPage(1); setSelectedPhones([]); }}
               className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
                 activeTab === "vip" ? "bg-purple-600 hover:bg-purple-700 text-white" : "border-purple-500/30 hover:bg-purple-500/5"
               }`}
@@ -655,43 +886,43 @@ function LoyaltyPage() {
                 <Crown className="w-3.5 h-3.5" />
                 Super VIP (&ge;3x)
               </div>
-              <span className="text-[11px] opacity-85">{summaryStats.vipCount} Pelanggan</span>
+              <span className="text-[11px] opacity-85">{summaryStats.vipCount.toLocaleString("id-ID")} Pelanggan</span>
             </Button>
 
             {/* Tab 2 */}
             <Button
               variant={activeTab === "potential" ? "default" : "outline"}
-              onClick={() => { setActiveTab("potential"); setCurrentPage(1); }}
+              onClick={() => { setActiveTab("potential"); setCurrentPage(1); setSelectedPhones([]); }}
               className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
                 activeTab === "potential" ? "bg-amber-600 hover:bg-amber-700 text-white" : "border-amber-500/30 hover:bg-amber-500/5"
               }`}
             >
               <div className="flex items-center gap-1.5 text-xs font-bold">
                 <ShoppingBag className="w-3.5 h-3.5" />
-                Waktunya Re-Order (30-60H)
+                Waktunya Re-Order (Siklus Cerdas)
               </div>
-              <span className="text-[11px] opacity-85">{summaryStats.potentialCount} Pelanggan</span>
+              <span className="text-[11px] opacity-85">{summaryStats.potentialCount.toLocaleString("id-ID")} Pelanggan</span>
             </Button>
 
             {/* Tab 3 */}
             <Button
               variant={activeTab === "at_risk" ? "default" : "outline"}
-              onClick={() => { setActiveTab("at_risk"); setCurrentPage(1); }}
+              onClick={() => { setActiveTab("at_risk"); setCurrentPage(1); setSelectedPhones([]); }}
               className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
                 activeTab === "at_risk" ? "bg-rose-600 hover:bg-rose-700 text-white" : "border-rose-500/30 hover:bg-rose-500/5"
               }`}
             >
               <div className="flex items-center gap-1.5 text-xs font-bold">
                 <AlertCircle className="w-3.5 h-3.5" />
-                At-Risk (&gt;65H)
+                At-Risk (Lewat Siklus)
               </div>
-              <span className="text-[11px] opacity-85">{summaryStats.atRiskCount} Pelanggan</span>
+              <span className="text-[11px] opacity-85">{summaryStats.atRiskCount.toLocaleString("id-ID")} Pelanggan</span>
             </Button>
 
             {/* Tab 4 */}
             <Button
               variant={activeTab === "all_repeat" ? "default" : "outline"}
-              onClick={() => { setActiveTab("all_repeat"); setCurrentPage(1); }}
+              onClick={() => { setActiveTab("all_repeat"); setCurrentPage(1); setSelectedPhones([]); }}
               className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
                 activeTab === "all_repeat" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "border-emerald-500/30 hover:bg-emerald-500/5"
               }`}
@@ -700,9 +931,95 @@ function LoyaltyPage() {
                 <Repeat className="w-3.5 h-3.5" />
                 Semua Repeat (&ge;2x)
               </div>
-              <span className="text-[11px] opacity-85">{summaryStats.repeatCount} Pelanggan</span>
+              <span className="text-[11px] opacity-85">{summaryStats.repeatCount.toLocaleString("id-ID")} Pelanggan</span>
             </Button>
           </div>
+
+          {/* CRM Status Filter Bar & Marketplace Sensor Toggle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 rounded-xl bg-muted/40 border border-muted/50">
+            {/* Filter Pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" />
+                Status WA:
+              </span>
+              <Button
+                size="sm"
+                variant={crmFilter === "all" ? "secondary" : "ghost"}
+                onClick={() => { setCrmFilter("all"); setCurrentPage(1); }}
+                className="h-7 text-xs px-2.5 rounded-lg"
+              >
+                Semua
+              </Button>
+              <Button
+                size="sm"
+                variant={crmFilter === "uncontacted" ? "secondary" : "ghost"}
+                onClick={() => { setCrmFilter("uncontacted"); setCurrentPage(1); }}
+                className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "uncontacted" ? "text-rose-600 dark:text-rose-400 font-bold" : "text-muted-foreground"}`}
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                Belum Pernah di-WA
+              </Button>
+              <Button
+                size="sm"
+                variant={crmFilter === "need_followup" ? "secondary" : "ghost"}
+                onClick={() => { setCrmFilter("need_followup"); setCurrentPage(1); }}
+                className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "need_followup" ? "text-amber-600 dark:text-amber-400 font-bold" : "text-muted-foreground"}`}
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                Perlu Follow-up Ulang
+              </Button>
+              <Button
+                size="sm"
+                variant={crmFilter === "contacted" ? "secondary" : "ghost"}
+                onClick={() => { setCrmFilter("contacted"); setCurrentPage(1); }}
+                className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "contacted" ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground"}`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                Sudah di-WA (&lt;30h)
+              </Button>
+            </div>
+
+            {/* Invalid Phone Toggle */}
+            <div className="flex items-center gap-2 pl-1">
+              <Checkbox
+                id="hide-invalid-phone"
+                checked={hideInvalidPhone}
+                onCheckedChange={(checked) => { setHideInvalidPhone(!!checked); setCurrentPage(1); }}
+              />
+              <label htmlFor="hide-invalid-phone" className="text-xs text-muted-foreground cursor-pointer select-none">
+                Sembunyikan nomor sensor Shopee
+              </label>
+            </div>
+          </div>
+
+          {/* Floating Action Banner: Bulk Selection Active */}
+          {selectedPhones.length > 0 && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                <CheckSquare className="w-4 h-4 text-amber-600" />
+                <span><strong className="text-foreground">{selectedPhones.length}</strong> pelanggan terpilih dari daftar</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedPhones([])}
+                  className="h-8 text-xs border-amber-500/30 hover:bg-amber-500/10"
+                >
+                  Batal Pilih
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setBulkModalOpen(true)}
+                  className="h-8 text-xs gap-1.5 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Kirim WA Massal ({selectedPhones.length})
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Customer Table */}
           {isLoading ? (
@@ -711,17 +1028,27 @@ function LoyaltyPage() {
               Menghitung dan memproses data loyalitas pelanggan...
             </div>
           ) : filteredCustomers.length === 0 ? (
-            <div className="py-12 text-center text-xs text-muted-foreground">Tidak ada pelanggan pada segmen ini.</div>
+            <div className="py-12 text-center text-xs text-muted-foreground">Tidak ada pelanggan yang sesuai dengan filter ini.</div>
           ) : (
             <div className="rounded-xl border border-muted/50 overflow-hidden shadow-2xs">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 text-xs">
+                    <TableHead className="w-10 text-center py-2.5">
+                      <Checkbox
+                        checked={
+                          paginatedCustomers.filter(c => c.isValidWa).length > 0 &&
+                          paginatedCustomers.filter(c => c.isValidWa).every(c => selectedPhones.includes(c.phone))
+                        }
+                        onCheckedChange={handleToggleSelectAllPage}
+                        title="Pilih semua pelanggan di halaman ini"
+                      />
+                    </TableHead>
                     <TableHead className="py-2.5">Nama & Kontak</TableHead>
                     <TableHead className="py-2.5 text-center">Frekuensi</TableHead>
                     <TableHead className="py-2.5 text-right">Total Belanja (LTV)</TableHead>
                     <TableHead className="py-2.5 text-center">Order Terakhir</TableHead>
-                    <TableHead className="py-2.5">Madu Favorit</TableHead>
+                    <TableHead className="py-2.5">Madu & Siklus Habis</TableHead>
                     <TableHead className="py-2.5 text-center">Aksi CRM WAHA</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -738,10 +1065,26 @@ function LoyaltyPage() {
                       isSentToday = daysSinceCrm === 0;
                     }
 
+                    const isSelected = selectedPhones.includes(c.phone);
+
                     return (
-                      <TableRow key={c.phone} className="text-xs hover:bg-muted/20">
+                      <TableRow key={c.phone} className={`text-xs hover:bg-muted/20 ${isSelected ? "bg-amber-500/[0.04]" : ""}`}>
+                        <TableCell className="text-center py-2.5">
+                          <Checkbox
+                            checked={isSelected}
+                            disabled={!c.isValidWa}
+                            onCheckedChange={() => handleToggleSelectPhone(c.phone)}
+                          />
+                        </TableCell>
                         <TableCell className="py-2.5 font-medium">
-                          <div className="font-semibold text-foreground">{c.name}</div>
+                          <div className="font-semibold text-foreground flex items-center gap-1.5">
+                            {c.name}
+                            {!c.isValidWa && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/15 px-1 rounded font-normal" title="Nomor disensor oleh marketplace">
+                                Disensor
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-muted-foreground">{c.phone}</div>
                         </TableCell>
                         <TableCell className="py-2.5 text-center">
@@ -767,12 +1110,27 @@ function LoyaltyPage() {
                           </div>
                         </TableCell>
                         <TableCell className="py-2.5">
-                          <span className="inline-block bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold px-2 py-0.5 rounded-md text-[11px]">
-                            {c.favoriteHoney}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-foreground">{c.favoriteHoney}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted-foreground bg-muted/80 px-1.5 py-0.5 rounded font-medium">
+                                {c.lastOrderGrams >= 1000 ? `${(c.lastOrderGrams/1000).toFixed(1)} kg` : `${c.lastOrderGrams} gr`} • Siklus {c.cycleLabel}
+                              </span>
+                              {c.daysSinceLastOrder >= c.minCycle && c.orderCount === 1 && (
+                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded animate-pulse">
+                                  ⚡ Waktunya Beli
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell className="py-2.5 text-center">
-                          {isSent || isSentToday ? (
+                          {!c.isValidWa ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/60 px-2 py-1 rounded-md" title="Nomor tidak dapat di-WA langsung">
+                              <ShieldAlert className="w-3 h-3 text-muted-foreground" />
+                              Disensor
+                            </span>
+                          ) : isSent || isSentToday ? (
                             <span 
                               className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md" 
                               title={`Terkirim: ${c.lastCrmSentAt ? formatDateIndo(c.lastCrmSentAt) : 'Hari ini'}`}
@@ -852,6 +1210,100 @@ function LoyaltyPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Modal Dialog: Kirim WA Massal (Bulk Send with Random Delay) */}
+      <Dialog open={bulkModalOpen} onOpenChange={(open) => !isBulkRunning && setBulkModalOpen(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-emerald-600">
+              <Send className="w-5 h-5" />
+              Kirim WhatsApp Massal ({selectedPhones.length} Pelanggan)
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Pesan akan dikirim otomatis satu per satu melalui server WAHA dengan jeda acak aman (10–14 detik per pesan) untuk mencegah pemblokiran nomor.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {!isBulkRunning ? (
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl bg-muted/40 border border-muted/60 text-xs space-y-1.5">
+                  <div className="flex justify-between font-semibold">
+                    <span>Jumlah Penerima:</span>
+                    <span className="text-emerald-600 font-bold">{selectedPhones.length} Kontak Valid</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Estimasi Waktu:</span>
+                    <span>~{Math.ceil((selectedPhones.length * 12) / 60)} menit</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Template Pesan:</span>
+                    <span className="capitalize font-medium">Segmen {activeTab.replace('_', ' ')}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
+                  ⚠️ <strong>Proteksi Nomor Bisnis:</strong> Setiap pesan diberi jeda acak manusiawi agar nomor WhatsApp tetap aman dan nyaman bagi pelanggan.
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs font-semibold">
+                    <span>Progres Pengiriman:</span>
+                    <span>{bulkProgress.current} / {bulkProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
+                    <div 
+                      className="bg-emerald-600 h-2.5 transition-all duration-300 rounded-full"
+                      style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-muted/40 border border-muted/60 text-xs space-y-1">
+                  <p className="font-semibold text-foreground truncate">
+                    Sedang memproses: <span className="text-emerald-600">{bulkProgress.currentName}</span>
+                  </p>
+                  {bulkProgress.countdown > 0 ? (
+                    <p className="text-muted-foreground flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      Jeda aman berikutnya: <strong className="text-amber-600">{bulkProgress.countdown} detik</strong>
+                    </p>
+                  ) : (
+                    <p className="text-emerald-600 font-medium flex items-center gap-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Mengirim via gateway WAHA...
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex justify-between text-[11px] text-muted-foreground px-1">
+                  <span>✅ Berhasil: {bulkProgress.successCount}</span>
+                  <span>❌ Gagal: {bulkProgress.failedCount}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            {!isBulkRunning ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setBulkModalOpen(false)}>
+                  Batal
+                </Button>
+                <Button size="sm" onClick={handleExecuteBulkSend} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                  Mulai Kirim Sekarang
+                </Button>
+              </>
+            ) : (
+              <Button variant="destructive" size="sm" onClick={handleStopBulkSend} className="w-full">
+                Hentikan Pengiriman
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 1. Modal Dialog: Atur Template Pesan CRM */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
