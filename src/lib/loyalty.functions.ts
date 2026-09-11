@@ -65,8 +65,9 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
         FROM normalized_orders
         GROUP BY phone
       ),
-      sent_crm AS (
+      sent_crm_normalized AS (
         SELECT 
+          id,
           CASE 
             WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '0%' 
               THEN '62' || SUBSTRING(REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') FROM 2)
@@ -74,9 +75,16 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
               THEN '62' || REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
             ELSE REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
           END as phone,
-          MAX(sent_at) as last_crm_sent_at
+          sent_at,
+          (sent_at AT TIME ZONE 'Asia/Jakarta')::date::text as send_date
         FROM crm_reminders
         WHERE status = 'sent' AND sent_at IS NOT NULL
+      ),
+      sent_crm AS (
+        SELECT 
+          phone,
+          MAX(sent_at) as last_crm_sent_at
+        FROM sent_crm_normalized
         GROUP BY 1
       ),
       customer_agg AS (
@@ -116,20 +124,28 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
       ),
       crm_conversions AS (
         SELECT 
-          COUNT(DISTINCT r.id)::int as total_crm_sent,
-          COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > r.sent_at AND n.created_at <= r.sent_at + INTERVAL '30 days')::int as converted_customers,
-          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > r.sent_at AND n.created_at <= r.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue
-        FROM crm_reminders r
-        LEFT JOIN normalized_orders n ON (
-          r.customer_phone = n.phone 
-          OR r.customer_phone = ('0' || SUBSTRING(n.phone FROM 3))
-        )
-        WHERE r.status = 'sent' AND r.sent_at IS NOT NULL
+          COUNT(DISTINCT s.id)::int as total_crm_sent,
+          COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_customers,
+          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue
+        FROM sent_crm_normalized s
+        LEFT JOIN normalized_orders n ON s.phone = n.phone
+      ),
+      crm_daily_trends AS (
+        SELECT 
+          s.send_date as date,
+          COUNT(DISTINCT s.id)::int as sent_count,
+          COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_count,
+          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as revenue
+        FROM sent_crm_normalized s
+        LEFT JOIN normalized_orders n ON s.phone = n.phone
+        GROUP BY s.send_date
+        ORDER BY s.send_date DESC
       )
       SELECT 
         (SELECT json_agg(c) FROM customer_agg c) as all_customers,
         (SELECT json_agg(m) FROM monthly_summary m) as monthly_trends,
-        (SELECT row_to_json(conv) FROM crm_conversions conv) as crm_stats;
+        (SELECT row_to_json(conv) FROM crm_conversions conv) as crm_stats,
+        (SELECT json_agg(d) FROM crm_daily_trends d) as crm_daily_trends;
     `;
 
     const res = await pool.query(query);
@@ -138,11 +154,13 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
     const allCustomers = res.rows[0]?.all_customers || [];
     const monthlyTrends = res.rows[0]?.monthly_trends || [];
     const crmStats = res.rows[0]?.crm_stats || { total_crm_sent: 0, converted_customers: 0, crm_revenue: 0 };
+    const crmDailyTrends = res.rows[0]?.crm_daily_trends || [];
 
     return {
       customers: allCustomers,
       trends: monthlyTrends,
       crmStats,
+      crmDailyTrends,
     };
   } catch (error: any) {
     console.error("[getLoyaltyStats Error]:", error);

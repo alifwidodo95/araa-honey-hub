@@ -96,6 +96,10 @@ function LoyaltyPage() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateTab, setTemplateTab] = useState<"vip" | "potential" | "at_risk" | "all_repeat">("vip");
 
+  // CRM Performance Timeframe Filter State
+  const [crmTimeframe, setCrmTimeframe] = useState<"all" | "today" | "yesterday" | "7d" | "30d" | "this_month">("all");
+  const [showDailyTable, setShowDailyTable] = useState(false);
+
   // Send Confirmation / Preview Dialog State
   const [previewDialogCustomer, setPreviewDialogCustomer] = useState<any | null>(null);
   const [previewMessage, setPreviewMessage] = useState("");
@@ -108,7 +112,7 @@ function LoyaltyPage() {
       try {
         const res = await getLoyaltyStats();
         if (res && res.customers && res.customers.length > 0) {
-          return res as { customers: RawCustomer[]; trends: RawTrend[] };
+          return res as { customers: RawCustomer[]; trends: RawTrend[]; crmStats?: any; crmDailyTrends?: any[] };
         }
       } catch (err) {
         console.warn("ServerFn failed, trying direct Supabase fallback...", err);
@@ -303,7 +307,7 @@ function LoyaltyPage() {
   });
 
   // Process data and segments
-  const { customers, summaryStats, monthlyTrends } = useMemo(() => {
+  const { customers, summaryStats, monthlyTrends, crmDailyTrends } = useMemo(() => {
     const rawCustomers = apiResponse?.customers || [];
     const rawTrends = apiResponse?.trends || [];
 
@@ -429,8 +433,67 @@ function LoyaltyPage() {
         crmConversionRate,
       },
       monthlyTrends: trends,
+      crmDailyTrends: (apiResponse as any)?.crmDailyTrends || [],
     };
   }, [apiResponse]);
+
+  // Dynamic CRM ROI Calculation based on selected timeframe
+  const filteredCrmStats = useMemo(() => {
+    const rawCrmStats = (apiResponse as any)?.crmStats || { total_crm_sent: 0, converted_customers: 0, crm_revenue: 0 };
+    const dailyList: Array<{ date: string; sent_count: number; converted_count: number; revenue: number }> = 
+      crmDailyTrends || [];
+
+    if (crmTimeframe === "all") {
+      const totalSent = Number(rawCrmStats.total_crm_sent) || 0;
+      const converted = Number(rawCrmStats.converted_customers) || 0;
+      const rev = Number(rawCrmStats.crm_revenue) || 0;
+      const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
+      return { totalSent, converted, revenue: rev, rate, label: "Semua Waktu" };
+    }
+
+    // Time calculations in Asia/Jakarta (UTC+7)
+    const nowUtc = new Date();
+    const nowWib = new Date(nowUtc.getTime() + 7 * 60 * 60 * 1000);
+    const todayStr = nowWib.toISOString().slice(0, 10);
+
+    const yesterdayWib = new Date(nowWib.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayStr = yesterdayWib.toISOString().slice(0, 10);
+
+    const sevenDaysAgoWib = new Date(nowWib.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgoStr = sevenDaysAgoWib.toISOString().slice(0, 10);
+
+    const thirtyDaysAgoWib = new Date(nowWib.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgoStr = thirtyDaysAgoWib.toISOString().slice(0, 10);
+
+    const thisMonthStr = todayStr.slice(0, 7);
+
+    let matchingDays = dailyList;
+    let label = "Semua Waktu";
+
+    if (crmTimeframe === "today") {
+      matchingDays = dailyList.filter((d) => d.date === todayStr);
+      label = `Hari Ini (${formatDateIndo(todayStr)})`;
+    } else if (crmTimeframe === "yesterday") {
+      matchingDays = dailyList.filter((d) => d.date === yesterdayStr);
+      label = `Kemarin (${formatDateIndo(yesterdayStr)})`;
+    } else if (crmTimeframe === "7d") {
+      matchingDays = dailyList.filter((d) => d.date >= sevenDaysAgoStr);
+      label = "7 Hari Terakhir";
+    } else if (crmTimeframe === "30d") {
+      matchingDays = dailyList.filter((d) => d.date >= thirtyDaysAgoStr);
+      label = "30 Hari Terakhir";
+    } else if (crmTimeframe === "this_month") {
+      matchingDays = dailyList.filter((d) => d.date.startsWith(thisMonthStr));
+      label = "Bulan Ini";
+    }
+
+    const totalSent = matchingDays.reduce((acc, d) => acc + (Number(d.sent_count) || 0), 0);
+    const converted = matchingDays.reduce((acc, d) => acc + (Number(d.converted_count) || 0), 0);
+    const revenue = matchingDays.reduce((acc, d) => acc + (Number(d.revenue) || 0), 0);
+    const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
+
+    return { totalSent, converted, revenue, rate, label };
+  }, [apiResponse, crmDailyTrends, crmTimeframe]);
 
   // Format message for a specific customer based on the active tab template
   const formatCustomerMessage = (c: any, tabKey = activeTab) => {
@@ -761,6 +824,91 @@ function LoyaltyPage() {
         </Card>
       </div>
 
+      {/* Header & Filter Periode CRM WhatsApp (ROI) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <Target className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              Evaluasi Hasil Nyata & Konversi CRM (ROI)
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                {filteredCrmStats.label}
+              </span>
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              Pantau jumlah pengiriman harian dan berapa pelanggan yang langsung membeli ulang.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Timeframe Buttons */}
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-muted/60 text-xs">
+            <Button
+              size="sm"
+              variant={crmTimeframe === "today" ? "default" : "ghost"}
+              onClick={() => setCrmTimeframe("today")}
+              className={`h-7 text-xs px-2.5 rounded-lg ${crmTimeframe === "today" ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Hari Ini
+            </Button>
+            <Button
+              size="sm"
+              variant={crmTimeframe === "yesterday" ? "default" : "ghost"}
+              onClick={() => setCrmTimeframe("yesterday")}
+              className={`h-7 text-xs px-2.5 rounded-lg ${crmTimeframe === "yesterday" ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Kemarin
+            </Button>
+            <Button
+              size="sm"
+              variant={crmTimeframe === "7d" ? "default" : "ghost"}
+              onClick={() => setCrmTimeframe("7d")}
+              className={`h-7 text-xs px-2.5 rounded-lg ${crmTimeframe === "7d" ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              7 Hari
+            </Button>
+            <Button
+              size="sm"
+              variant={crmTimeframe === "30d" ? "default" : "ghost"}
+              onClick={() => setCrmTimeframe("30d")}
+              className={`h-7 text-xs px-2.5 rounded-lg ${crmTimeframe === "30d" ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              30 Hari
+            </Button>
+            <Button
+              size="sm"
+              variant={crmTimeframe === "this_month" ? "default" : "ghost"}
+              onClick={() => setCrmTimeframe("this_month")}
+              className={`h-7 text-xs px-2.5 rounded-lg ${crmTimeframe === "this_month" ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Bulan Ini
+            </Button>
+            <Button
+              size="sm"
+              variant={crmTimeframe === "all" ? "default" : "ghost"}
+              onClick={() => setCrmTimeframe("all")}
+              className={`h-7 text-xs px-2.5 rounded-lg ${crmTimeframe === "all" ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Semua Waktu
+            </Button>
+          </div>
+
+          {/* Toggle Button for Daily Breakdown Table */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowDailyTable((prev) => !prev)}
+            className="h-8 text-xs gap-1.5 border-muted/80 shadow-2xs"
+          >
+            <Calendar className="w-3.5 h-3.5 text-amber-500" />
+            {showDailyTable ? "Tutup Rekap Harian" : "Lihat Rekap Harian"}
+          </Button>
+        </div>
+      </div>
+
       {/* 3 KPI Cards: Metrik Hasil Nyata & Konversi CRM WhatsApp (ROI) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-emerald-500/30 bg-gradient-to-br from-card to-emerald-500/[0.04] shadow-2xs">
@@ -771,9 +919,9 @@ function LoyaltyPage() {
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Pesan WA Terkirim</p>
               <div className="text-xl font-extrabold text-foreground">
-                {summaryStats.totalCrmSent.toLocaleString("id-ID")} <span className="text-xs font-normal text-muted-foreground">Pesan</span>
+                {filteredCrmStats.totalSent.toLocaleString("id-ID")} <span className="text-xs font-normal text-muted-foreground">Pesan</span>
               </div>
-              <p className="text-[10px] text-muted-foreground">Pesan CRM tercatat via WAHA</p>
+              <p className="text-[10px] text-muted-foreground">Periode: {filteredCrmStats.label}</p>
             </div>
           </CardContent>
         </Card>
@@ -786,12 +934,12 @@ function LoyaltyPage() {
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Repeat Pasca WA</p>
               <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                {summaryStats.convertedCustomers.toLocaleString("id-ID")} Orang
+                {filteredCrmStats.converted.toLocaleString("id-ID")} Orang
                 <span className="text-xs px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold">
-                  {summaryStats.crmConversionRate}%
+                  {filteredCrmStats.rate}%
                 </span>
               </div>
-              <p className="text-[10px] text-muted-foreground">Pelanggan beli kembali dalam 30 hari</p>
+              <p className="text-[10px] text-muted-foreground">Pelanggan beli kembali setelah di-WA</p>
             </div>
           </CardContent>
         </Card>
@@ -804,13 +952,104 @@ function LoyaltyPage() {
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Omzet Dihasilkan dari CRM</p>
               <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
-                {formatIDR(summaryStats.crmRevenue)}
+                {formatIDR(filteredCrmStats.revenue)}
               </div>
               <p className="text-[10px] text-muted-foreground">Omzet repeat order terselamatkan oleh CRM</p>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Tabel Rincian Harian Performa CRM */}
+      {showDailyTable && (
+        <Card className="border-muted/60 shadow-xs animate-in fade-in duration-200">
+          <CardHeader className="pb-3 border-b border-muted/30 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-600" />
+                Rekap Harian Performa Pengiriman CRM (14 Hari Terakhir)
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Melihat perbandingan jumlah pesan terkirim, pelanggan yang closing, dan omzet per hari.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowDailyTable(false)}
+              className="h-7 text-xs text-muted-foreground"
+            >
+              Tutup
+            </Button>
+          </CardHeader>
+          <CardContent className="pt-3 px-0 pb-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 text-xs">
+                    <TableHead className="py-2.5 pl-4">Tanggal Kirim CRM</TableHead>
+                    <TableHead className="py-2.5 text-center">Pesan Terkirim</TableHead>
+                    <TableHead className="py-2.5 text-center">Closing / Repeat</TableHead>
+                    <TableHead className="py-2.5 text-center">Tingkat Konversi</TableHead>
+                    <TableHead className="py-2.5 text-right pr-4">Omzet Dihasilkan</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {crmDailyTrends && crmDailyTrends.length > 0 ? (
+                    crmDailyTrends.slice(0, 14).map((d: any) => {
+                      const sent = Number(d.sent_count) || 0;
+                      const conv = Number(d.converted_count) || 0;
+                      const rev = Number(d.revenue) || 0;
+                      const rate = sent > 0 ? ((conv / sent) * 100).toFixed(1) : "0.0";
+                      const isToday = d.date === new Date(new Date().getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+                      return (
+                        <TableRow key={d.date} className={`text-xs hover:bg-muted/20 ${isToday ? "bg-emerald-500/[0.04] font-semibold" : ""}`}>
+                          <TableCell className="py-2.5 pl-4 font-medium flex items-center gap-2">
+                            <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>{formatDateIndo(d.date)}</span>
+                            {isToday && (
+                              <span className="text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded">
+                                Hari Ini
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2.5 text-center font-semibold text-foreground">
+                            {sent.toLocaleString("id-ID")} Pesan
+                          </TableCell>
+                          <TableCell className="py-2.5 text-center font-bold text-amber-600 dark:text-amber-400">
+                            {conv.toLocaleString("id-ID")} Orang
+                          </TableCell>
+                          <TableCell className="py-2.5 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                              Number(rate) >= 10
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                : Number(rate) >= 5
+                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground"
+                            }`}>
+                              {rate}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-2.5 text-right pr-4 font-bold text-foreground">
+                            {formatIDR(rev)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
+                        Belum ada riwayat pengiriman CRM harian yang tercatat.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Chart: Tren Pertumbuhan Repeat Order Bulanan */}
       <Card className="border-muted/60 shadow-xs">
