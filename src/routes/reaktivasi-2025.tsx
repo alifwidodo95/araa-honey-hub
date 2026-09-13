@@ -386,11 +386,57 @@ function ReaktivasiPage() {
         }
 
         const headers = data[headerRowIdx].map((h) => String(h || "").toLowerCase().trim());
-        const phoneIdx = headers.findIndex((h) => h.includes("hp") || h.includes("telepon") || h.includes("phone"));
-        const nameIdx = headers.findIndex((h) => h.includes("penerima") || h.includes("nama") || h.includes("customer"));
-        const productIdx = headers.findIndex((h) => h.includes("produk") || h.includes("item") || h.includes("madu"));
-        const dateIdx = headers.findIndex((h) => h.includes("tanggal") || h.includes("date") || h.includes("waktu"));
-        const resiIdx = headers.findIndex((h) => h.includes("resi") || h.includes("tracking"));
+        
+        // 1. Resi index
+        const resiIdx = headers.findIndex((h) => h.includes("resi") || h.includes("tracking") || h.includes("awb") || h.includes("waybill"));
+
+        // 2. Product index
+        const productIdx = headers.findIndex((h) => h.includes("produk") || h.includes("product") || h.includes("item") || h.includes("madu") || h.includes("barang") || h.includes("sku") || h.includes("varian"));
+
+        // 3. Date index
+        const dateIdx = headers.findIndex((h) => h.includes("tanggal") || h.includes("tgl") || h.includes("date") || h.includes("waktu") || h.includes("dibuat") || h.includes("created"));
+
+        // 4. Phone index (must contain hp, telepon, telp, phone, wa, whatsapp, kontak)
+        const phoneIdx = headers.findIndex((h) => 
+          h.includes("hp") || 
+          h.includes("telepon") || 
+          h.includes("telp") || 
+          h.includes("phone") || 
+          h.includes("whatsapp") || 
+          h.includes("wa") ||
+          h.includes("kontak")
+        );
+
+        // 5. Name index:
+        // CRITICAL: MUST NOT be the phone column! Exclude headers that contain phone/telepon/telp/phone/wa words.
+        let nameIdx = headers.findIndex((h, idx) => {
+          if (idx === phoneIdx || idx === resiIdx || idx === productIdx || idx === dateIdx) return false;
+          const isPhoneWord = h.includes("hp") || h.includes("telepon") || h.includes("telp") || h.includes("phone") || h.includes("wa");
+          if (isPhoneWord) return false;
+          return (
+            h === "penerima" || 
+            h === "nama penerima" || 
+            h === "nama" || 
+            h === "customer" || 
+            h === "nama customer" || 
+            h === "pelanggan" || 
+            h === "nama pelanggan" || 
+            h === "nama konsumen" || 
+            h === "konsumen" || 
+            h === "buyer" || 
+            h === "recipient"
+          );
+        });
+
+        // Fallback for name index if exact match not found
+        if (nameIdx === -1) {
+          nameIdx = headers.findIndex((h, idx) => {
+            if (idx === phoneIdx || idx === resiIdx || idx === productIdx || idx === dateIdx) return false;
+            const isPhoneWord = h.includes("hp") || h.includes("telepon") || h.includes("telp") || h.includes("phone") || h.includes("wa");
+            if (isPhoneWord) return false;
+            return h.includes("penerima") || h.includes("nama") || h.includes("customer") || h.includes("pelanggan") || h.includes("konsumen");
+          });
+        }
 
         if (phoneIdx === -1) {
           toast.error("Kolom nomor HP tidak ditemukan!");
@@ -413,7 +459,12 @@ function ReaktivasiPage() {
           const phone = String(row[phoneIdx] || "").trim();
           if (!phone) continue;
 
-          const name = nameIdx !== -1 ? String(row[nameIdx] || "").trim() : "Pelanggan";
+          let name = nameIdx !== -1 ? String(row[nameIdx] || "").trim() : "";
+          // If name looks like a phone number (mostly digits >= 8 chars) or is empty, fallback
+          if (!name || /^[0-9+-\s]{8,}$/.test(name)) {
+            name = "Pelanggan";
+          }
+
           const product = productIdx !== -1 ? String(row[productIdx] || "").trim() : "Madu Araa";
           const orderDate = dateIdx !== -1 ? String(row[dateIdx] || "").trim() : "2025";
           const resi = resiIdx !== -1 ? String(row[resiIdx] || "").trim() : "";

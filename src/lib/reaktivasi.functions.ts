@@ -62,7 +62,10 @@ export const importReaktivasiContacts = createServerFn({ method: "POST" })
         if (normPhone.length < 10) continue;
 
         // Clean name
-        const cleanName = String(item.name || "").trim() || "Pelanggan";
+        let cleanName = String(item.name || "").trim();
+        if (!cleanName || /^[0-9+-\s]{8,}$/.test(cleanName)) {
+          cleanName = "Pelanggan";
+        }
         const cleanProduct = String(item.product || "").trim() || "Madu Araa";
         const cleanDate = String(item.orderDate || "").trim();
         const cleanResi = String(item.resi || "").trim();
