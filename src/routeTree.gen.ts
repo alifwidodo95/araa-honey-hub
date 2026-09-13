@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WhatsappAiRouteImport } from './routes/whatsapp-ai'
 import { Route as ReturRouteImport } from './routes/retur'
+import { Route as Reaktivasi2025RouteImport } from './routes/reaktivasi-2025'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PenjualanRouteImport } from './routes/penjualan'
 import { Route as PengeluaranRouteImport } from './routes/pengeluaran'
@@ -58,6 +59,11 @@ const WhatsappAiRoute = WhatsappAiRouteImport.update({
 const ReturRoute = ReturRouteImport.update({
   id: '/retur',
   path: '/retur',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Reaktivasi2025Route = Reaktivasi2025RouteImport.update({
+  id: '/reaktivasi-2025',
+  path: '/reaktivasi-2025',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -266,6 +272,7 @@ export interface FileRoutesByFullPath {
   '/pengeluaran': typeof PengeluaranRoute
   '/penjualan': typeof PenjualanRoute
   '/privacy': typeof PrivacyRoute
+  '/reaktivasi-2025': typeof Reaktivasi2025Route
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
@@ -308,6 +315,7 @@ export interface FileRoutesByTo {
   '/pengeluaran': typeof PengeluaranRoute
   '/penjualan': typeof PenjualanRoute
   '/privacy': typeof PrivacyRoute
+  '/reaktivasi-2025': typeof Reaktivasi2025Route
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
@@ -351,6 +359,7 @@ export interface FileRoutesById {
   '/pengeluaran': typeof PengeluaranRoute
   '/penjualan': typeof PenjualanRoute
   '/privacy': typeof PrivacyRoute
+  '/reaktivasi-2025': typeof Reaktivasi2025Route
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
@@ -395,6 +404,7 @@ export interface FileRouteTypes {
     | '/pengeluaran'
     | '/penjualan'
     | '/privacy'
+    | '/reaktivasi-2025'
     | '/retur'
     | '/whatsapp-ai'
     | '/api/loyalty-stats'
@@ -437,6 +447,7 @@ export interface FileRouteTypes {
     | '/pengeluaran'
     | '/penjualan'
     | '/privacy'
+    | '/reaktivasi-2025'
     | '/retur'
     | '/whatsapp-ai'
     | '/api/loyalty-stats'
@@ -479,6 +490,7 @@ export interface FileRouteTypes {
     | '/pengeluaran'
     | '/penjualan'
     | '/privacy'
+    | '/reaktivasi-2025'
     | '/retur'
     | '/whatsapp-ai'
     | '/api/loyalty-stats'
@@ -522,6 +534,7 @@ export interface RootRouteChildren {
   PengeluaranRoute: typeof PengeluaranRoute
   PenjualanRoute: typeof PenjualanRoute
   PrivacyRoute: typeof PrivacyRoute
+  Reaktivasi2025Route: typeof Reaktivasi2025Route
   ReturRoute: typeof ReturRoute
   WhatsappAiRoute: typeof WhatsappAiRoute
   ApiLoyaltyStatsRoute: typeof ApiLoyaltyStatsRoute
@@ -565,6 +578,13 @@ declare module '@tanstack/react-router' {
       path: '/retur'
       fullPath: '/retur'
       preLoaderRoute: typeof ReturRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reaktivasi-2025': {
+      id: '/reaktivasi-2025'
+      path: '/reaktivasi-2025'
+      fullPath: '/reaktivasi-2025'
+      preLoaderRoute: typeof Reaktivasi2025RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -850,6 +870,7 @@ const rootRouteChildren: RootRouteChildren = {
   PengeluaranRoute: PengeluaranRoute,
   PenjualanRoute: PenjualanRoute,
   PrivacyRoute: PrivacyRoute,
+  Reaktivasi2025Route: Reaktivasi2025Route,
   ReturRoute: ReturRoute,
   WhatsappAiRoute: WhatsappAiRoute,
   ApiLoyaltyStatsRoute: ApiLoyaltyStatsRoute,

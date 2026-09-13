@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3, ChevronDown
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3, ChevronDown, Sparkles
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -48,6 +48,7 @@ const navStructure: NavEntry[] = [
       icon: HeartHandshake,
       items: [
         { to: "/loyalitas", label: "Loyalitas & Repeat", icon: HeartHandshake },
+        { to: "/reaktivasi-2025", label: "Reaktivasi 2025", icon: Sparkles },
         { to: "/retur", label: "Retur Pesanan", icon: RotateCcw },
       ],
     },
