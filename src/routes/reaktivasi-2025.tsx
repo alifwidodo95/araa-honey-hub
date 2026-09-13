@@ -24,7 +24,8 @@ import {
   sendDirectReaktivasiWhatsApp,
   getReaktivasiTemplate,
   saveReaktivasiTemplate,
-  clearReaktivasiContacts
+  clearReaktivasiContacts,
+  deleteSelectedReaktivasiContacts,
 } from "@/lib/reaktivasi.functions";
 
 export const Route = createFileRoute("/reaktivasi-2025")({
@@ -509,6 +510,22 @@ function ReaktivasiPage() {
     }
   };
 
+  // Delete selected contacts
+  const handleDeleteSelected = async () => {
+    if (selectedPhones.length === 0) return;
+    if (!confirm(`⚠️ Hapus ${selectedPhones.length} kontak terpilih dari daftar Reaktivasi 2025?`)) {
+      return;
+    }
+    try {
+      await deleteSelectedReaktivasiContacts({ data: { phones: selectedPhones } });
+      queryClient.invalidateQueries({ queryKey: ["crm-reaktivasi-2025-stats"] });
+      toast.success(`${selectedPhones.length} kontak terpilih berhasil dihapus.`);
+      setSelectedPhones([]);
+    } catch (err: any) {
+      toast.error(`Gagal menghapus kontak: ${err.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-16">
       {/* Top Header */}
@@ -649,15 +666,26 @@ function ReaktivasiPage() {
               Kirim Batch 50 Kontak Berikutnya
             </Button>
 
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setUploadDialogOpen(true)}
+              className="h-8 text-xs gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 font-semibold shadow-2xs"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Upload Ulang Excel
+            </Button>
+
             {contacts.length > 0 && (
               <Button
                 size="sm"
-                variant="ghost"
+                variant="outline"
                 onClick={handleClearContacts}
-                className="h-8 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 px-2"
-                title="Kosongkan daftar target 2025"
+                className="h-8 text-xs text-rose-600 hover:text-rose-700 border-rose-200 bg-rose-50/60 hover:bg-rose-100 dark:bg-rose-950/20 dark:border-rose-900/40 gap-1.5 font-bold shadow-2xs"
+                title="Kosongkan seluruh target 2025"
               >
                 <Trash2 className="w-3.5 h-3.5" />
+                Kosongkan Semua Data ({contacts.length.toLocaleString("id-ID")})
               </Button>
             )}
           </div>
@@ -747,7 +775,16 @@ function ReaktivasiPage() {
                   <strong className="text-foreground">{selectedPhones.length}</strong> kontak terpilih dari daftar
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDeleteSelected}
+                  className="h-8 text-xs text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 font-semibold"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Hapus Terpilih ({selectedPhones.length})
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

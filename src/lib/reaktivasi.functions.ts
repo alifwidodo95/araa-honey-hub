@@ -444,3 +444,22 @@ export const clearReaktivasiContacts = createServerFn({ method: "POST" }).handle
     throw new Error(err.message || "Gagal mengosongkan data reaktivasi");
   }
 });
+
+// 6. Delete selected 2025 contacts
+export const deleteSelectedReaktivasiContacts = createServerFn({ method: "POST" })
+  .validator((data: { phones: string[] }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+      const phones = data.phones || [];
+      if (phones.length > 0) {
+        await pool.query("DELETE FROM crm_reaktivasi_2025 WHERE phone = ANY($1)", [phones]);
+      }
+      await pool.end();
+      return { ok: true, deletedCount: phones.length };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      throw new Error(err.message || "Gagal menghapus kontak terpilih");
+    }
+  });
