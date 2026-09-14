@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useRef } from "react";
 import { RequireAuth } from "@/components/require-auth";
@@ -10,12 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { formatIDR } from "@/lib/theme";
 import { toast } from "sonner";
 import {
   Users, Sparkles, Send, CheckCircle2, AlertCircle, RefreshCw, Settings2,
   Upload, FileSpreadsheet, Search, Filter, Clock, Calendar, CheckSquare,
-  ShieldAlert, ArrowUpDown, Loader2, Trash2, PartyPopper, Check, X
+  ShieldAlert, ArrowUpDown, Loader2, Trash2, PartyPopper, Check, X,
+  Phone, Smartphone, AlertTriangle
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -26,6 +28,7 @@ import {
   saveReaktivasiTemplate,
   clearReaktivasiContacts,
   deleteSelectedReaktivasiContacts,
+  getWahaSessionsInfo,
 } from "@/lib/reaktivasi.functions";
 
 export const Route = createFileRoute("/reaktivasi-2025")({
@@ -91,6 +94,19 @@ function ReaktivasiPage() {
   // Local state to track sent phones in current session
   const [sessionSentMap, setSessionSentMap] = useState<Record<string, boolean>>({});
 
+  // Sender WhatsApp Session State (Slot 2 Campaign vs Slot 1 CS Utama)
+  const [selectedSenderSession, setSelectedSenderSession] = useState<string>("campaign");
+
+  // Fetch WAHA Sessions Info (Slot 1 & Slot 2)
+  const { data: wahaSessionsData, refetch: refetchWahaSessions } = useQuery({
+    queryKey: ["crm-waha-sessions-info"],
+    queryFn: async () => {
+      return await getWahaSessionsInfo();
+    },
+    staleTime: 15 * 1000,
+    refetchInterval: 15 * 1000,
+  });
+
   // 1. Fetch Reaktivasi Data & Stats
   const { data: apiResponse, isLoading, refetch } = useQuery({
     queryKey: ["crm-reaktivasi-2025-stats"],
@@ -153,15 +169,24 @@ function ReaktivasiPage() {
       message,
       product,
       imageUrl,
+      senderSession,
     }: {
       phone: string;
       customerName: string;
       message: string;
       product?: string;
       imageUrl?: string;
+      senderSession?: string;
     }) => {
       return await sendDirectReaktivasiWhatsApp({
-        data: { phone, customerName, message, product, imageUrl },
+        data: {
+          phone,
+          customerName,
+          message,
+          product,
+          imageUrl,
+          senderSession: senderSession || selectedSenderSession,
+        },
       });
     },
     onSuccess: (_, variables) => {
@@ -304,6 +329,7 @@ function ReaktivasiPage() {
             message: formatted,
             product: c.product_2025,
             imageUrl: templateImageUrl || "",
+            senderSession: selectedSenderSession,
           },
         });
         setSessionSentMap((prev) => ({ ...prev, [c.phone]: true }));
@@ -569,6 +595,87 @@ function ReaktivasiPage() {
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-amber-500" : ""}`} />
           </Button>
+        </div>
+      </div>
+
+      {/* WhatsApp Sender Session Controller */}
+      <div className="bg-card border border-muted/70 p-3.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <Smartphone className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-foreground flex items-center gap-2">
+              <span>Nomor WhatsApp Pengirim:</span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                (Pilih nomor pengirim pesan win-back 2025)
+              </span>
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>
+                Status Sesi Aktif:{" "}
+                <strong className={
+                  (selectedSenderSession === "campaign"
+                    ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                    : wahaSessionsData?.mainSession?.status === "WORKING")
+                    ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                    : "text-amber-600 dark:text-amber-400 font-bold"
+                }>
+                  {selectedSenderSession === "campaign"
+                    ? (wahaSessionsData?.campaignSession?.status || "STOPPED")
+                    : (wahaSessionsData?.mainSession?.status || "STOPPED")}
+                </strong>
+              </span>
+
+              {selectedSenderSession === "campaign" && wahaSessionsData?.campaignSession?.status !== "WORKING" && (
+                <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Belum scan QR! Klik "Kelola Sesi" untuk scan QR nomor kampanye.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <Select value={selectedSenderSession} onValueChange={setSelectedSenderSession}>
+            <SelectTrigger className="h-9 text-xs font-semibold min-w-[280px] bg-background border-muted/80 shadow-2xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="campaign" className="text-xs">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${wahaSessionsData?.campaignSession?.status === "WORKING" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                    <span className="font-bold">Slot 2: Nomor Kampanye (Outreach)</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono ml-1 py-0 border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                    {wahaSessionsData?.campaignSession?.status === "WORKING"
+                      ? (wahaSessionsData.campaignSession.me?.id?.split("@")[0] || "Online")
+                      : (wahaSessionsData?.campaignSession?.status || "Perlu QR")}
+                  </Badge>
+                </div>
+              </SelectItem>
+              <SelectItem value="default" className="text-xs">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${wahaSessionsData?.mainSession?.status === "WORKING" ? "bg-emerald-500" : "bg-rose-500"}`} />
+                    <span className="font-bold">Slot 1: Nomor Utama CS</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono ml-1 py-0">
+                    {wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "6281337324522"}
+                  </Badge>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Link to="/pengaturan/whatsapp">
+            <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" title="Buka Pengaturan WhatsApp">
+              <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
+              Kelola Sesi & QR
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -1186,6 +1293,23 @@ function ReaktivasiPage() {
                   <span className="text-muted-foreground">Tgl Order 2025:</span>
                   <span>{previewDialogCustomer.order_date_2025 || "-"}</span>
                 </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-muted/50">
+                  <span className="text-muted-foreground">Nomor Pengirim:</span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span className={`w-2 h-2 rounded-full ${
+                      (selectedSenderSession === "campaign"
+                        ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                        : wahaSessionsData?.mainSession?.status === "WORKING")
+                        ? "bg-emerald-500"
+                        : "bg-amber-500"
+                    }`} />
+                    <span>
+                      {selectedSenderSession === "campaign"
+                        ? `Slot 2 (Kampanye - ${wahaSessionsData?.campaignSession?.me?.id?.split("@")[0] || wahaSessionsData?.campaignSession?.status || "Outreach"})`
+                        : `Slot 1 (CS Utama - ${wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "6281337324522"})`}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {previewImageUrl && (
@@ -1259,11 +1383,38 @@ function ReaktivasiPage() {
                     <span>Jumlah Kontak Terpilih:</span>
                     <span className="text-emerald-600 font-bold">{selectedPhones.length} Kontak</span>
                   </div>
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Nomor Pengirim:</span>
+                    <span className="font-bold text-foreground flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${
+                        (selectedSenderSession === "campaign"
+                          ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                          : wahaSessionsData?.mainSession?.status === "WORKING")
+                          ? "bg-emerald-500"
+                          : "bg-amber-500"
+                      }`} />
+                      {selectedSenderSession === "campaign"
+                        ? `Slot 2 (Kampanye - ${wahaSessionsData?.campaignSession?.me?.id?.split("@")[0] || "Outreach"})`
+                        : `Slot 1 (CS Utama - ${wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "6281337324522"})`}
+                    </span>
+                  </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimasi Waktu:</span>
                     <span>~{Math.ceil((selectedPhones.length * 12) / 60)} menit</span>
                   </div>
                 </div>
+
+                {selectedSenderSession === "campaign" && wahaSessionsData?.campaignSession?.status !== "WORKING" && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      Nomor Kampanye Belum Aktif / Scan QR
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Status sesi: <strong>{wahaSessionsData?.campaignSession?.status || "SCAN_QR_CODE"}</strong>. Silakan scan QR di menu <strong>Pengaturan WhatsApp &gt; Slot 2</strong>, atau ubah pengirim ke Slot 1 di atas.
+                    </p>
+                  </div>
+                )}
 
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
                   🛡️ <strong>Proteksi Nomor Bisnis:</strong> Setiap pesan diberi jeda acak manusiawi (10–14 detik) agar nomor WhatsApp toko aman dari banned.

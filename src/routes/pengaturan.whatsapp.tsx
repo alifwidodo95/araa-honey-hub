@@ -16,7 +16,8 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
-  XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2
+  XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2,
+  Building2, Rocket, Smartphone, ShieldCheck
 } from "lucide-react";
 
 export const Route = createFileRoute("/pengaturan/whatsapp")({
@@ -39,6 +40,7 @@ function WhatsAppPage() {
   // WAHA Configurations (Persisted to localStorage + Supabase app_settings)
   const [wahaUrl, setWahaUrl] = useState(() => localStorage.getItem("waha_url") || "http://localhost:3000");
   const [sessionName, setSessionName] = useState(() => localStorage.getItem("waha_session") || "default");
+  const [campaignSessionName, setCampaignSessionName] = useState(() => localStorage.getItem("waha_campaign_session") || "campaign");
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("waha_api_key") || "");
   const [scheduleTime, setScheduleTime] = useState(() => localStorage.getItem("waha_schedule_time") || "19:00");
   const [intervalVal, setIntervalVal] = useState(() => localStorage.getItem("waha_send_interval") || "60"); // in seconds
@@ -368,6 +370,10 @@ function WhatsAppPage() {
         setSessionName(wahaConfig.sessionName);
         localStorage.setItem("waha_session", wahaConfig.sessionName);
       }
+      if (wahaConfig.campaignSessionName) {
+        setCampaignSessionName(wahaConfig.campaignSessionName);
+        localStorage.setItem("waha_campaign_session", wahaConfig.campaignSessionName);
+      }
       if (wahaConfig.apiKey) {
         setApiKey(wahaConfig.apiKey);
         localStorage.setItem("waha_api_key", wahaConfig.apiKey);
@@ -395,12 +401,28 @@ function WhatsAppPage() {
     }
   }, [wahaConfig]);
 
-  // UI States
-  const [sessionStatus, setSessionStatus] = useState<string>("STOPPED"); // STOPPED, STARTING, SCAN_QR, WORKING, FAILED
+  // Multi-Session UI States
+  const [selectedSlot, setSelectedSlot] = useState<"main" | "campaign">("main");
+
+  // Slot 1 (Nomor Utama CS)
+  const [mainSessionStatus, setMainSessionStatus] = useState<string>("STOPPED");
+  const [mainQrImageUrl, setMainQrImageUrl] = useState<string>("");
+  const [mainMeInfo, setMainMeInfo] = useState<{ id?: string; pushName?: string } | null>(null);
+
+  // Slot 2 (Nomor Kampanye / Outreach)
+  const [campaignSessionStatus, setCampaignSessionStatus] = useState<string>("STOPPED");
+  const [campaignQrImageUrl, setCampaignQrImageUrl] = useState<string>("");
+  const [campaignMeInfo, setCampaignMeInfo] = useState<{ id?: string; pushName?: string } | null>(null);
+
   const [qrRefreshTrigger, setQrRefreshTrigger] = useState(0);
-  const [qrImageUrl, setQrImageUrl] = useState<string>("");
   const [loadingStatus, setLoadingStatus] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoadingMain, setActionLoadingMain] = useState(false);
+  const [actionLoadingCampaign, setActionLoadingCampaign] = useState(false);
+
+  // Backwards-compatible aliases for existing resi queue
+  const sessionStatus = mainSessionStatus;
+  const qrImageUrl = selectedSlot === "main" ? mainQrImageUrl : campaignQrImageUrl;
+  const actionLoading = selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign;
 
   // Queue Running States
   const [queueActive, setQueueActive] = useState(false);
@@ -438,6 +460,7 @@ function WhatsAppPage() {
           value: {
             wahaUrl: wahaUrl.trim(),
             sessionName: sessionName.trim(),
+            campaignSessionName: campaignSessionName.trim(),
             apiKey: apiKey.trim(),
             scheduleTime,
             intervalVal,
@@ -450,6 +473,7 @@ function WhatsAppPage() {
 
       localStorage.setItem("waha_url", wahaUrl.trim());
       localStorage.setItem("waha_session", sessionName.trim());
+      localStorage.setItem("waha_campaign_session", campaignSessionName.trim());
       localStorage.setItem("waha_api_key", apiKey.trim());
       localStorage.setItem("waha_schedule_time", scheduleTime);
       localStorage.setItem("waha_send_interval", intervalVal);
@@ -595,50 +619,68 @@ function WhatsAppPage() {
     }
   };
 
-  // Check Session Status from WAHA
-  const checkSessionStatus = async (silent = false) => {
+  // Check Both Sessions Status from WAHA
+  const checkAllSessions = async (silent = false) => {
     if (!silent) setLoadingStatus(true);
     try {
       const res = await fetch("/api/waha-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions/${sessionName}`,
+          url: `${wahaUrl}/api/sessions`,
           method: "GET",
           headers: getWahaHeaders()
         })
       });
       if (!res.ok) {
-        if (res.status === 404) {
-          setSessionStatus("STOPPED");
-        } else {
-          throw new Error("HTTP status " + res.status);
-        }
-        return;
+        throw new Error("HTTP status " + res.status);
       }
-      const data = await safeJson(res);
-      let normalizedStatus = data.status || "STOPPED";
-      if (data.status === "SCAN_QR_CODE") {
-        normalizedStatus = "SCAN_QR";
+      const sessions = await safeJson(res);
+      const list: any[] = Array.isArray(sessions) ? sessions : [];
+
+      // 1. Slot 1 (Nomor Utama CS)
+      const main = list.find((s: any) => s.name === sessionName);
+      if (main) {
+        let norm = main.status || "STOPPED";
+        if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
+        setMainSessionStatus(norm);
+        setMainMeInfo(main.me || null);
+        if (norm === "SCAN_QR") setQrRefreshTrigger(prev => prev + 1);
+      } else {
+        setMainSessionStatus("STOPPED");
+        setMainMeInfo(null);
       }
-      setSessionStatus(normalizedStatus); // e.g. STOPPED, STARTING, SCAN_QR, WORKING, FAILED
-      if (normalizedStatus === "SCAN_QR") {
-        // Force refresh QR image
-        setQrRefreshTrigger(prev => prev + 1);
+
+      // 2. Slot 2 (Nomor Kampanye Outreach)
+      const camp = list.find((s: any) => s.name === campaignSessionName);
+      if (camp) {
+        let norm = camp.status || "STOPPED";
+        if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
+        setCampaignSessionStatus(norm);
+        setCampaignMeInfo(camp.me || null);
+        if (norm === "SCAN_QR") setQrRefreshTrigger(prev => prev + 1);
+      } else {
+        setCampaignSessionStatus("STOPPED");
+        setCampaignMeInfo(null);
       }
     } catch (err: any) {
-      setSessionStatus("DISCONNECTED"); // cannot reach WAHA server
-      if (!silent) {
-        console.error("Gagal terhubung ke server WAHA:", err);
-      }
+      if (!silent) console.error("Gagal memeriksa status sesi WAHA:", err);
+      setMainSessionStatus("DISCONNECTED");
+      setCampaignSessionStatus("DISCONNECTED");
     } finally {
       if (!silent) setLoadingStatus(false);
     }
   };
 
-  // Start WAHA Session
-  const handleStartSession = async () => {
-    setActionLoading(true);
+  // Backwards compatible wrapper
+  const checkSessionStatus = (silent = false) => checkAllSessions(silent);
+
+  // Start WAHA Session for target slot
+  const handleStartSession = async (target: "main" | "campaign" = selectedSlot) => {
+    const sName = target === "main" ? sessionName : campaignSessionName;
+    if (target === "main") setActionLoadingMain(true);
+    else setActionLoadingCampaign(true);
+
     try {
       const res = await fetch("/api/waha-proxy", {
         method: "POST",
@@ -647,45 +689,51 @@ function WhatsAppPage() {
           url: `${wahaUrl}/api/sessions/start`,
           method: "POST",
           headers: getWahaHeaders(),
-          body: { name: sessionName }
+          body: { name: sName }
         })
       });
       const data = await safeJson(res);
       
       if (!res.ok) {
-        throw new Error(data.message || "Gagal menyalakan sesi WhatsApp.");
+        throw new Error(data.message || `Gagal menyalakan sesi ${sName}.`);
       }
       
-      toast.success("Sesi WhatsApp sedang dimulai...");
-      
-      // Poll status for a bit
-      setTimeout(() => checkSessionStatus(true), 2000);
-      setTimeout(() => checkSessionStatus(true), 5000);
-      setTimeout(() => checkSessionStatus(true), 10000);
+      toast.success(`Sesi WhatsApp (${sName}) sedang dimulai...`);
+      setTimeout(() => checkAllSessions(true), 2000);
+      setTimeout(() => checkAllSessions(true), 5000);
+      setTimeout(() => checkAllSessions(true), 10000);
     } catch (err: any) {
       toast.error(err.message || "Gagal menghubungkan server WAHA.");
     } finally {
-      setActionLoading(false);
+      if (target === "main") setActionLoadingMain(false);
+      else setActionLoadingCampaign(false);
     }
   };
 
-  // Stop & Logout WAHA Session (wipes session cache to force a fresh QR Code)
-  const handleStopSession = async () => {
-    if (!confirm("Apakah Anda yakin ingin mengeluarkan sesi WhatsApp ini? (Sesi akan di-logout total dan memerlukan scan QR baru)")) return;
-    setActionLoading(true);
+  // Stop & Logout WAHA Session for target slot
+  const handleStopSession = async (target: "main" | "campaign" = selectedSlot) => {
+    const sName = target === "main" ? sessionName : campaignSessionName;
+    const isMain = target === "main";
+    const promptMsg = isMain
+      ? "Apakah Anda yakin ingin mengeluarkan sesi Nomor Utama CS ini? (Sesi akan di-logout dan memerlukan scan QR baru)"
+      : "Apakah Anda yakin ingin mengeluarkan / mereset sesi Nomor Kampanye ini? (Anda bisa scan nomor kartu perdana baru setelah ini)";
+
+    if (!confirm(promptMsg)) return;
+
+    if (isMain) setActionLoadingMain(true);
+    else setActionLoadingCampaign(true);
+
     try {
       const res = await fetch("/api/waha-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions/${sessionName}/logout`,
+          url: `${wahaUrl}/api/sessions/${sName}/logout`,
           method: "POST",
           headers: getWahaHeaders()
         })
       });
-      const data = await safeJson(res);
       if (!res.ok) {
-        // Fallback to /api/sessions/logout
         await fetch("/api/waha-proxy", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -693,40 +741,49 @@ function WhatsAppPage() {
             url: `${wahaUrl}/api/sessions/logout`,
             method: "POST",
             headers: getWahaHeaders(),
-            body: { name: sessionName }
+            body: { name: sName }
           })
         });
       }
-      toast.success("Sesi WhatsApp berhasil dikeluarkan. Silakan klik Mulai Sesi untuk scan QR baru.");
-      setSessionStatus("STOPPED");
+      toast.success(`Sesi WhatsApp (${sName}) berhasil dikeluarkan.`);
+      if (isMain) {
+        setMainSessionStatus("STOPPED");
+        setMainMeInfo(null);
+        setMainQrImageUrl("");
+      } else {
+        setCampaignSessionStatus("STOPPED");
+        setCampaignMeInfo(null);
+        setCampaignQrImageUrl("");
+      }
+      setTimeout(() => checkAllSessions(true), 1500);
     } catch (err: any) {
       toast.error(err.message || "Gagal mengeluarkan sesi.");
     } finally {
-      setActionLoading(false);
+      if (isMain) setActionLoadingMain(false);
+      else setActionLoadingCampaign(false);
     }
   };
 
-  // Poll status periodically
+  // Poll both sessions status periodically
   useEffect(() => {
-    checkSessionStatus(true);
+    checkAllSessions(true);
     const interval = setInterval(() => {
-      // Only poll status if url is configured
       if (wahaUrl) {
-        checkSessionStatus(true);
+        checkAllSessions(true);
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [wahaUrl, sessionName]);
+  }, [wahaUrl, sessionName, campaignSessionName]);
 
-  // Fetch QR image with auth headers
+  // Fetch QR image for Main Session
   useEffect(() => {
     let active = true;
-    if (sessionStatus !== "SCAN_QR") {
-      setQrImageUrl("");
+    if (mainSessionStatus !== "SCAN_QR") {
+      setMainQrImageUrl("");
       return;
     }
 
-    const fetchQrImage = async () => {
+    const fetchMainQr = async () => {
       try {
         const res = await fetch("/api/waha-proxy", {
           method: "POST",
@@ -737,27 +794,60 @@ function WhatsAppPage() {
             headers: getWahaHeaders()
           })
         });
-        if (!res.ok) throw new Error("Failed to fetch QR image");
+        if (!res.ok) throw new Error("Failed to fetch Main QR image");
         const blob = await res.blob();
         if (active) {
-          const url = URL.createObjectURL(blob);
-          setQrImageUrl(url);
+          setMainQrImageUrl(URL.createObjectURL(blob));
         }
       } catch (err) {
-        console.error("Gagal mengambil QR image:", err);
+        console.error("Gagal mengambil Main QR image:", err);
       }
     };
 
-    fetchQrImage();
-    
-    // Poll the QR image every 10 seconds while in SCAN_QR state
-    const interval = setInterval(fetchQrImage, 10000);
-
+    fetchMainQr();
+    const interval = setInterval(fetchMainQr, 10000);
     return () => {
       active = false;
       clearInterval(interval);
     };
-  }, [sessionStatus, qrRefreshTrigger, wahaUrl, sessionName, apiKey]);
+  }, [mainSessionStatus, qrRefreshTrigger, wahaUrl, sessionName, apiKey]);
+
+  // Fetch QR image for Campaign Session
+  useEffect(() => {
+    let active = true;
+    if (campaignSessionStatus !== "SCAN_QR") {
+      setCampaignQrImageUrl("");
+      return;
+    }
+
+    const fetchCampaignQr = async () => {
+      try {
+        const res = await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/${campaignSessionName}/auth/qr`,
+            method: "GET",
+            headers: getWahaHeaders()
+          })
+        });
+        if (!res.ok) throw new Error("Failed to fetch Campaign QR image");
+        const blob = await res.blob();
+        if (active) {
+          setCampaignQrImageUrl(URL.createObjectURL(blob));
+        }
+      } catch (err) {
+        console.error("Gagal mengambil Campaign QR image:", err);
+      }
+    };
+
+    fetchCampaignQr();
+    const interval = setInterval(fetchCampaignQr, 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [campaignSessionStatus, qrRefreshTrigger, wahaUrl, campaignSessionName, apiKey]);
 
   // Clean phone number format for WhatsApp (62xxx@c.us)
   const formatPhoneNumber = (phone: string): string => {
@@ -1059,24 +1149,37 @@ function WhatsAppPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="session-name">Nama Sesi</Label>
+                  <Label htmlFor="session-name" className="text-xs">Sesi 1 (CS Utama)</Label>
                   <Input 
                     id="session-name"
                     placeholder="default" 
                     value={sessionName} 
                     onChange={(e) => setSessionName(e.target.value)}
+                    className="h-8 text-xs font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="api-key">API Key (Opsional)</Label>
+                  <Label htmlFor="campaign-session-name" className="text-xs">Sesi 2 (Kampanye)</Label>
                   <Input 
-                    id="api-key"
-                    type="password"
-                    placeholder="Sandi API" 
-                    value={apiKey} 
-                    onChange={(e) => setApiKey(e.target.value)}
+                    id="campaign-session-name"
+                    placeholder="campaign" 
+                    value={campaignSessionName} 
+                    onChange={(e) => setCampaignSessionName(e.target.value)}
+                    className="h-8 text-xs font-mono"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="api-key" className="text-xs">API Key WAHA (Opsional)</Label>
+                <Input 
+                  id="api-key"
+                  type="password"
+                  placeholder="Sandi API" 
+                  value={apiKey} 
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                />
               </div>
 
               <Button onClick={handleSaveConfig} className="w-full bg-honey hover:bg-honey-dark text-honey-foreground">
@@ -1257,113 +1360,245 @@ function WhatsAppPage() {
           </Card>
         </div>
 
-        {/* Center column: WAHA QR / Session Management */}
-        <div className="space-y-6 lg:col-span-2">
+        {/* Center column: WAHA Dual Slot / Session Management */}
+        <div className="space-y-4 lg:col-span-2">
+          {/* Dual WhatsApp Slot Switcher Header */}
+          <div className="flex bg-muted/60 p-1.5 rounded-xl border border-border/80 gap-2 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setSelectedSlot("main")}
+              className={`flex-1 flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg font-bold text-xs transition-all ${
+                selectedSlot === "main"
+                  ? "bg-white dark:bg-slate-950 shadow text-foreground border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <div className={`w-2.5 h-2.5 rounded-full ${mainSessionStatus === "WORKING" ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Slot 1: Nomor Utama (CS & Resi)</span>
+                </div>
+              </div>
+              <Badge 
+                variant={mainSessionStatus === "WORKING" ? "success" : mainSessionStatus === "SCAN_QR" ? "warning" : "secondary"} 
+                className="text-[10px] h-4 px-1.5 ml-auto"
+              >
+                {mainSessionStatus === "WORKING" ? "Online" : mainSessionStatus === "SCAN_QR" ? "Perlu Scan" : mainSessionStatus}
+              </Badge>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSlot("campaign")}
+              className={`flex-1 flex items-center justify-center gap-2.5 py-2.5 px-3 rounded-lg font-bold text-xs transition-all ${
+                selectedSlot === "campaign"
+                  ? "bg-white dark:bg-slate-950 shadow text-foreground border border-border/50"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <div className={`w-2.5 h-2.5 rounded-full ${campaignSessionStatus === "WORKING" ? "bg-emerald-500 animate-pulse" : campaignSessionStatus === "SCAN_QR" ? "bg-amber-500" : "bg-slate-400"}`} />
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <Rocket className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Slot 2: Nomor Kampanye (Outreach)</span>
+                </div>
+              </div>
+              <Badge 
+                variant={campaignSessionStatus === "WORKING" ? "success" : campaignSessionStatus === "SCAN_QR" ? "warning" : "secondary"} 
+                className="text-[10px] h-4 px-1.5 ml-auto"
+              >
+                {campaignSessionStatus === "WORKING" ? "Online" : campaignSessionStatus === "SCAN_QR" ? "Perlu Scan QR" : "Off"}
+              </Badge>
+            </button>
+          </div>
+
+          {/* Active Slot Controller & QR Area */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Session connection controller */}
-            <Card className="flex flex-col">
+            {/* Left Box: Slot Info & Action Controls */}
+            <Card className="flex flex-col justify-between">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center justify-between">
-                  <span>Status WhatsApp</span>
-                  <Badge 
+                <CardTitle className="text-base font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {selectedSlot === "main" ? (
+                      <>
+                        <Building2 className="w-4 h-4 text-blue-500" />
+                        Slot 1: Nomor Utama CS
+                      </>
+                    ) : (
+                      <>
+                        <Rocket className="w-4 h-4 text-amber-500" />
+                        Slot 2: Nomor Kampanye (Outreach)
+                      </>
+                    )}
+                  </span>
+                  <Badge
                     variant={
-                      sessionStatus === "WORKING" ? "success" : 
-                      sessionStatus === "SCAN_QR" ? "warning" : 
-                      sessionStatus === "STARTING" ? "secondary" :
+                      (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "WORKING" ? "success" :
+                      (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "SCAN_QR" ? "warning" :
+                      (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "STARTING" ? "secondary" :
                       "destructive"
                     }
                   >
-                    {sessionStatus === "WORKING" ? "Terkoneksi (LIVE)" : 
-                     sessionStatus === "SCAN_QR" ? "Perlu Scan QR" : 
-                     sessionStatus === "STARTING" ? "Memulai..." : 
-                     sessionStatus === "STOPPED" ? "Sesi Berhenti" : 
+                    {(selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "WORKING" ? "Terkoneksi (LIVE)" :
+                     (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "SCAN_QR" ? "Perlu Scan QR" :
+                     (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "STARTING" ? "Memulai..." :
+                     (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "STOPPED" ? "Sesi Berhenti" :
                      "Terputus"}
                   </Badge>
                 </CardTitle>
-                <CardDescription>Sandingkan HP Anda dengan memindai QR code.</CardDescription>
+                <CardDescription className="text-xs">
+                  {selectedSlot === "main"
+                    ? "Digunakan untuk kirim resi otomatis, notifikasi pembeli, dan chat pelanggan utama."
+                    : "Khusus untuk blast reaktivasi 2025 dan follow-up cold leads tanpa risiko ke nomor utama."}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-between space-y-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-accent/30 p-3 rounded-lg border border-border/80">
-                  {sessionStatus === "WORKING" ? (
-                    <>
-                      <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                      <span>WhatsApp Anda aktif dan siap mengirim pesan resi ke pelanggan.</span>
-                    </>
-                  ) : sessionStatus === "SCAN_QR" ? (
-                    <>
-                      <QrCode className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                      <span>Sesi berjalan. Silakan scan QR Code di samping menggunakan fitur 'Perangkat Tertaut' WA HP Anda.</span>
-                    </>
-                  ) : sessionStatus === "STARTING" ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
-                      <span>Sesi WhatsApp sedang dimulai. Silakan tunggu beberapa detik hingga QR Code muncul...</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
-                      <span>Sesi WAHA berhenti atau tidak terhubung. Klik 'Mulai Sesi WhatsApp' di bawah untuk menyalakan.</span>
-                    </>
-                  )}
-                </div>
 
-                <div className="flex gap-2">
-                  {sessionStatus === "WORKING" || sessionStatus === "SCAN_QR" ? (
-                    <Button 
+              <CardContent className="space-y-4">
+                {/* Active Phone Details Banner */}
+                {selectedSlot === "main" ? (
+                  mainSessionStatus === "WORKING" && mainMeInfo ? (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1 text-xs">
+                      <div className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle className="w-4 h-4" />
+                        WhatsApp CS Terhubung & Aktif
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Nomor HP: <strong className="text-foreground">{mainMeInfo.id?.replace("@c.us", "")}</strong>
+                        {mainMeInfo.pushName && <span> ({mainMeInfo.pushName})</span>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-muted/40 border border-muted/80 rounded-xl text-xs text-muted-foreground flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                      <span>Nomor utama saat ini belum terhubung. Scan QR di samping untuk menyambungkan.</span>
+                    </div>
+                  )
+                ) : (
+                  campaignSessionStatus === "WORKING" && campaignMeInfo ? (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1 text-xs">
+                      <div className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                        <CheckCircle className="w-4 h-4" />
+                        Nomor Kampanye Siap Digunakan!
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Nomor HP: <strong className="text-foreground">{campaignMeInfo.id?.replace("@c.us", "")}</strong>
+                        {campaignMeInfo.pushName && <span> ({campaignMeInfo.pushName})</span>}
+                      </div>
+                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1">
+                        Pesan blast reaktivasi 2025 akan ditembakkan melalui nomor ini secara aman.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-1 text-xs">
+                      <div className="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                        <Rocket className="w-4 h-4 text-amber-600" />
+                        Slot Nomor Kampanye Siap Dipasangkan
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Scan QR di samping menggunakan nomor cadangan/kartu perdana lain agar nomor utama Anda aman dari risiko banned.
+                      </p>
+                    </div>
+                  )
+                )}
+
+                {/* Control Action Buttons */}
+                <div className="flex gap-2 pt-2">
+                  {(selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "WORKING" ||
+                   (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "SCAN_QR" ? (
+                    <Button
                       variant="destructive"
-                      onClick={handleStopSession} 
-                      disabled={actionLoading}
-                      className="w-full"
+                      size="sm"
+                      onClick={() => handleStopSession(selectedSlot)}
+                      disabled={selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign}
+                      className="w-full text-xs font-semibold"
                     >
-                      {actionLoading ? "Mengeluarkan Sesi..." : "Putuskan Sesi WhatsApp"}
+                      {(selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign)
+                        ? "Memproses..."
+                        : selectedSlot === "main"
+                        ? "Putuskan Sesi Nomor Utama"
+                        : "Putuskan / Ganti Kartu Baru"}
                     </Button>
                   ) : (
-                    <Button 
-                      onClick={handleStartSession} 
-                      disabled={actionLoading || loadingStatus}
-                      className="w-full bg-honey hover:bg-honey-dark text-honey-foreground font-bold"
+                    <Button
+                      size="sm"
+                      onClick={() => handleStartSession(selectedSlot)}
+                      disabled={
+                        (selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign) ||
+                        loadingStatus
+                      }
+                      className="w-full text-xs font-bold bg-honey hover:bg-honey-dark text-honey-foreground"
                     >
-                      {actionLoading ? "Menghubungkan..." : "Mulai Sesi WhatsApp (Munculkan QR Code)"}
+                      {(selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign)
+                        ? "Menghubungkan..."
+                        : selectedSlot === "main"
+                        ? "Mulai Sesi Nomor Utama"
+                        : "Mulai Sesi Nomor Kampanye (Scan QR)"}
                     </Button>
                   )}
-                  
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => checkSessionStatus()}
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => checkAllSessions()}
                     disabled={loadingStatus}
-                    title="Refresh Status"
+                    className="h-9 w-9"
+                    title="Perbarui status kedua nomor"
                   >
-                    <RefreshCw className={`w-4 h-4 ${loadingStatus ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`w-4 h-4 ${loadingStatus ? "animate-spin text-amber-500" : ""}`} />
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* QR Code display */}
+            {/* Right Box: Live QR Code / Active State Visualizer */}
             <Card className="flex flex-col items-center justify-center min-h-[220px]">
               <CardContent className="p-6 flex flex-col items-center justify-center text-center">
-                {sessionStatus === "SCAN_QR" && qrImageUrl ? (
-                  <div className="space-y-3 flex flex-col items-center">
-                    <img 
-                      src={qrImageUrl} 
-                      alt="WhatsApp QR Code" 
-                      className="w-44 h-44 border rounded-lg shadow-sm p-1.5 bg-white"
-                    />
-                    <p className="text-[11px] text-muted-foreground animate-pulse">Memuat ulang kode QR secara berkala...</p>
-                  </div>
-                ) : sessionStatus === "WORKING" ? (
-                  <div className="space-y-3 flex flex-col items-center text-center py-6">
-                    <div className="h-16 w-16 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 border border-emerald-200">
+                {(selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "SCAN_QR" ? (
+                  (selectedSlot === "main" ? mainQrImageUrl : campaignQrImageUrl) ? (
+                    <div className="space-y-2.5 flex flex-col items-center">
+                      <img
+                        src={selectedSlot === "main" ? mainQrImageUrl : campaignQrImageUrl}
+                        alt="WhatsApp QR Code"
+                        className="w-44 h-44 border rounded-xl shadow p-1.5 bg-white"
+                      />
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-foreground">
+                          Scan dengan WhatsApp di HP {selectedSlot === "main" ? "Utama" : "Kampanye"}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Buka WA ➔ Titik Tiga / Pengaturan ➔ Perangkat Tertaut ➔ Tautkan Perangkat
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 py-8 text-muted-foreground text-center">
+                      <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500" />
+                      <p className="text-xs">Memuat kode QR dari server WAHA...</p>
+                    </div>
+                  )
+                ) : (selectedSlot === "main" ? mainSessionStatus : campaignSessionStatus) === "WORKING" ? (
+                  <div className="space-y-3 flex flex-col items-center text-center py-4">
+                    <div className="h-16 w-16 bg-emerald-100 dark:bg-emerald-950/40 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 shadow-xs">
                       <CheckCircle className="w-8 h-8" />
                     </div>
-                    <h3 className="font-semibold text-sm">WhatsApp Terhubung</h3>
-                    <p className="text-xs text-muted-foreground max-w-xs">Perangkat Anda berhasil tertaut dengan WAHA.</p>
+                    <div className="space-y-1">
+                      <h3 className="font-bold text-sm text-foreground">
+                        {selectedSlot === "main" ? "Nomor Utama Terhubung" : "Nomor Kampanye Terhubung"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground max-w-xs">
+                        {selectedSlot === "main"
+                          ? "Siap mengirimkan pesan resi otomatis dan notifikasi operasional."
+                          : "Siap digunakan untuk blast reaktivasi pelanggan di menu Reaktivasi 2025."}
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2 py-8 text-muted-foreground text-center">
                     <QrCode className="w-12 h-12 mx-auto opacity-30" />
-                    <p className="text-xs">QR Code akan muncul di sini setelah sesi dimulai.</p>
+                    <p className="text-xs">
+                      Klik <strong>'Mulai Sesi'</strong> di samping untuk memunculkan QR Code.
+                    </p>
                   </div>
                 )}
               </CardContent>

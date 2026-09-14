@@ -266,6 +266,7 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
     message: string;
     product?: string;
     imageUrl?: string;
+    senderSession?: string;
   }) => data)
   .handler(async ({ data }) => {
     let pool: pg.Pool | null = null;
@@ -274,11 +275,14 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
       const wahaConfig = wahaConfigRes.rows[0]?.value || {};
-      const { wahaUrl, sessionName, apiKey } = wahaConfig;
+      const { wahaUrl, sessionName, apiKey, campaignSessionName } = wahaConfig;
 
-      if (!wahaUrl || !sessionName) {
+      if (!wahaUrl) {
         throw new Error("Konfigurasi server WAHA belum diatur.");
       }
+
+      // Determine active sender session: prefer data.senderSession, then campaignSessionName, then sessionName
+      const activeSession = data.senderSession || campaignSessionName || "campaign";
 
       const rawPhone = normalizePhone(data.phone);
       const chatId = `${rawPhone}@c.us`;
@@ -294,7 +298,7 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       if (hasImage) {
         const imagePayload = {
-          session: sessionName,
+          session: activeSession,
           chatId,
           file: {
             url: data.imageUrl!.trim(),
@@ -323,7 +327,7 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       if (!response || !response.ok) {
         const textPayload = {
-          session: sessionName,
+          session: activeSession,
           chatId,
           text: data.message,
         };
@@ -463,3 +467,43 @@ export const deleteSelectedReaktivasiContacts = createServerFn({ method: "POST" 
       throw new Error(err.message || "Gagal menghapus kontak terpilih");
     }
   });
+
+// 7. Get status of both WAHA sessions (Slot 1: Default CS, Slot 2: Campaign)
+export const getWahaSessionsInfo = createServerFn({ method: "GET" }).handler(async () => {
+  let pool: pg.Pool | null = null;
+  try {
+    pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+    const res = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
+    const cfg = res.rows[0]?.value || {};
+    const wahaUrl = cfg.wahaUrl || "https://waha.araahoney.my.id";
+    const mainSessionName = cfg.sessionName || "default";
+    const campaignSessionName = cfg.campaignSessionName || "campaign";
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
+
+    const sessionRes = await fetch(`${wahaUrl}/api/sessions`, { headers }).catch(() => null);
+    const sessionsList: any[] = sessionRes && sessionRes.ok ? await sessionRes.json().catch(() => []) : [];
+
+    const mainSession = sessionsList.find((s: any) => s.name === mainSessionName) || null;
+    const campaignSession = sessionsList.find((s: any) => s.name === campaignSessionName) || null;
+
+    await pool.end();
+    return {
+      wahaUrl,
+      mainSessionName,
+      campaignSessionName,
+      mainSession,
+      campaignSession,
+    };
+  } catch (err: any) {
+    if (pool) try { await pool.end(); } catch (e) {}
+    return {
+      wahaUrl: "",
+      mainSessionName: "default",
+      campaignSessionName: "campaign",
+      mainSession: null,
+      campaignSession: null,
+    };
+  }
+});
