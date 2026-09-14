@@ -500,6 +500,7 @@ function WhatsAppPage() {
           value: {
             wahaUrl: wahaUrl.trim(),
             sessionName: sessionName.trim(),
+            campaignSessionName: campaignSessionName.trim(),
             apiKey: apiKey.trim(),
             scheduleTime,
             intervalVal,
@@ -675,14 +676,14 @@ function WhatsAppPage() {
   // Backwards compatible wrapper
   const checkSessionStatus = (silent = false) => checkAllSessions(silent);
 
-  // Start WAHA Session for target slot
+  // Start WAHA Session for target slot (with auto-recovery restart)
   const handleStartSession = async (target: "main" | "campaign" = selectedSlot) => {
-    const sName = target === "main" ? sessionName : campaignSessionName;
+    const sName = (target === "main" ? sessionName : campaignSessionName) || (target === "main" ? "default" : "campaign");
     if (target === "main") setActionLoadingMain(true);
     else setActionLoadingCampaign(true);
 
     try {
-      const res = await fetch("/api/waha-proxy", {
+      let res = await fetch("/api/waha-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -692,16 +693,46 @@ function WhatsAppPage() {
           body: { name: sName }
         })
       });
-      const data = await safeJson(res);
+      let data = await safeJson(res);
       
-      if (!res.ok) {
+      // If session is already started, failed, or requires a clean restart
+      if (!res.ok && (data.message?.includes("already started") || res.status === 422 || res.status === 400)) {
+        // Stop the stale/failed session first
+        await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sessions/${sName}/stop`,
+            method: "POST",
+            headers: getWahaHeaders()
+          })
+        }).catch(() => null);
+
+        await new Promise((r) => setTimeout(r, 600));
+
+        // Start it fresh
+        res = await fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sessions/start`,
+            method: "POST",
+            headers: getWahaHeaders(),
+            body: { name: sName }
+          })
+        });
+        data = await safeJson(res);
+      }
+
+      if (!res.ok && !data.message?.includes("already started")) {
         throw new Error(data.message || `Gagal menyalakan sesi ${sName}.`);
       }
       
-      toast.success(`Sesi WhatsApp (${sName}) sedang dimulai...`);
-      setTimeout(() => checkAllSessions(true), 2000);
-      setTimeout(() => checkAllSessions(true), 5000);
-      setTimeout(() => checkAllSessions(true), 10000);
+      toast.success(`Sesi WhatsApp (${sName}) berhasil dimulai. Memuat kode QR...`);
+      setQrRefreshTrigger((prev) => prev + 1);
+      setTimeout(() => checkAllSessions(true), 1000);
+      setTimeout(() => checkAllSessions(true), 3000);
+      setTimeout(() => checkAllSessions(true), 6000);
     } catch (err: any) {
       toast.error(err.message || "Gagal menghubungkan server WAHA.");
     } finally {
@@ -1570,6 +1601,16 @@ function WhatsAppPage() {
                           Buka WA ➔ Titik Tiga / Pengaturan ➔ Perangkat Tertaut ➔ Tautkan Perangkat
                         </p>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleStartSession(selectedSlot)}
+                        disabled={selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign}
+                        className="h-7 text-[11px] gap-1 text-muted-foreground mt-1"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${(selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign) ? "animate-spin" : ""}`} />
+                        Muat Ulang QR Baru
+                      </Button>
                     </div>
                   ) : (
                     <div className="space-y-2 py-8 text-muted-foreground text-center">
