@@ -81,7 +81,7 @@ export function createWorkerTimer() {
       }
 
       if (!worker) {
-        // Simple fallback
+        // Fallback for environments where Worker failed to instantiate
         (async () => {
           for (let cd = seconds; cd > 0; cd--) {
             if (abortCheck && abortCheck()) {
@@ -96,10 +96,24 @@ export function createWorkerTimer() {
         return;
       }
 
+      let safetyTimeout: any = null;
+
+      const cleanupListeners = () => {
+        if (safetyTimeout) clearTimeout(safetyTimeout);
+        worker?.removeEventListener("message", messageHandler);
+        worker?.removeEventListener("error", errorHandler);
+      };
+
+      const errorHandler = (err: ErrorEvent) => {
+        console.warn("Worker error during wait, continuing safely:", err);
+        cleanupListeners();
+        resolve(true);
+      };
+
       const messageHandler = (e: MessageEvent) => {
         if (abortCheck && abortCheck()) {
           worker?.postMessage({ action: "stop" });
-          worker?.removeEventListener("message", messageHandler);
+          cleanupListeners();
           resolve(false);
           return;
         }
@@ -107,15 +121,23 @@ export function createWorkerTimer() {
         if (e.data.type === "tick") {
           if (onTick) onTick(e.data.remaining);
         } else if (e.data.type === "done") {
-          worker?.removeEventListener("message", messageHandler);
+          cleanupListeners();
           resolve(true);
         } else if (e.data.type === "stopped") {
-          worker?.removeEventListener("message", messageHandler);
+          cleanupListeners();
           resolve(false);
         }
       };
 
+      // Safety timeout: if worker ever stalls, force resolve after seconds + 3s
+      safetyTimeout = setTimeout(() => {
+        console.warn("Worker timer safety timeout reached, continuing.");
+        cleanupListeners();
+        resolve(true);
+      }, (seconds + 3) * 1000);
+
       worker.addEventListener("message", messageHandler);
+      worker.addEventListener("error", errorHandler);
       worker.postMessage({ action: "start", seconds });
     });
   };

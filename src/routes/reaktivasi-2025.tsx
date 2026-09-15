@@ -346,78 +346,91 @@ function ReaktivasiPage() {
     let successCount = 0;
     let failedCount = 0;
 
-    for (let i = 0; i < total; i++) {
-      if (bulkAbortRef.current) break;
+    try {
+      for (let i = 0; i < total; i++) {
+        if (bulkAbortRef.current) break;
 
-      const c = targets[i];
-      setBulkProgress({
-        current: i + 1,
-        total,
-        currentName: c.name,
-        countdown: 0,
-        successCount,
-        failedCount,
-      });
+        const c = targets[i];
+        let isSuccess = false;
 
-      const formatted = formatCustomerMessage(c);
-
-      try {
-        await sendDirectReaktivasiWhatsApp({
-          data: {
-            phone: c.phone,
-            customerName: c.name,
-            message: formatted,
-            product: c.product_2025,
-            imageUrl: templateImageUrl || "",
-            senderSession: selectedSenderSession,
-          },
+        setBulkProgress({
+          current: i + 1,
+          total,
+          currentName: c.name,
+          countdown: 0,
+          successCount,
+          failedCount,
         });
-        if (sendRes && sendRes.ok) {
-          setSessionSentMap((prev) => ({ ...prev, [c.phone]: true }));
-          successCount++;
-          isSuccess = true;
-        } else {
+
+        const formatted = formatCustomerMessage(c);
+
+        try {
+          const sendRes = await sendDirectReaktivasiWhatsApp({
+            data: {
+              phone: c.phone,
+              customerName: c.name,
+              message: formatted,
+              product: c.product_2025,
+              imageUrl: templateImageUrl || "",
+              senderSession: selectedSenderSession,
+            },
+          });
+
+          if (sendRes && sendRes.ok) {
+            setSessionSentMap((prev) => ({ ...prev, [c.phone]: true }));
+            successCount++;
+            isSuccess = true;
+          } else {
+            failedCount++;
+            console.warn(`Reaktivasi bulk send skipped ${c.phone}: ${sendRes?.message || "Tidak ada WhatsApp"}`);
+          }
+        } catch (err: any) {
+          console.warn(`Reaktivasi bulk send error to ${c.phone}:`, err);
           failedCount++;
-          console.warn(`Reaktivasi bulk send skipped ${c.phone}: ${sendRes?.message || "Tidak ada WhatsApp"}`);
         }
-      } catch (err: any) {
-        console.warn(`Reaktivasi bulk send error to ${c.phone}:`, err);
-        failedCount++;
-      }
 
-      setBulkProgress((prev) => ({
-        ...prev,
-        successCount,
-        failedCount,
-      }));
+        setBulkProgress((prev) => ({
+          ...prev,
+          successCount,
+          failedCount,
+        }));
 
-      // Randomized safety delay ONLY IF message was actually sent to a live WhatsApp user!
-      // Uses Web Worker timer: 100% immune to background tab sleep / minimize!
-      if (isSuccess && i < total - 1 && !bulkAbortRef.current) {
-        const baseDelay = Math.max(5, bulkDelaySeconds);
-        const jitterRange = Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
-        const jitter = Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
-        const delay = Math.max(5, baseDelay + jitter);
+        // Randomized safety delay ONLY IF message was actually sent to a live WhatsApp user!
+        // Uses Web Worker timer: 100% immune to background tab sleep / minimize!
+        if (isSuccess && i < total - 1 && !bulkAbortRef.current) {
+          const baseDelay = Math.max(5, bulkDelaySeconds);
+          const jitterRange = Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
+          const jitter = Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
+          const delay = Math.max(5, baseDelay + jitter);
 
-        if (workerTimerRef.current) {
-          await workerTimerRef.current.wait(
-            delay,
-            (remaining) => setBulkProgress((prev) => ({ ...prev, countdown: remaining })),
-            () => bulkAbortRef.current
-          );
-        } else {
-          for (let cd = delay; cd > 0; cd--) {
-            if (bulkAbortRef.current) break;
-            setBulkProgress((prev) => ({ ...prev, countdown: cd }));
-            await new Promise((r) => setTimeout(r, 1000));
+          try {
+            if (workerTimerRef.current) {
+              await workerTimerRef.current.wait(
+                delay,
+                (remaining) => setBulkProgress((prev) => ({ ...prev, countdown: remaining })),
+                () => bulkAbortRef.current
+              );
+            } else {
+              for (let cd = delay; cd > 0; cd--) {
+                if (bulkAbortRef.current) break;
+                setBulkProgress((prev) => ({ ...prev, countdown: cd }));
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+            }
+          } catch (timerErr) {
+            console.warn("Timer wait error:", timerErr);
           }
         }
       }
-    }
 
-    setIsBulkRunning(false);
-    queryClient.invalidateQueries({ queryKey: ["crm-reaktivasi-2025-stats"] });
-    toast.success(`🎉 Pengiriman massal selesai! Berhasil: ${successCount}, Gagal: ${failedCount}`);
+      toast.success(`🎉 Pengiriman massal selesai! Berhasil: ${successCount}, Gagal: ${failedCount}`);
+    } catch (unexpectedError) {
+      console.error("Unexpected error in bulk send:", unexpectedError);
+      toast.error("Terjadi kendala pada proses pengiriman massal.");
+    } finally {
+      setIsBulkRunning(false);
+      queryClient.invalidateQueries({ queryKey: ["crm-reaktivasi-2025-stats"] });
+    }
   };
 
   const handleStopBulkSend = () => {
