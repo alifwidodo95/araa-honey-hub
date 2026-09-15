@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,10 @@ import {
   Users, Sparkles, Send, CheckCircle2, AlertCircle, RefreshCw, Settings2,
   Upload, FileSpreadsheet, Search, Filter, Clock, Calendar, CheckSquare,
   ShieldAlert, ArrowUpDown, Loader2, Trash2, PartyPopper, Check, X,
-  Phone, Smartphone, AlertTriangle
+  Phone, Smartphone, AlertTriangle, Zap
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { createWorkerTimer } from "@/lib/worker-timer";
 import {
   getReaktivasiData,
   importReaktivasiContacts,
@@ -101,6 +102,16 @@ function ReaktivasiPage() {
       localStorage.setItem("reaktivasi_bulk_delay_sec", String(seconds));
     }
   };
+
+  // Web Worker Timer ref (immune to Chrome background tab throttling)
+  const workerTimerRef = useRef<ReturnType<typeof createWorkerTimer> | null>(null);
+
+  useEffect(() => {
+    workerTimerRef.current = createWorkerTimer();
+    return () => {
+      workerTimerRef.current?.cleanup();
+    };
+  }, []);
 
   // Template Settings Dialog State
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -381,17 +392,25 @@ function ReaktivasiPage() {
       }));
 
       // Randomized safety delay ONLY IF message was actually sent to a live WhatsApp user!
-      // If the number has no WhatsApp (dead number), skip delay immediately to save time!
+      // Uses Web Worker timer: 100% immune to background tab sleep / minimize!
       if (isSuccess && i < total - 1 && !bulkAbortRef.current) {
         const baseDelay = Math.max(5, bulkDelaySeconds);
         const jitterRange = Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
         const jitter = Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
         const delay = Math.max(5, baseDelay + jitter);
 
-        for (let cd = delay; cd > 0; cd--) {
-          if (bulkAbortRef.current) break;
-          setBulkProgress((prev) => ({ ...prev, countdown: cd }));
-          await new Promise((r) => setTimeout(r, 1000));
+        if (workerTimerRef.current) {
+          await workerTimerRef.current.wait(
+            delay,
+            (remaining) => setBulkProgress((prev) => ({ ...prev, countdown: remaining })),
+            () => bulkAbortRef.current
+          );
+        } else {
+          for (let cd = delay; cd > 0; cd--) {
+            if (bulkAbortRef.current) break;
+            setBulkProgress((prev) => ({ ...prev, countdown: cd }));
+            await new Promise((r) => setTimeout(r, 1000));
+          }
         }
       }
     }
@@ -403,6 +422,7 @@ function ReaktivasiPage() {
 
   const handleStopBulkSend = () => {
     bulkAbortRef.current = true;
+    workerTimerRef.current?.stop();
     setIsBulkRunning(false);
     toast.info("Pengiriman massal dihentikan.");
   };
