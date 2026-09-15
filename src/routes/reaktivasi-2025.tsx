@@ -75,6 +75,33 @@ function ReaktivasiPage() {
   }>({ current: 0, total: 0, currentName: "", countdown: 0, successCount: 0, failedCount: 0 });
   const bulkAbortRef = useRef(false);
 
+  // Custom Bulk Delay State (persisted in localStorage, default: 60s / 1 menit)
+  const [bulkDelaySeconds, setBulkDelaySeconds] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("reaktivasi_bulk_delay_sec");
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 5) return parsed;
+      }
+    }
+    return 60; // Default 1 menit
+  });
+  const [customDelayInput, setCustomDelayInput] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("reaktivasi_bulk_delay_sec");
+      if (saved) return saved;
+    }
+    return "60";
+  });
+
+  const handleSetBulkDelay = (seconds: number) => {
+    setBulkDelaySeconds(seconds);
+    setCustomDelayInput(String(seconds));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("reaktivasi_bulk_delay_sec", String(seconds));
+    }
+  };
+
   // Template Settings Dialog State
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateText, setTemplateText] = useState("");
@@ -345,9 +372,13 @@ function ReaktivasiPage() {
         failedCount,
       }));
 
-      // Randomized safety delay (10-14 sec)
+      // Randomized safety delay based on user configured bulkDelaySeconds (default 60s / 1 menit)
       if (i < total - 1 && !bulkAbortRef.current) {
-        const delay = Math.floor(Math.random() * 5) + 10;
+        const baseDelay = Math.max(5, bulkDelaySeconds);
+        const jitterRange = Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
+        const jitter = Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
+        const delay = Math.max(5, baseDelay + jitter);
+
         for (let cd = delay; cd > 0; cd--) {
           if (bulkAbortRef.current) break;
           setBulkProgress((prev) => ({ ...prev, countdown: cd }));
@@ -1400,7 +1431,9 @@ function ReaktivasiPage() {
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimasi Waktu:</span>
-                    <span>~{Math.ceil((selectedPhones.length * 12) / 60)} menit</span>
+                    <span className="font-semibold text-foreground">
+                      ~{Math.ceil((selectedPhones.length * bulkDelaySeconds) / 60)} menit ({((selectedPhones.length * bulkDelaySeconds) / 3600).toFixed(1)} jam)
+                    </span>
                   </div>
                 </div>
 
@@ -1408,16 +1441,75 @@ function ReaktivasiPage() {
                   <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                      Nomor Kampanye Belum Aktif / Scan QR
+                      Nomor Kampanye Belum Aktif / Perlu Scan QR Ulang
                     </div>
                     <p className="text-[11px] text-muted-foreground">
-                      Status sesi: <strong>{wahaSessionsData?.campaignSession?.status || "SCAN_QR_CODE"}</strong>. Silakan scan QR di menu <strong>Pengaturan WhatsApp &gt; Slot 2</strong>, atau ubah pengirim ke Slot 1 di atas.
+                      Status sesi: <strong>{wahaSessionsData?.campaignSession?.status || "DISCONNECTED"}</strong>. Jika nomor sebelumnya terblokir, silakan restart sesi dan hubungkan nomor baru di menu <strong>Pengaturan WhatsApp &gt; Slot 2</strong>.
                     </p>
                   </div>
                 )}
 
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
-                  🛡️ <strong>Proteksi Nomor Bisnis:</strong> Setiap pesan diberi jeda acak manusiawi (10–14 detik) agar nomor WhatsApp toko aman dari banned.
+                {/* Custom Delay Selector (Anti-Banned Protection) */}
+                <div className="p-3 rounded-xl bg-muted/40 border border-muted/60 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      Jeda Antar Pesan (Proteksi Anti-Banned):
+                    </span>
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-[11px] border-emerald-500/20">
+                      {bulkDelaySeconds >= 60
+                        ? `${(bulkDelaySeconds / 60).toFixed(1).replace(".0", "")} Menit (${bulkDelaySeconds}s)`
+                        : `${bulkDelaySeconds} Detik`}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5 pt-0.5">
+                    {[
+                      { sec: 30, label: "30 Detik" },
+                      { sec: 60, label: "1 Menit (Aman)" },
+                      { sec: 90, label: "1.5 Menit" },
+                      { sec: 120, label: "2 Menit (Super)" },
+                    ].map((opt) => (
+                      <Button
+                        key={opt.sec}
+                        type="button"
+                        size="sm"
+                        variant={bulkDelaySeconds === opt.sec ? "default" : "outline"}
+                        onClick={() => handleSetBulkDelay(opt.sec)}
+                        className={`h-7 text-[11px] px-1 ${
+                          bulkDelaySeconds === opt.sec
+                            ? "bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                            : "border-muted/80 hover:bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">Atau kustom detik:</span>
+                    <Input
+                      type="number"
+                      min={5}
+                      max={600}
+                      value={customDelayInput}
+                      onChange={(e) => {
+                        setCustomDelayInput(e.target.value);
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val >= 5) {
+                          handleSetBulkDelay(val);
+                        }
+                      }}
+                      className="h-7 text-xs w-20 text-center font-mono"
+                      placeholder="60"
+                    />
+                    <span className="text-[11px] text-muted-foreground">detik per kontak</span>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                    🛡️ <strong>Sistem Anti-Banned:</strong> Variasi jeda acak alami (sekitar <strong>{Math.max(5, bulkDelaySeconds - 6)}–{bulkDelaySeconds + 6} detik</strong>) akan diterapkan otomatis agar WhatsApp mendeteksi pesan diketik oleh manusia secara manual, bukan bot.
+                  </div>
                 </div>
               </div>
             ) : (
