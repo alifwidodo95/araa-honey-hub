@@ -219,6 +219,7 @@ export const getReaktivasiData = createServerFn({ method: "GET" }).handler(async
         COUNT(*)::int as total_target,
         COUNT(*) FILTER (WHERE r.status = 'uncontacted')::int as uncontacted_count,
         COUNT(*) FILTER (WHERE r.status = 'sent')::int as sent_count,
+        COUNT(*) FILTER (WHERE r.status = 'failed')::int as failed_count,
         COUNT(*) FILTER (WHERE r.has_converted = true)::int as converted_count,
         COALESCE(SUM(r.total_2026_spent) FILTER (WHERE r.has_converted = true), 0)::numeric as converted_revenue
       FROM reaktivasi_enriched r;
@@ -242,6 +243,7 @@ export const getReaktivasiData = createServerFn({ method: "GET" }).handler(async
         totalTarget: Number(row.total_target) || 0,
         uncontactedCount: Number(row.uncontacted_count) || 0,
         sentCount: Number(row.sent_count) || 0,
+        failedCount: Number(row.failed_count) || 0,
         convertedCount: Number(row.converted_count) || 0,
         convertedRevenue: Number(row.converted_revenue) || 0,
         conversionRate:
@@ -289,6 +291,27 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers["x-api-key"] = apiKey;
+
+      // 1. Fast pre-check: verify if number exists on WhatsApp via WAHA
+      try {
+        const checkUrl = `${wahaUrl}/api/contacts/check-exists?phone=${rawPhone}&session=${activeSession}`;
+        const checkRes = await fetch(checkUrl, { headers, signal: AbortSignal.timeout(4000) }).catch(() => null);
+        if (checkRes && checkRes.ok) {
+          const checkJson = await checkRes.json().catch(() => null);
+          if (checkJson && checkJson.numberExists === false) {
+            await pool.query(
+              `UPDATE crm_reaktivasi_2025 
+               SET status = 'failed', notes = 'Nomor tidak terdaftar di WhatsApp', updated_at = now() 
+               WHERE phone = $1`,
+              [rawPhone]
+            );
+            await pool.end();
+            return { ok: false, reason: "no_whatsapp", message: "Nomor tidak terdaftar di WhatsApp" };
+          }
+        }
+      } catch (checkErr) {
+        // Continue to send if check fails
+      }
 
       const hasImage = !!(data.imageUrl && data.imageUrl.trim().startsWith("http"));
       let response: Response | null = null;
@@ -352,6 +375,26 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       if (!response || !response.ok) {
         const errBody = response ? await response.text().catch(() => "") : "Koneksi gateway terputus";
+        
+        // Auto-mark if number is not registered on WhatsApp
+        const isNotRegistered = 
+          errBody.includes("No LID for user") || 
+          errBody.includes("does not exist") || 
+          errBody.includes("not registered") ||
+          errBody.includes("invalid jid") ||
+          (response && response.status === 422);
+
+        if (isNotRegistered) {
+          await pool.query(
+            `UPDATE crm_reaktivasi_2025 
+             SET status = 'failed', notes = 'Nomor tidak terdaftar di WhatsApp', updated_at = now() 
+             WHERE phone = $1`,
+            [rawPhone]
+          );
+          await pool.end();
+          return { ok: false, reason: "no_whatsapp", message: "Nomor tidak terdaftar di WhatsApp" };
+        }
+
         throw new Error(`Gagal mengirim via WAHA: ${errBody.substring(0, 150)}`);
       }
 

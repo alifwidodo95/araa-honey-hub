@@ -56,7 +56,7 @@ function ReaktivasiPage() {
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "uncontacted" | "sent" | "converted">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "uncontacted" | "sent" | "failed" | "converted">("all");
   const [productFilter, setProductFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
@@ -263,6 +263,8 @@ function ReaktivasiPage() {
       list = list.filter((c: any) => c.status === "sent" || sessionSentMap[c.phone]);
     } else if (statusFilter === "converted") {
       list = list.filter((c: any) => c.has_converted === true);
+    } else if (statusFilter === "failed") {
+      list = list.filter((c: any) => c.status === "failed");
     }
 
     // Product filter
@@ -359,8 +361,14 @@ function ReaktivasiPage() {
             senderSession: selectedSenderSession,
           },
         });
-        setSessionSentMap((prev) => ({ ...prev, [c.phone]: true }));
-        successCount++;
+        if (sendRes && sendRes.ok) {
+          setSessionSentMap((prev) => ({ ...prev, [c.phone]: true }));
+          successCount++;
+          isSuccess = true;
+        } else {
+          failedCount++;
+          console.warn(`Reaktivasi bulk send skipped ${c.phone}: ${sendRes?.message || "Tidak ada WhatsApp"}`);
+        }
       } catch (err: any) {
         console.warn(`Reaktivasi bulk send error to ${c.phone}:`, err);
         failedCount++;
@@ -372,8 +380,9 @@ function ReaktivasiPage() {
         failedCount,
       }));
 
-      // Randomized safety delay based on user configured bulkDelaySeconds (default 60s / 1 menit)
-      if (i < total - 1 && !bulkAbortRef.current) {
+      // Randomized safety delay ONLY IF message was actually sent to a live WhatsApp user!
+      // If the number has no WhatsApp (dead number), skip delay immediately to save time!
+      if (isSuccess && i < total - 1 && !bulkAbortRef.current) {
         const baseDelay = Math.max(5, bulkDelaySeconds);
         const jitterRange = Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
         const jitter = Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
@@ -869,6 +878,15 @@ function ReaktivasiPage() {
                 <PartyPopper className="w-3 h-3 text-purple-400 mr-1" />
                 Comeback ({summary.convertedCount})
               </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === "failed" ? "default" : "ghost"}
+                onClick={() => { setStatusFilter("failed"); setCurrentPage(1); }}
+                className={`h-7 text-xs px-2.5 rounded-lg ${statusFilter === "failed" ? "bg-rose-600 text-white font-bold" : "text-rose-600 dark:text-rose-400"}`}
+              >
+                <X className="w-3 h-3 mr-1" />
+                Tidak Ada WA ({summary.failedCount || 0})
+              </Button>
             </div>
 
             {/* Product & Search Filters */}
@@ -1008,7 +1026,7 @@ function ReaktivasiPage() {
                         <TableCell className="text-center py-2.5">
                           <Checkbox
                             checked={isSelected}
-                            disabled={isSent || isConverted}
+                            disabled={isSent || isConverted || c.status === "failed"}
                             onCheckedChange={() => handleToggleSelectPhone(c.phone)}
                           />
                         </TableCell>
@@ -1049,6 +1067,16 @@ function ReaktivasiPage() {
                                   {formatDateIndo(c.sent_at)}
                                 </span>
                               )}
+                            </div>
+                          ) : c.status === "failed" ? (
+                            <div className="inline-flex flex-col items-center">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full" title={c.notes || "Nomor tidak terdaftar di WhatsApp"}>
+                                <X className="w-3 h-3" />
+                                Tidak Ada WA
+                              </span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                                Bukan nomor WA
+                              </span>
                             </div>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/80 px-2 py-0.5 rounded-full">
