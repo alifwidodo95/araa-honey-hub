@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, ShoppingCart, Package, ArrowLeftRight, Boxes, Wallet,
   Lock, Settings, LogOut, Moon, Sun, TrendingUp, Receipt, Megaphone, MessageSquare,
-  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3, ChevronDown, Sparkles
+  Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3, ChevronDown, Sparkles, Zap
 } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -89,6 +89,7 @@ const navStructure: NavEntry[] = [
       label: "Pemasaran & AI",
       icon: Megaphone,
       items: [
+        { to: "/scalev/leads", label: "Scalev Leads & Closing", icon: Zap },
         { to: "/media", label: "Media & Testimoni", icon: ImageIcon },
         { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone },
         { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },

@@ -28,6 +28,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as StokPindahWadahRouteImport } from './routes/stok.pindah-wadah'
 import { Route as StokKemasanRouteImport } from './routes/stok.kemasan'
 import { Route as StokBahanBakuRouteImport } from './routes/stok.bahan-baku'
+import { Route as ScalevLeadsRouteImport } from './routes/scalev.leads'
 import { Route as PengaturanWhatsappRouteImport } from './routes/pengaturan.whatsapp'
 import { Route as PengaturanStafRouteImport } from './routes/pengaturan.staf'
 import { Route as PengaturanProfilRouteImport } from './routes/pengaturan.profil'
@@ -35,6 +36,7 @@ import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumps
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
+import { Route as ApiScalevWebhookRouteImport } from './routes/api.scalev-webhook'
 import { Route as ApiLoyaltyStatsRouteImport } from './routes/api.loyalty-stats'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api.webhooks.whatsapp'
 import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
@@ -146,6 +148,11 @@ const StokBahanBakuRoute = StokBahanBakuRouteImport.update({
   path: '/stok/bahan-baku',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ScalevLeadsRoute = ScalevLeadsRouteImport.update({
+  id: '/scalev/leads',
+  path: '/scalev/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PengaturanWhatsappRoute = PengaturanWhatsappRouteImport.update({
   id: '/pengaturan/whatsapp',
   path: '/pengaturan/whatsapp',
@@ -179,6 +186,11 @@ const ApiWahaProxyRoute = ApiWahaProxyRouteImport.update({
 const ApiTelegramWebhookRoute = ApiTelegramWebhookRouteImport.update({
   id: '/api/telegram-webhook',
   path: '/api/telegram-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiScalevWebhookRoute = ApiScalevWebhookRouteImport.update({
+  id: '/api/scalev-webhook',
+  path: '/api/scalev-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiLoyaltyStatsRoute = ApiLoyaltyStatsRouteImport.update({
@@ -276,6 +288,7 @@ export interface FileRoutesByFullPath {
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
+  '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -283,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/pengaturan/profil': typeof PengaturanProfilRoute
   '/pengaturan/staf': typeof PengaturanStafRoute
   '/pengaturan/whatsapp': typeof PengaturanWhatsappRoute
+  '/scalev/leads': typeof ScalevLeadsRoute
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
@@ -319,6 +333,7 @@ export interface FileRoutesByTo {
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
+  '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -326,6 +341,7 @@ export interface FileRoutesByTo {
   '/pengaturan/profil': typeof PengaturanProfilRoute
   '/pengaturan/staf': typeof PengaturanStafRoute
   '/pengaturan/whatsapp': typeof PengaturanWhatsappRoute
+  '/scalev/leads': typeof ScalevLeadsRoute
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
@@ -363,6 +379,7 @@ export interface FileRoutesById {
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
+  '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
@@ -370,6 +387,7 @@ export interface FileRoutesById {
   '/pengaturan/profil': typeof PengaturanProfilRoute
   '/pengaturan/staf': typeof PengaturanStafRoute
   '/pengaturan/whatsapp': typeof PengaturanWhatsappRoute
+  '/scalev/leads': typeof ScalevLeadsRoute
   '/stok/bahan-baku': typeof StokBahanBakuRoute
   '/stok/kemasan': typeof StokKemasanRoute
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
@@ -408,6 +426,7 @@ export interface FileRouteTypes {
     | '/retur'
     | '/whatsapp-ai'
     | '/api/loyalty-stats'
+    | '/api/scalev-webhook'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -415,6 +434,7 @@ export interface FileRouteTypes {
     | '/pengaturan/profil'
     | '/pengaturan/staf'
     | '/pengaturan/whatsapp'
+    | '/scalev/leads'
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
@@ -451,6 +471,7 @@ export interface FileRouteTypes {
     | '/retur'
     | '/whatsapp-ai'
     | '/api/loyalty-stats'
+    | '/api/scalev-webhook'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -458,6 +479,7 @@ export interface FileRouteTypes {
     | '/pengaturan/profil'
     | '/pengaturan/staf'
     | '/pengaturan/whatsapp'
+    | '/scalev/leads'
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
@@ -494,6 +516,7 @@ export interface FileRouteTypes {
     | '/retur'
     | '/whatsapp-ai'
     | '/api/loyalty-stats'
+    | '/api/scalev-webhook'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
     | '/pengaturan/harga'
@@ -501,6 +524,7 @@ export interface FileRouteTypes {
     | '/pengaturan/profil'
     | '/pengaturan/staf'
     | '/pengaturan/whatsapp'
+    | '/scalev/leads'
     | '/stok/bahan-baku'
     | '/stok/kemasan'
     | '/stok/pindah-wadah'
@@ -538,6 +562,7 @@ export interface RootRouteChildren {
   ReturRoute: typeof ReturRoute
   WhatsappAiRoute: typeof WhatsappAiRoute
   ApiLoyaltyStatsRoute: typeof ApiLoyaltyStatsRoute
+  ApiScalevWebhookRoute: typeof ApiScalevWebhookRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
   ApiWahaProxyRoute: typeof ApiWahaProxyRoute
   PengaturanHargaRoute: typeof PengaturanHargaRoute
@@ -545,6 +570,7 @@ export interface RootRouteChildren {
   PengaturanProfilRoute: typeof PengaturanProfilRoute
   PengaturanStafRoute: typeof PengaturanStafRoute
   PengaturanWhatsappRoute: typeof PengaturanWhatsappRoute
+  ScalevLeadsRoute: typeof ScalevLeadsRoute
   StokBahanBakuRoute: typeof StokBahanBakuRoute
   StokKemasanRoute: typeof StokKemasanRoute
   StokPindahWadahRoute: typeof StokPindahWadahRoute
@@ -699,6 +725,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StokBahanBakuRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/scalev/leads': {
+      id: '/scalev/leads'
+      path: '/scalev/leads'
+      fullPath: '/scalev/leads'
+      preLoaderRoute: typeof ScalevLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pengaturan/whatsapp': {
       id: '/pengaturan/whatsapp'
       path: '/pengaturan/whatsapp'
@@ -746,6 +779,13 @@ declare module '@tanstack/react-router' {
       path: '/api/telegram-webhook'
       fullPath: '/api/telegram-webhook'
       preLoaderRoute: typeof ApiTelegramWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/scalev-webhook': {
+      id: '/api/scalev-webhook'
+      path: '/api/scalev-webhook'
+      fullPath: '/api/scalev-webhook'
+      preLoaderRoute: typeof ApiScalevWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/loyalty-stats': {
@@ -874,6 +914,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReturRoute: ReturRoute,
   WhatsappAiRoute: WhatsappAiRoute,
   ApiLoyaltyStatsRoute: ApiLoyaltyStatsRoute,
+  ApiScalevWebhookRoute: ApiScalevWebhookRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
   ApiWahaProxyRoute: ApiWahaProxyRoute,
   PengaturanHargaRoute: PengaturanHargaRoute,
@@ -881,6 +922,7 @@ const rootRouteChildren: RootRouteChildren = {
   PengaturanProfilRoute: PengaturanProfilRoute,
   PengaturanStafRoute: PengaturanStafRoute,
   PengaturanWhatsappRoute: PengaturanWhatsappRoute,
+  ScalevLeadsRoute: ScalevLeadsRoute,
   StokBahanBakuRoute: StokBahanBakuRoute,
   StokKemasanRoute: StokKemasanRoute,
   StokPindahWadahRoute: StokPindahWadahRoute,
