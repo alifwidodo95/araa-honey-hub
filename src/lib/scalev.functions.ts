@@ -515,3 +515,102 @@ export const saveScalevConfig = createServerFn({ method: "POST" })
       throw new Error(err.message || "Gagal menyimpan konfigurasi Scalev");
     }
   });
+
+// 7. Manual Toggle Closing for a Lead (With optional Order linking)
+export const manualToggleScalevClosing = createServerFn({ method: "POST" })
+  .validator((data: {
+    leadId: string;
+    isClosed: boolean;
+    orderId?: string | null;
+  }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      if (data.isClosed) {
+        let closedAt = new Date().toISOString();
+        let matchedOrderId = data.orderId || null;
+
+        if (matchedOrderId) {
+          const orderRes = await pool.query(
+            "SELECT id, created_at, subtotal_gross FROM orders WHERE id = $1",
+            [matchedOrderId]
+          );
+          if (orderRes.rowCount && orderRes.rowCount > 0) {
+            closedAt = orderRes.rows[0].created_at;
+          }
+        }
+
+        await pool.query(
+          `UPDATE scalev_leads 
+           SET is_closed = true, 
+               matched_order_id = $1, 
+               closed_at = $2, 
+               updated_at = now() 
+           WHERE id = $3`,
+          [matchedOrderId, closedAt, data.leadId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE scalev_leads 
+           SET is_closed = false, 
+               matched_order_id = null, 
+               closed_at = null, 
+               updated_at = now() 
+           WHERE id = $1`,
+          [data.leadId]
+        );
+      }
+
+      await pool.end();
+      return { ok: true };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[manualToggleScalevClosing Error]:", err);
+      throw new Error(err.message || "Gagal memperbarui status closing lead");
+    }
+  });
+
+// 8. Search Orders in Penjualan to Link with a Lead
+export const searchOrdersForLinking = createServerFn({ method: "GET" })
+  .validator((data?: { query?: string }) => data || {})
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      const q = (data?.query || "").trim();
+      let querySql: string;
+      let params: any[] = [];
+
+      if (q) {
+        params.push(`%${q.toLowerCase()}%`);
+        querySql = `
+          SELECT id, customer_name, customer_phone, tracking_number, subtotal_gross, created_at
+          FROM orders
+          WHERE LOWER(customer_name) LIKE $1 
+             OR customer_phone LIKE $1 
+             OR LOWER(COALESCE(tracking_number, '')) LIKE $1
+          ORDER BY created_at DESC
+          LIMIT 15
+        `;
+      } else {
+        querySql = `
+          SELECT id, customer_name, customer_phone, tracking_number, subtotal_gross, created_at
+          FROM orders
+          ORDER BY created_at DESC
+          LIMIT 15
+        `;
+      }
+
+      const res = await pool.query(querySql, params);
+      await pool.end();
+      return res.rows || [];
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[searchOrdersForLinking Error]:", err);
+      return [];
+    }
+  });
+

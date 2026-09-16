@@ -26,7 +26,9 @@ import {
   syncScalevHistory,
   sendScalevFollowUpWhatsApp,
   getScalevConfig,
-  saveScalevConfig
+  saveScalevConfig,
+  manualToggleScalevClosing,
+  searchOrdersForLinking
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 
@@ -88,6 +90,11 @@ export function ScalevLeadsPage() {
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
   const [customMessage, setCustomMessage] = useState("");
+
+  // Manual Closing Modal State
+  const [manualClosingLead, setManualClosingLead] = useState<any | null>(null);
+  const [searchOrderQuery, setSearchOrderQuery] = useState("");
+  const [selectedOrderToLink, setSelectedOrderToLink] = useState<any | null>(null);
 
   // Config Form State
   const [configForm, setConfigForm] = useState({
@@ -239,6 +246,67 @@ export function ScalevLeadsPage() {
       toast.error(err.message || "Gagal menyimpan konfigurasi.");
     },
   });
+
+  // Query: Search Orders for Linking
+  const { data: searchOrderResults, isLoading: isSearchingOrders } = useQuery({
+    queryKey: ["search-orders-linking", searchOrderQuery],
+    queryFn: () => searchOrdersForLinking({ data: { query: searchOrderQuery } }),
+    enabled: !!manualClosingLead,
+  });
+
+  // Mutation: Manual Closing Toggle
+  const manualClosingMutation = useMutation({
+    mutationFn: (payload: { leadId: string; isClosed: boolean; orderId?: string | null }) =>
+      manualToggleScalevClosing({ data: payload }),
+    onSuccess: (_, variables) => {
+      toast.success(
+        variables.isClosed
+          ? "✅ Lead berhasil ditandai Closing (Won)!"
+          : "Status lead dikembalikan ke Belum Closing."
+      );
+      setManualClosingLead(null);
+      setSelectedOrderToLink(null);
+      refetchMetrics();
+      refetchLeads();
+      queryClient.invalidateQueries({ queryKey: ["scalev-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["scalev-leads"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Gagal mengubah status closing lead.");
+    },
+  });
+
+  const handleOpenManualClosing = (lead: any) => {
+    setManualClosingLead(lead);
+    setSearchOrderQuery(lead.customer_name || "");
+    setSelectedOrderToLink(null);
+  };
+
+  const handleQuickMarkWon = () => {
+    if (!manualClosingLead) return;
+    manualClosingMutation.mutate({
+      leadId: manualClosingLead.id,
+      isClosed: true,
+      orderId: null,
+    });
+  };
+
+  const handleLinkOrderAndMarkWon = () => {
+    if (!manualClosingLead || !selectedOrderToLink) return;
+    manualClosingMutation.mutate({
+      leadId: manualClosingLead.id,
+      isClosed: true,
+      orderId: selectedOrderToLink.id,
+    });
+  };
+
+  const handleCancelClosing = () => {
+    if (!manualClosingLead) return;
+    manualClosingMutation.mutate({
+      leadId: manualClosingLead.id,
+      isClosed: false,
+    });
+  };
 
   // Open Follow-up modal with personalized template
   const handleOpenFollowUp = (lead: any) => {
@@ -660,15 +728,41 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                         {/* Status Closing CS */}
                         <TableCell>
                           {isClosed ? (
-                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle2 className="w-4 h-4 shrink-0" />
-                              <span className="text-xs font-semibold">Closing (Won)</span>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenManualClosing(lead)}
+                              className="group flex items-center gap-1.5 text-left rounded-md px-2 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
+                              title="Klik untuk melihat detail atau batalkan closing"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                Closing (Won)
+                              </span>
+                              {lead.matched_order_id ? (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-mono">
+                                  Auto
+                                </span>
+                              ) : (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
+                                  Manual
+                                </span>
+                              )}
+                            </button>
                           ) : (
-                            <div className="flex items-center gap-1.5 text-rose-500 dark:text-rose-400">
-                              <AlertCircle className="w-4 h-4 shrink-0" />
-                              <span className="text-xs font-medium">Belum Closing</span>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenManualClosing(lead)}
+                              className="group flex items-center gap-1.5 text-left rounded-md px-2 py-1 bg-rose-50 hover:bg-emerald-50 dark:bg-rose-950/30 dark:hover:bg-emerald-950/40 border border-rose-200 hover:border-emerald-300 dark:border-rose-900/40 dark:hover:border-emerald-800 transition-all cursor-pointer"
+                              title="Klik untuk tandai Closing manual (jika no HP di WA beda)"
+                            >
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 group-hover:text-emerald-600 shrink-0 transition-colors" />
+                              <span className="text-xs font-medium text-rose-600 dark:text-rose-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                                Belum Closing
+                              </span>
+                              <span className="text-[10px] text-muted-foreground group-hover:text-emerald-600 group-hover:font-semibold transition-colors">
+                                ✎
+                              </span>
+                            </button>
                           )}
                         </TableCell>
 
@@ -1085,6 +1179,164 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                 <CheckCircle2 className="w-4 h-4" />
               )}
               <span>Simpan Konfigurasi</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Manual Closing / Link Order */}
+      <Dialog open={!!manualClosingLead} onOpenChange={(open) => !open && setManualClosingLead(null)}>
+        <DialogContent className="max-w-md sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-emerald-600" />
+              Kelola Status Closing Lead
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Tandai lead ini sebagai Closing (Won) jika konsumen memesan lewat chat WA dengan nomor HP yang berbeda.
+            </DialogDescription>
+          </DialogHeader>
+
+          {manualClosingLead && (
+            <div className="space-y-4 my-2 text-xs">
+              {/* Card Info Lead */}
+              <div className="p-3 rounded-xl bg-muted/60 border border-border space-y-1">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">{manualClosingLead.customer_name || "Pelanggan Scalev"}</p>
+                    <p className="font-mono text-muted-foreground">{manualClosingLead.customer_phone}</p>
+                  </div>
+                  <Badge variant={manualClosingLead.is_closed ? "default" : "outline"} className={`text-[10px] ${manualClosingLead.is_closed ? "bg-emerald-600 text-white" : "border-rose-300 text-rose-600"}`}>
+                    {manualClosingLead.is_closed ? "Closing (Won)" : "Belum Closing"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between text-muted-foreground pt-1.5 border-t border-border/50 text-[11px]">
+                  <span>Produk: <strong className="text-foreground">{manualClosingLead.product_name || "Madu Araa"}</strong></span>
+                  <span>Nominal: <strong className="text-emerald-600 font-semibold">{formatIDR(manualClosingLead.gross_revenue || 0)}</strong></span>
+                </div>
+              </div>
+
+              {/* If already closed */}
+              {manualClosingLead.is_closed ? (
+                <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/60 dark:bg-rose-950/20 space-y-2">
+                  <p className="font-medium text-rose-700 dark:text-rose-300">
+                    Lead ini saat ini tercatat sebagai <strong>Closing (Won)</strong>.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Jika pesanan ini batal atau salah tandai, Kakak bisa mengembalikannya ke status Belum Closing.
+                  </p>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleCancelClosing}
+                    disabled={manualClosingMutation.isPending}
+                    className="w-full h-8 text-xs font-semibold gap-1.5"
+                  >
+                    {manualClosingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                    Batalkan Status Closing (Kembalikan ke Belum Closing)
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Option 1: 1-Click Fast Closing */}
+                  <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">Opsi 1: Closing Cepat (1-Klik)</span>
+                      <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold">Rekomendasi</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Langsung tandai Closing tanpa perlu mencari faktur penjualan. Nominal Rp {formatIDR(manualClosingLead.gross_revenue || 0)} akan otomatis terhitung ke omzet closing hari ini.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={handleQuickMarkWon}
+                      disabled={manualClosingMutation.isPending}
+                      className="w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5"
+                    >
+                      {manualClosingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      Tandai Closing (Won) Langsung
+                    </Button>
+                  </div>
+
+                  {/* Option 2: Link to Order in Penjualan */}
+                  <div className="p-3 rounded-xl border border-border bg-card space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-foreground">Opsi 2: Tautkan ke Faktur Penjualan CS</span>
+                      <span className="text-[10px] text-muted-foreground">Jika No. HP di WA Beda</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Cari faktur order di bagian Penjualan yang dibuat oleh CS untuk konsumen ini:
+                    </p>
+
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                      <Input
+                        value={searchOrderQuery}
+                        onChange={(e) => setSearchOrderQuery(e.target.value)}
+                        placeholder="Ketik nama pembeli, no HP di WA, atau no resi..."
+                        className="h-8 pl-8 text-xs"
+                      />
+                    </div>
+
+                    {/* Order Search Results */}
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-border/40 rounded-lg p-1">
+                      {isSearchingOrders ? (
+                        <div className="py-4 text-center text-muted-foreground text-xs flex items-center justify-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Mencari faktur penjualan...
+                        </div>
+                      ) : (searchOrderResults || []).length === 0 ? (
+                        <div className="py-3 text-center text-muted-foreground text-[11px]">
+                          Tidak ada pesanan penjualan yang cocok dengan kata kunci &quot;{searchOrderQuery}&quot;.
+                        </div>
+                      ) : (
+                        (searchOrderResults || []).map((ord: any) => {
+                          const isSelected = selectedOrderToLink?.id === ord.id;
+                          return (
+                            <div
+                              key={ord.id}
+                              onClick={() => setSelectedOrderToLink(ord)}
+                              className={`p-2 rounded-md border cursor-pointer transition-colors flex items-center justify-between text-xs ${
+                                isSelected
+                                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40"
+                                  : "border-border/60 hover:bg-muted/40"
+                              }`}
+                            >
+                              <div>
+                                <p className="font-semibold text-foreground">{ord.customer_name || "Tanpa Nama"}</p>
+                                <p className="text-[11px] text-muted-foreground font-mono">
+                                  {ord.customer_phone || "-"} {ord.tracking_number ? `• Resi: ${ord.tracking_number}` : ""}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-emerald-600">{formatIDR(ord.subtotal_gross || 0)}</p>
+                                <p className="text-[10px] text-muted-foreground">{formatDateIndo(ord.created_at)}</p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {selectedOrderToLink && (
+                      <Button
+                        size="sm"
+                        onClick={handleLinkOrderAndMarkWon}
+                        disabled={manualClosingMutation.isPending}
+                        className="w-full h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold gap-1.5 mt-1"
+                      >
+                        {manualClosingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                        Tautkan Faktur Ini & Tandai Closing
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setManualClosingLead(null)}>
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>
