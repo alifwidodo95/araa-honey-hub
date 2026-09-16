@@ -647,13 +647,13 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
             <Table>
               <TableHeader className="bg-muted/40">
                 <TableRow>
-                  <TableHead className="w-40 text-xs font-semibold">Waktu Masuk</TableHead>
-                  <TableHead className="text-xs font-semibold">Pelanggan & Kontak</TableHead>
+                  <TableHead className="w-36 text-xs font-semibold">Waktu Masuk</TableHead>
+                  <TableHead className="w-52 text-xs font-semibold">Pelanggan & Kontak</TableHead>
                   <TableHead className="text-xs font-semibold">Produk & Nominal</TableHead>
-                  <TableHead className="text-xs font-semibold">Status Scalev</TableHead>
-                  <TableHead className="text-xs font-semibold">Pencocokan CS</TableHead>
-                  <TableHead className="text-xs font-semibold">Status Follow Up</TableHead>
-                  <TableHead className="text-right text-xs font-semibold pr-6">Aksi Cepat</TableHead>
+                  <TableHead className="w-28 text-center text-xs font-semibold">Status Scalev</TableHead>
+                  <TableHead className="w-40 text-center text-xs font-semibold">Pencocokan CS</TableHead>
+                  <TableHead className="w-32 text-center text-xs font-semibold">Follow Up</TableHead>
+                  <TableHead className="w-36 text-right text-xs font-semibold pr-6">Aksi Cepat</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -708,7 +708,7 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
 
                         {/* Produk & Nilai */}
                         <TableCell>
-                          <div className="flex flex-col max-w-[220px]">
+                          <div className="flex flex-col max-w-[240px]">
                             <span className="text-xs text-foreground font-medium truncate" title={lead.product_name}>
                               {lead.product_name || "Madu Araa Murni"}
                             </span>
@@ -719,31 +719,29 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                         </TableCell>
 
                         {/* Status Scalev */}
-                        <TableCell>
+                        <TableCell className="text-center">
                           <Badge variant="outline" className="text-[11px] font-normal capitalize">
                             {lead.scalev_status || "draft"}
                           </Badge>
                         </TableCell>
 
                         {/* Status Closing CS */}
-                        <TableCell>
+                        <TableCell className="text-center">
                           {isClosed ? (
                             <button
                               type="button"
                               onClick={() => handleOpenManualClosing(lead)}
-                              className="group inline-flex items-center gap-1.5 text-left rounded-lg px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 transition-all cursor-pointer shadow-xs"
-                              title="Klik untuk melihat detail atau batalkan status closing"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100/90 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-xs"
+                              title="Klik untuk melihat detail atau membatalkan status closing"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                                Closing (Won)
-                              </span>
+                              <span>Closing (Won)</span>
                               {lead.matched_order_id ? (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-mono">
+                                <span className="text-[9px] px-1 rounded bg-emerald-200/80 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-mono">
                                   Auto
                                 </span>
                               ) : (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
+                                <span className="text-[9px] px-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
                                   Manual
                                 </span>
                               )}
@@ -752,33 +750,28 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                             <button
                               type="button"
                               onClick={() => handleOpenManualClosing(lead)}
-                              className="group inline-flex items-center gap-1.5 text-left rounded-lg px-2.5 py-1 bg-rose-50 hover:bg-rose-100/80 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 border border-rose-300 hover:border-rose-400 dark:border-rose-800 transition-all cursor-pointer shadow-xs"
-                              title="Klik di sini untuk mengubah jadi Closing (Won)"
+                              className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50/90 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300 border border-rose-200 hover:border-rose-300 dark:border-rose-900/50 text-xs font-medium transition-all cursor-pointer whitespace-nowrap shadow-xs"
+                              title="Klik untuk mengubah status jadi Closing (Won)"
                             >
-                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                              <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">
-                                Belum Closing
-                              </span>
-                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-200/80 dark:bg-rose-900 text-rose-800 dark:text-rose-200 font-medium group-hover:bg-rose-300">
-                                Ubah ✎
-                              </span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 group-hover:scale-125 transition-transform" />
+                              <span>Belum Closing</span>
                             </button>
                           )}
                         </TableCell>
 
                         {/* Status Follow Up */}
-                        <TableCell>
+                        <TableCell className="text-center">
                           {hasFollowedUp ? (
-                            <div className="flex flex-col">
-                              <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border-blue-500/20 text-[10px] w-fit">
-                                Ter-Follow Up ({lead.follow_up_count || 1}x)
+                            <div className="flex flex-col items-center">
+                              <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border-blue-500/20 text-[10px] whitespace-nowrap">
+                                Ter-FU ({lead.follow_up_count || 1}x)
                               </Badge>
-                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                              <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
                                 {formatDateIndo(lead.followed_up_at)}
                               </span>
                             </div>
                           ) : (
-                            <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground">
+                            <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
                               Belum FU
                             </Badge>
                           )}
@@ -787,30 +780,14 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                         {/* Aksi */}
                         <TableCell className="text-right pr-6">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* Tombol Cepat Kelola Closing */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleOpenManualClosing(lead)}
-                              className={`h-7 text-xs px-2 gap-1 font-medium ${
-                                isClosed
-                                  ? "text-emerald-700 border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 dark:text-emerald-300 dark:border-emerald-800 dark:bg-emerald-950/30"
-                                  : "text-amber-700 border-amber-300 bg-amber-50/60 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/30"
-                              }`}
-                              title="Ubah status closing lead ini"
-                            >
-                              <CheckSquare className="w-3 h-3" />
-                              <span>{isClosed ? "Closing ✓" : "Set Closing"}</span>
-                            </Button>
-
                             {/* Follow Up Dialog Button */}
                             <Button
                               size="sm"
                               variant={isClosed ? "outline" : "default"}
                               onClick={() => handleOpenFollowUp(lead)}
-                              className={`h-7 text-xs px-2.5 gap-1 ${
+                              className={`h-7 text-xs px-2.5 gap-1.5 whitespace-nowrap font-medium ${
                                 !isClosed
-                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                                   : "text-muted-foreground"
                               }`}
                             >
@@ -823,7 +800,7 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                               href={`https://wa.me/${cleanPhone}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
                               title="Buka Chat di WhatsApp Web"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
