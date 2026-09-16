@@ -46,6 +46,7 @@ import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply
 import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.reply-all-unreplied'
 import { Route as ApiMediaUploadRouteImport } from './routes/api.media.upload'
 import { Route as ApiMediaDeleteRouteImport } from './routes/api.media.delete'
+import { Route as ApiCronSyncScalevRouteImport } from './routes/api.cron.sync-scalev'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 import { Route as ApiCronSendCrmRemindersRouteImport } from './routes/api.cron.send-crm-reminders'
@@ -239,6 +240,11 @@ const ApiMediaDeleteRoute = ApiMediaDeleteRouteImport.update({
   path: '/api/media/delete',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSyncScalevRoute = ApiCronSyncScalevRouteImport.update({
+  id: '/api/cron/sync-scalev',
+  path: '/api/cron/sync-scalev',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronSyncMetaAdsRoute = ApiCronSyncMetaAdsRouteImport.update({
   id: '/api/cron/sync-meta-ads',
   path: '/api/cron/sync-meta-ads',
@@ -306,6 +312,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/cron/sync-scalev': typeof ApiCronSyncScalevRoute
   '/api/media/delete': typeof ApiMediaDeleteRoute
   '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -351,6 +358,7 @@ export interface FileRoutesByTo {
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/cron/sync-scalev': typeof ApiCronSyncScalevRoute
   '/api/media/delete': typeof ApiMediaDeleteRoute
   '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -397,6 +405,7 @@ export interface FileRoutesById {
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
+  '/api/cron/sync-scalev': typeof ApiCronSyncScalevRoute
   '/api/media/delete': typeof ApiMediaDeleteRoute
   '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -444,6 +453,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/cron/sync-scalev'
     | '/api/media/delete'
     | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
@@ -489,6 +499,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/cron/sync-scalev'
     | '/api/media/delete'
     | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
@@ -534,6 +545,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
+    | '/api/cron/sync-scalev'
     | '/api/media/delete'
     | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
@@ -580,6 +592,7 @@ export interface RootRouteChildren {
   ApiCronSendCrmRemindersRoute: typeof ApiCronSendCrmRemindersRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
+  ApiCronSyncScalevRoute: typeof ApiCronSyncScalevRoute
   ApiMediaDeleteRoute: typeof ApiMediaDeleteRoute
   ApiMediaUploadRoute: typeof ApiMediaUploadRoute
   ApiMetaReplyAllUnrepliedRoute: typeof ApiMetaReplyAllUnrepliedRoute
@@ -851,6 +864,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMediaDeleteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/sync-scalev': {
+      id: '/api/cron/sync-scalev'
+      path: '/api/cron/sync-scalev'
+      fullPath: '/api/cron/sync-scalev'
+      preLoaderRoute: typeof ApiCronSyncScalevRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/sync-meta-ads': {
       id: '/api/cron/sync-meta-ads'
       path: '/api/cron/sync-meta-ads'
@@ -932,6 +952,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronSendCrmRemindersRoute: ApiCronSendCrmRemindersRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
+  ApiCronSyncScalevRoute: ApiCronSyncScalevRoute,
   ApiMediaDeleteRoute: ApiMediaDeleteRoute,
   ApiMediaUploadRoute: ApiMediaUploadRoute,
   ApiMetaReplyAllUnrepliedRoute: ApiMetaReplyAllUnrepliedRoute,
