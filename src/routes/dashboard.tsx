@@ -10,9 +10,18 @@ import { AlertTriangle, Droplet, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
 
+const toLocalISOString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 function DashboardPage() {
   const { role, hasPermission } = useAuth();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalISOString(new Date());
+  const startIso = `${today}T00:00:00Z`;
+  const endIso = `${today}T23:59:59Z`;
 
   const { data: alerts } = useQuery({
     queryKey: ["unresolved-alerts"],
@@ -37,13 +46,36 @@ function DashboardPage() {
   });
 
   const { data: ordersToday } = useQuery({
-    queryKey: ["orders-today"],
-    queryFn: async () =>
-      (await supabase.from("orders").select("subtotal_gross,net_revenue,created_at").eq("returned", false).gte("created_at", `${today}T00:00:00Z`)).data ?? [],
+    queryKey: ["orders-today", today],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("subtotal_gross, amount_received, net_revenue, cogs_total, created_at")
+        .eq("returned", false)
+        .gte("created_at", startIso)
+        .lte("created_at", endIso);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: opexToday } = useQuery({
+    queryKey: ["dashboard-opex-today", today],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("expenses_business")
+        .select("amount, category")
+        .gte("expense_date", today)
+        .lte("expense_date", today);
+      if (error) throw error;
+      return (data ?? [])
+        .filter((e: any) => e.category !== "packaging_purchase")
+        .reduce((s: number, e: any) => s + Number(e.amount), 0);
+    },
   });
 
   const { data: honeyToday } = useQuery({
-    queryKey: ["honey-today"],
+    queryKey: ["honey-today", today],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
@@ -55,7 +87,8 @@ function DashboardPage() {
           )
         `)
         .eq("returned", false)
-        .gte("created_at", `${today}T00:00:00Z`);
+        .gte("created_at", startIso)
+        .lte("created_at", endIso);
       if (error) throw error;
       
       const totals: Record<string, number> = {};
@@ -74,12 +107,17 @@ function DashboardPage() {
     queryKey: ["sales-trend"],
     queryFn: async () => {
       const since = new Date(Date.now() - 14 * 86400000).toISOString();
-      const { data } = await supabase.from("orders").select("created_at,net_revenue,cogs_total").eq("returned", false).gte("created_at", since);
+      const { data } = await supabase
+        .from("orders")
+        .select("created_at, net_revenue, cogs_total, subtotal_gross, amount_received")
+        .eq("returned", false)
+        .gte("created_at", since);
       const map: Record<string, { date: string; omzet: number; laba: number }> = {};
       (data ?? []).forEach((o: any) => {
         const d = o.created_at.slice(0, 10);
         if (!map[d]) map[d] = { date: d, omzet: 0, laba: 0 };
-        map[d].omzet += Number(o.net_revenue);
+        const gross = Number(o.amount_received !== null && o.amount_received !== undefined ? o.amount_received : o.subtotal_gross);
+        map[d].omzet += gross;
         map[d].laba += Number(o.net_revenue) - Number(o.cogs_total);
       });
       return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
@@ -117,8 +155,12 @@ function DashboardPage() {
     },
   });
 
-  const omzetToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.subtotal_gross), 0);
-  const netToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.net_revenue), 0);
+  const omzetToday = (ordersToday ?? []).reduce(
+    (s, o: any) => s + Number(o.amount_received !== null && o.amount_received !== undefined ? o.amount_received : o.subtotal_gross),
+    0
+  );
+  const cogsToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.cogs_total || 0), 0);
+  const netProfitToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.net_revenue || 0), 0) - cogsToday - Number(opexToday || 0);
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -157,7 +199,12 @@ function DashboardPage() {
         {hasPermission("keuangan") ? (
           <>
             <MetricCard label="Omzet Hari Ini" value={formatIDR(omzetToday)} />
-            <MetricCard label="Pendapatan Bersih" value={formatIDR(netToday)} accent />
+            <MetricCard 
+              label="Laba Bersih" 
+              value={formatIDR(netProfitToday)} 
+              subValue="Setelah HPP & Operasional"
+              accent 
+            />
           </>
         ) : (
           <>
