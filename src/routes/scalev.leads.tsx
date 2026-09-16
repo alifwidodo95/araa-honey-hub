@@ -52,15 +52,21 @@ function formatDateIndo(dateStr?: string | null) {
   }
 }
 
+function getLocalDateString(d: Date = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getTodayString() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return getLocalDateString(new Date());
 }
 
 function getNDaysAgoString(days: number) {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return getLocalDateString(d);
 }
 
 export function ScalevLeadsPage() {

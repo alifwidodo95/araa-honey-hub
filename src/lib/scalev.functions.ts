@@ -22,6 +22,18 @@ function getPhoneVariants(phone: string): string[] {
   return Array.from(new Set([norm, zero, phone]));
 }
 
+function formatWibFilterStart(dateStr: string): string {
+  const clean = dateStr.trim();
+  if (clean.includes("T") || clean.includes("+")) return clean;
+  return `${clean} 00:00:00+07`;
+}
+
+function formatWibFilterEnd(dateStr: string): string {
+  const clean = dateStr.trim();
+  if (clean.includes("T") || clean.includes("+")) return clean;
+  return `${clean} 23:59:59.999+07`;
+}
+
 // 1. Get Scalev Lead Metrics & Closing Rate
 export const getScalevMetrics = createServerFn({ method: "GET" })
   .validator((data?: { startDate?: string; endDate?: string }) => data || {})
@@ -34,11 +46,11 @@ export const getScalevMetrics = createServerFn({ method: "GET" })
       const params: any[] = [];
 
       if (data.startDate) {
-        params.push(data.startDate + " 00:00:00");
+        params.push(formatWibFilterStart(data.startDate));
         whereClause += ` AND created_at >= $${params.length}`;
       }
       if (data.endDate) {
-        params.push(data.endDate + " 23:59:59");
+        params.push(formatWibFilterEnd(data.endDate));
         whereClause += ` AND created_at <= $${params.length}`;
       }
 
@@ -111,12 +123,12 @@ export const getScalevLeads = createServerFn({ method: "GET" })
       }
 
       if (data.startDate) {
-        params.push(data.startDate + " 00:00:00");
+        params.push(formatWibFilterStart(data.startDate));
         whereClauses.push(`created_at >= $${params.length}`);
       }
 
       if (data.endDate) {
-        params.push(data.endDate + " 23:59:59");
+        params.push(formatWibFilterEnd(data.endDate));
         whereClauses.push(`created_at <= $${params.length}`);
       }
 
