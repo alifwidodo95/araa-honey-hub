@@ -731,8 +731,8 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                             <button
                               type="button"
                               onClick={() => handleOpenManualClosing(lead)}
-                              className="group flex items-center gap-1.5 text-left rounded-md px-2 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
-                              title="Klik untuk melihat detail atau batalkan closing"
+                              className="group inline-flex items-center gap-1.5 text-left rounded-lg px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 transition-all cursor-pointer shadow-xs"
+                              title="Klik untuk melihat detail atau batalkan status closing"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                               <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
@@ -752,15 +752,15 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                             <button
                               type="button"
                               onClick={() => handleOpenManualClosing(lead)}
-                              className="group flex items-center gap-1.5 text-left rounded-md px-2 py-1 bg-rose-50 hover:bg-emerald-50 dark:bg-rose-950/30 dark:hover:bg-emerald-950/40 border border-rose-200 hover:border-emerald-300 dark:border-rose-900/40 dark:hover:border-emerald-800 transition-all cursor-pointer"
-                              title="Klik untuk tandai Closing manual (jika no HP di WA beda)"
+                              className="group inline-flex items-center gap-1.5 text-left rounded-lg px-2.5 py-1 bg-rose-50 hover:bg-rose-100/80 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 border border-rose-300 hover:border-rose-400 dark:border-rose-800 transition-all cursor-pointer shadow-xs"
+                              title="Klik di sini untuk mengubah jadi Closing (Won)"
                             >
-                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 group-hover:text-emerald-600 shrink-0 transition-colors" />
-                              <span className="text-xs font-medium text-rose-600 dark:text-rose-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                              <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">
                                 Belum Closing
                               </span>
-                              <span className="text-[10px] text-muted-foreground group-hover:text-emerald-600 group-hover:font-semibold transition-colors">
-                                ✎
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-200/80 dark:bg-rose-900 text-rose-800 dark:text-rose-200 font-medium group-hover:bg-rose-300">
+                                Ubah ✎
                               </span>
                             </button>
                           )}
@@ -787,6 +787,22 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                         {/* Aksi */}
                         <TableCell className="text-right pr-6">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Tombol Cepat Kelola Closing */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenManualClosing(lead)}
+                              className={`h-7 text-xs px-2 gap-1 font-medium ${
+                                isClosed
+                                  ? "text-emerald-700 border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 dark:text-emerald-300 dark:border-emerald-800 dark:bg-emerald-950/30"
+                                  : "text-amber-700 border-amber-300 bg-amber-50/60 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-800 dark:bg-amber-950/30"
+                              }`}
+                              title="Ubah status closing lead ini"
+                            >
+                              <CheckSquare className="w-3 h-3" />
+                              <span>{isClosed ? "Closing ✓" : "Set Closing"}</span>
+                            </Button>
+
                             {/* Follow Up Dialog Button */}
                             <Button
                               size="sm"
