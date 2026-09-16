@@ -194,7 +194,7 @@ export const runAutoMatchScalev = createServerFn({ method: "POST" }).handler(asy
 
     // Find all unclosed leads
     const unclosedRes = await pool.query(
-      `SELECT id, customer_phone FROM scalev_leads WHERE is_closed = false`
+      `SELECT id, customer_phone, created_at FROM scalev_leads WHERE is_closed = false`
     );
     const unclosedLeads = unclosedRes.rows || [];
 
@@ -210,8 +210,9 @@ export const runAutoMatchScalev = createServerFn({ method: "POST" }).handler(asy
       const match = await pool.query(
         `SELECT id, created_at FROM orders 
          WHERE customer_phone = ANY($1) 
+           AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
          ORDER BY created_at DESC LIMIT 1`,
-        [variants]
+        [variants, lead.created_at]
       );
 
       if (match.rowCount && match.rowCount > 0) {
@@ -305,11 +306,14 @@ export const syncScalevHistory = createServerFn({ method: "POST" })
           const storeName = String(order.store?.name || "ALEEKA STORE");
           const createdAtStr = order.created_at || order.draft_time || new Date().toISOString();
 
-          // Check if order already in orders table
+          // Check if order already in orders table (must be created AFTER or at the time lead arrived)
           const variants = getPhoneVariants(customerPhone);
           const matchRes = await pool.query(
-            `SELECT id, created_at FROM orders WHERE customer_phone = ANY($1) ORDER BY created_at DESC LIMIT 1`,
-            [variants]
+            `SELECT id, created_at FROM orders 
+             WHERE customer_phone = ANY($1) 
+               AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
+             ORDER BY created_at DESC LIMIT 1`,
+            [variants, createdAtStr]
           );
           const isClosed = matchRes.rowCount ? matchRes.rowCount > 0 : false;
           const matchedOrderId = isClosed ? matchRes.rows[0].id : null;
