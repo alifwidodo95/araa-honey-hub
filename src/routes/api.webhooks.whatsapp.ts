@@ -5,8 +5,24 @@ import pg from 'pg';
 export const Route = createFileRoute('/api/webhooks/whatsapp')({
   server: {
     handlers: {
-      GET: async () => {
-        return new Response('WhatsApp Webhook Active', { status: 200 });
+      GET: async ({ request }) => {
+        try {
+          const url = new URL(request.url);
+          const mode = url.searchParams.get('hub.mode');
+          const token = url.searchParams.get('hub.verify_token');
+          const challenge = url.searchParams.get('hub.challenge');
+
+          const verifyToken = process.env.META_VERIFY_TOKEN || 'araahoney123';
+
+          if (mode === 'subscribe' && token === verifyToken) {
+            console.log('[WhatsApp Webhook] Verification successful');
+            return new Response(challenge, { status: 200 });
+          }
+          return new Response('WhatsApp Webhook Active', { status: 200 });
+        } catch (error: any) {
+          console.error('[WhatsApp Webhook Verification Error]:', error);
+          return new Response('Internal Server Error', { status: 500 });
+        }
       },
       POST: async ({ request }) => {
         let pool: pg.Pool | null = null;
