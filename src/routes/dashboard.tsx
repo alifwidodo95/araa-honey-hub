@@ -65,8 +65,8 @@ function DashboardPage() {
       const { data, error } = await supabase
         .from("expenses_business")
         .select("amount, category")
-        .gte("expense_date", today)
-        .lte("expense_date", today);
+        .gte("occurred_on", today)
+        .lte("occurred_on", today);
       if (error) throw error;
       return (data ?? [])
         .filter((e: any) => e.category !== "packaging_purchase")
