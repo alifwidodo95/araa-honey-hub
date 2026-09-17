@@ -356,13 +356,15 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
         // Record outgoing message in whatsapp_chat_logs for Live Chat Monitor
         try {
+          const custName = data.customerName || "Pelanggan";
+          const orderDate = data.namedParameters?.tanggal_order || "Tahun 2025";
           const logMessage = data.templateName
-            ? `[Template Resmi Meta: ${data.templateName}]\n\nHalo Bapak/Ibu ${data.customerName || "Pelanggan"}, salam hangat dari Araa Honey 🍯✨\n\nMengingat pesanan terakhir pada tanggal ${data.namedParameters?.tanggal_order || "Tahun 2025"}, sudah cukup lama belum stok Madu Araa-nya lagi nih 😊\n\n🚚 Subsidi ongkir\n🎁 1 Kg Madu Araa + BONUS 100 gr\n\n[Tombol Respon: ORDER LAGI]`
+            ? `[Template Resmi Meta: ${data.templateName}]\n\nHalo Bapak/Ibu ${custName}, salam hangat dari Araa Honey 🍯✨\n\nMengingat pesanan terakhir Bapak/Ibu pada tanggal ${orderDate}, sudah cukup lama belum stok Madu Araa-nya lagi nih 😊\n\n_Kebetulan kami baru saja selesai panen dan minggu ini ada promo khusus pelanggan setia:_\n\n🚚 *Subsidi ongkir*\n🎁 *1 Kg Madu Araa + BONUS 100 gr*\n\nKalau stok madu di rumah sudah habis, tinggal klik “*Order Lagi*” di bawah ya Kak. Kami bantu proses pengirimannya 😊\n\nAraa Honey • Solusi Madu yang Terjamin Murni\n[Tombol Respon: ORDER LAGI]`
             : data.message;
           await pool.query(
             `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, replied_by, created_at)
              VALUES ($1, $2, $3, $4, 'outgoing', 'waba', $5, now())`,
-            [chatId, rawPhone, data.customerName, logMessage, data.templateName ? "template" : "system"]
+            [chatId, rawPhone, custName, logMessage, data.templateName ? "template" : "system"]
           );
         } catch (chatLogErr) {
           console.warn("Could not write outgoing to whatsapp_chat_logs:", chatLogErr);
