@@ -93,11 +93,30 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                 }
 
                 const contacts = val.contacts || [];
-                const customerName = contacts[0]?.profile?.name || 'Pelanggan WA';
+                const messages = val.messages || [];
 
                 for (const msg of messages) {
                   const customerPhone = msg.from; // e.g. "6281901942233"
                   const chatId = `${customerPhone}@c.us`;
+
+                  // Resolve customer name properly
+                  let customerName = contacts[0]?.profile?.name;
+                  if (!customerName || customerName === 'Pelanggan WA') {
+                    const existingNameRes = await pool.query(
+                      "SELECT customer_name FROM public.whatsapp_chat_logs WHERE customer_phone = $1 AND customer_name IS NOT NULL AND customer_name != 'Meta Status' AND customer_name != 'Pelanggan' AND customer_name != 'Pelanggan WA' ORDER BY created_at DESC LIMIT 1",
+                      [customerPhone]
+                    );
+                    if (existingNameRes.rows[0]?.customer_name) {
+                      customerName = existingNameRes.rows[0].customer_name;
+                    } else {
+                      const custRes = await pool.query("SELECT name FROM public.customers WHERE phone = $1 OR phone = $2 LIMIT 1", [customerPhone, '+' + customerPhone]);
+                      if (custRes.rows[0]?.name) {
+                        customerName = custRes.rows[0].name;
+                      }
+                    }
+                  }
+                  if (!customerName) customerName = 'Pelanggan';
+
                   const messageType = msg.type || 'text';
                   let incomingText = '';
 
@@ -108,11 +127,11 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                   } else if (messageType === 'audio' || messageType === 'voice') {
                     incomingText = '[Pesan Suara]';
                   } else if (messageType === 'interactive') {
-                    incomingText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
+                    incomingText = msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.title || '';
                   } else if (messageType === 'button') {
-                    incomingText = msg.button?.text || '';
+                    incomingText = msg.button?.text || msg.button?.payload || '';
                   } else {
-                    incomingText = `[Pesan ${messageType}]`;
+                    incomingText = msg.text?.body || `[Pesan ${messageType}]`;
                   }
 
                   if (!incomingText) continue;
@@ -147,7 +166,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     biteship_origin_name: biteshipOriginName
                   } = aiSettings;
 
-                  if (isActive && deepseekApiKey) {
+                  if (isActive) {
                     let biteshipRatesText = '';
                     const lowercaseInput = incomingText.toLowerCase();
                     const asksForOngkir = 
@@ -206,46 +225,92 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                       }
                     }
 
-                    // Query DeepSeek
-                    const finalSystemInstruction = `${systemPrompt || 'Kamu adalah asisten CS ramah Araa Honey.'}${biteshipRatesText}`;
-                    const deepseekMessages = [
+                    // Query AI (DeepSeek with seamless fallback to OpenAI gpt-4o-mini)
+                    const finalSystemInstruction = `${systemPrompt || 'Kamu adalah Asisten Customer Service AI ramah bernama Jarvis untuk toko Madu Araa (Araa Honey). Jawablah dengan sopan, solutif, dan ramah.'}${biteshipRatesText}`;
+                    const promptMessages = [
                       { role: 'system', content: finalSystemInstruction },
                       ...chatHistory,
                       { role: 'user', content: incomingText }
                     ];
 
-                    const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${deepseekApiKey}`
-                      },
-                      body: JSON.stringify({
-                        model: 'deepseek-chat',
-                        messages: deepseekMessages,
-                        temperature: 0.5,
-                        max_tokens: 200
-                      })
-                    });
+                    let replyText = '';
 
-                    if (deepseekRes.ok) {
-                      const deepseekData = await deepseekRes.json() as any;
-                      const replyText = deepseekData.choices?.[0]?.message?.content?.trim();
-
-                      if (replyText) {
-                        console.log(`[Meta Webhook] AI generated reply: "${replyText}". Dispatching via WABA...`);
-                        const sendResult = await sendWhatsAppMessage({
-                          to: customerPhone,
-                          message: replyText,
-                          channel: 'waba'
+                    // 1. Try DeepSeek first if key provided
+                    if (deepseekApiKey) {
+                      try {
+                        const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${deepseekApiKey}`
+                          },
+                          body: JSON.stringify({
+                            model: 'deepseek-chat',
+                            messages: promptMessages,
+                            temperature: 0.5,
+                            max_tokens: 200
+                          })
                         });
 
-                        if (sendResult.success) {
-                          await pool.query(`
-                            INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
-                            VALUES ($1, $2, $3, $4, $5, 'outgoing', 'ai', 'waba', now())
-                          `, [userId, chatId, customerPhone, customerName, replyText]);
+                        if (deepseekRes.ok) {
+                          const deepseekData = await deepseekRes.json() as any;
+                          replyText = deepseekData.choices?.[0]?.message?.content?.trim() || '';
+                        } else {
+                          console.warn('[Meta Webhook] DeepSeek call returned status:', deepseekRes.status);
                         }
+                      } catch (dsErr) {
+                        console.error('[Meta Webhook] DeepSeek error:', dsErr);
+                      }
+                    }
+
+                    // 2. Seamless Fallback to OpenAI gpt-4o-mini if DeepSeek failed or has no key
+                    if (!replyText) {
+                      try {
+                        const metaConfigRes = await pool.query("SELECT value FROM public.app_settings WHERE key = 'meta_ai_settings'");
+                        const metaConfig = metaConfigRes.rows[0]?.value || {};
+                        const openaiApiKey = process.env.OPENAI_API_KEY || metaConfig.openai_api_key;
+
+                        if (openaiApiKey) {
+                          console.log('[Meta Webhook] Using OpenAI gpt-4o-mini for WABA auto-reply...');
+                          const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${openaiApiKey}`
+                            },
+                            body: JSON.stringify({
+                              model: 'gpt-4o-mini',
+                              messages: promptMessages,
+                              temperature: 0.5,
+                              max_tokens: 200
+                            })
+                          });
+
+                          if (oaiRes.ok) {
+                            const oaiData = await oaiRes.json() as any;
+                            replyText = oaiData.choices?.[0]?.message?.content?.trim() || '';
+                          } else {
+                            console.error('[Meta Webhook] OpenAI error status:', oaiRes.status, await oaiRes.text());
+                          }
+                        }
+                      } catch (oaiErr) {
+                        console.error('[Meta Webhook] OpenAI fallback error:', oaiErr);
+                      }
+                    }
+
+                    if (replyText) {
+                      console.log(`[Meta Webhook] AI generated reply: "${replyText}". Dispatching via WABA...`);
+                      const sendResult = await sendWhatsAppMessage({
+                        to: customerPhone,
+                        message: replyText,
+                        channel: 'waba'
+                      });
+
+                      if (sendResult.success) {
+                        await pool.query(`
+                          INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+                          VALUES ($1, $2, $3, $4, $5, 'outgoing', 'ai', 'waba', now())
+                        `, [userId, chatId, customerPhone, customerName, replyText]);
                       }
                     }
                   }
