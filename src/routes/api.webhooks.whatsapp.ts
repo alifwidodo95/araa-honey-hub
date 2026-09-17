@@ -34,7 +34,10 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           const dbUrl = process.env.DATABASE_URL || "postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres";
           pool = new pg.Pool({
             connectionString: dbUrl,
-            ssl: { rejectUnauthorized: false }
+            ssl: { rejectUnauthorized: false },
+            max: 3,
+            connectionTimeoutMillis: 5000,
+            idleTimeoutMillis: 1000
           });
 
           // =========================================================================
@@ -664,11 +667,16 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
 
         } catch (error: any) {
           console.error('[WA Webhook Error]:', error);
-          if (pool) await pool.end();
           return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), {
             status: 500,
             headers: { 'Content-Type': 'application/json' },
           });
+        } finally {
+          if (pool) {
+            try {
+              await pool.end();
+            } catch (e) {}
+          }
         }
       }
     }
