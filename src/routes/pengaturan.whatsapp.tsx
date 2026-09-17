@@ -25,11 +25,13 @@ import {
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
   XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2,
-  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink, Layers, FileText, Check, Sparkles
+  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink, Layers, FileText, Check, Sparkles, Search
 } from "lucide-react";
 import {
   getMetaMessageTemplates,
   sendMetaTemplateMessage,
+  getWabaTemplateImages,
+  saveWabaTemplateImage,
   MetaTemplateItem
 } from "@/lib/waba-templates.functions";
 
@@ -130,8 +132,56 @@ function WhatsAppPage() {
       else initialParams[varKey] = `Data ${varKey}`;
     });
     setTemplateParamValues(initialParams);
+    const headerComp = tpl.components.find((c) => c.type === "HEADER");
+    if (headerComp?.format === "IMAGE") {
+      setTestHeaderImageUrl(templateImagesMap[tpl.name]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png");
+    } else {
+      setTestHeaderImageUrl("");
+    }
     setTestTemplateModalOpen(true);
   };
+
+  // Meta Template Image Mapping Query & Mutation
+  const { data: templateImagesMap = {}, refetch: refetchTemplateImages } = useQuery({
+    queryKey: ["waba-template-images"],
+    queryFn: () => getWabaTemplateImages(),
+    staleTime: 60000,
+  });
+
+  const saveTemplateImageMutation = useMutation({
+    mutationFn: (data: { templateName: string; imageUrl: string; title?: string }) => saveWabaTemplateImage({ data }),
+    onSuccess: () => {
+      toast.success("Gambar flyer template berhasil diperbarui!");
+      qc.invalidateQueries({ queryKey: ["waba-template-images"] });
+      setImagePickerModalOpen(false);
+      setSelectedTemplateForImage(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Gagal menyimpan gambar template.");
+    }
+  });
+
+  // Media Library Images Query for Picker
+  const { data: mediaGalleryImages = [] } = useQuery({
+    queryKey: ["media-gallery-images-picker"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("media_library" as any)
+        .select("id, title, file_name, file_url, category, created_at")
+        .eq("file_type", "image")
+        .order("created_at", { ascending: false });
+      return (data || []) as Array<{ id: string; title: string; file_name: string; file_url: string; category: string }>;
+    },
+    staleTime: 300000,
+  });
+
+  // Image Picker Modal State
+  const [imagePickerModalOpen, setImagePickerModalOpen] = useState(false);
+  const [selectedTemplateForImage, setSelectedTemplateForImage] = useState<MetaTemplateItem | null>(null);
+  const [imagePickerSearch, setImagePickerSearch] = useState("");
+  const [imagePickerCategory, setImagePickerCategory] = useState("Semua");
+  const [customImageUrlInput, setCustomImageUrlInput] = useState("");
+  const [testHeaderImageUrl, setTestHeaderImageUrl] = useState("");
 
   // CRM State Configurations
   const [crmEnabled, setCrmEnabled] = useState(true);
@@ -2659,11 +2709,54 @@ function WhatsAppPage() {
 
                             {/* Template Bubble Preview */}
                             <div className="p-3 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-500/15 text-xs space-y-1.5">
-                              {headerComp && (
+                              {/* Header Image or Text */}
+                              {headerComp?.format === "IMAGE" ? (
+                                <div className="space-y-1.5 pb-2 border-b border-emerald-500/10">
+                                  <div className="relative rounded-md overflow-hidden border bg-muted/40 aspect-video max-h-36 flex items-center justify-center group">
+                                    <img 
+                                      src={templateImagesMap[tpl.name]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png"} 
+                                      alt="Flyer Header" 
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        className="h-7 text-[11px] gap-1 shadow-sm"
+                                        onClick={() => {
+                                          setSelectedTemplateForImage(tpl);
+                                          setImagePickerModalOpen(true);
+                                        }}
+                                      >
+                                        <ImageIcon className="w-3.5 h-3.5 text-primary" />
+                                        <span>Ganti Flyer</span>
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                                    <span className="truncate max-w-[170px]" title={templateImagesMap[tpl.name]?.title || "Flyer Model Repeat Order"}>
+                                      Flyer: <strong className="text-foreground font-medium">{templateImagesMap[tpl.name]?.title || "Flyer Repeat Order"}</strong>
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-5 px-1.5 text-[10px] text-emerald-600 hover:text-emerald-700 font-semibold gap-1"
+                                      onClick={() => {
+                                        setSelectedTemplateForImage(tpl);
+                                        setImagePickerModalOpen(true);
+                                      }}
+                                    >
+                                      <ImageIcon className="w-3 h-3" />
+                                      <span>Pilih Galeri</span>
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : headerComp ? (
                                 <div className="font-bold text-foreground text-xs pb-1 border-b border-emerald-500/10 flex items-center gap-1">
                                   <span>{headerComp.text || `[Header ${headerComp.format || "Media"}]`}</span>
                                 </div>
-                              )}
+                              ) : null}
+
                               <p className="text-foreground whitespace-pre-line text-[11px] leading-relaxed">
                                 {bodyComp?.text || "—"}
                               </p>
@@ -2689,20 +2782,36 @@ function WhatsAppPage() {
                           </div>
 
                           {/* Quick Actions */}
-                          <div className="pt-2 flex items-center justify-between border-t border-border/50">
+                          <div className="pt-2 flex items-center justify-between border-t border-border/50 gap-2">
                             <span className="text-[10px] font-mono text-muted-foreground">
                               ID: {tpl.id}
                             </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleOpenTestTemplate(tpl)}
-                              disabled={!isApproved}
-                              className="h-7 text-xs font-semibold gap-1.5 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10"
-                            >
-                              <Send className="w-3 h-3" />
-                              <span>Uji Coba Kirim</span>
-                            </Button>
+                            <div className="flex items-center gap-1.5">
+                              {headerComp?.format === "IMAGE" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedTemplateForImage(tpl);
+                                    setImagePickerModalOpen(true);
+                                  }}
+                                  className="h-7 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground"
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  <span>Flyer</span>
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenTestTemplate(tpl)}
+                                disabled={!isApproved}
+                                className="h-7 text-xs font-semibold gap-1.5 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10"
+                              >
+                                <Send className="w-3 h-3" />
+                                <span>Uji Coba Kirim</span>
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -2740,6 +2849,50 @@ function WhatsAppPage() {
                   className="font-mono text-xs"
                 />
               </div>
+
+              {/* Header Image Preview & Selector if Template has IMAGE Header */}
+              {selectedTemplateForTest.components.some((c) => c.type === "HEADER" && c.format === "IMAGE") && (
+                <div className="space-y-2 p-3 rounded-xl bg-muted/40 border">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-semibold text-foreground text-xs flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-primary" />
+                      <span>Gambar Flyer Header:</span>
+                    </Label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[11px] gap-1 px-2 font-medium"
+                      onClick={() => {
+                        setSelectedTemplateForImage(selectedTemplateForTest);
+                        setImagePickerModalOpen(true);
+                      }}
+                    >
+                      <ImageIcon className="w-3 h-3 text-primary" />
+                      <span>Pilih dari Galeri</span>
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <div className="w-16 h-16 rounded-md border overflow-hidden bg-background shrink-0 shadow-2xs">
+                      <img 
+                        src={testHeaderImageUrl || templateImagesMap[selectedTemplateForTest.name]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png"} 
+                        alt="Flyer header" 
+                        className="w-full h-full object-cover" 
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <Input
+                        value={testHeaderImageUrl}
+                        onChange={(e) => setTestHeaderImageUrl(e.target.value)}
+                        placeholder="https://.../flyer.png"
+                        className="h-7 text-[11px] font-mono"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Flyer otomatis tersimpan dari pilihan galeri Anda.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Dynamic Parameter Inputs if template has {{1}}, {{2}} */}
               {Object.keys(templateParamValues).length > 0 && (
@@ -2792,6 +2945,7 @@ function WhatsAppPage() {
                   languageCode: selectedTemplateForTest.language,
                   namedParameters: isNamed ? templateParamValues : undefined,
                   bodyParameters: !isNamed ? Object.values(templateParamValues) : undefined,
+                  headerImageUrl: testHeaderImageUrl.trim() || undefined,
                 });
               }}
               disabled={sendMetaTemplateMutation.isPending || !templateTestPhone.trim()}
@@ -2799,6 +2953,128 @@ function WhatsAppPage() {
             >
               {sendMetaTemplateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               <span>Kirim Sekarang</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Pilih Gambar Flyer dari Galeri */}
+      <Dialog open={imagePickerModalOpen} onOpenChange={setImagePickerModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <ImageIcon className="w-5 h-5 text-honey" />
+              <span>Pilih Gambar Flyer untuk Template "{selectedTemplateForImage?.name}"</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Pilih flyer resmi dari galeri media Araa Honey atau masukkan tautan gambar baru.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Search & Categories Filter */}
+          <div className="flex items-center gap-2 pt-1">
+            <div className="relative flex-1">
+              <Input
+                placeholder="Cari nama flyer atau produk..."
+                value={imagePickerSearch}
+                onChange={(e) => setImagePickerSearch(e.target.value)}
+                className="text-xs h-8 pl-8"
+              />
+              <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
+            </div>
+            <Select value={imagePickerCategory} onValueChange={setImagePickerCategory}>
+              <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectValue placeholder="Kategori" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Semua">Semua Kategori</SelectItem>
+                <SelectItem value="Testimoni">Testimoni</SelectItem>
+                <SelectItem value="Madu Akasia">Madu Akasia</SelectItem>
+                <SelectItem value="Madu Hutan">Madu Hutan</SelectItem>
+                <SelectItem value="Madu Randu">Madu Randu</SelectItem>
+                <SelectItem value="Lainnya">Lainnya</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Grid of Images from media_library */}
+          <div className="flex-1 overflow-y-auto min-h-[260px] max-h-[380px] p-1 grid grid-cols-3 sm:grid-cols-4 gap-3">
+            {mediaGalleryImages
+              .filter((m) => {
+                const matchQuery = !imagePickerSearch || m.title.toLowerCase().includes(imagePickerSearch.toLowerCase()) || m.file_name.toLowerCase().includes(imagePickerSearch.toLowerCase());
+                const matchCat = imagePickerCategory === "Semua" || m.category === imagePickerCategory;
+                return matchQuery && matchCat;
+              })
+              .map((img) => {
+                const currentImgUrl = templateImagesMap[selectedTemplateForImage?.name || ""]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+                const isSelected = currentImgUrl === img.file_url;
+                return (
+                  <div
+                    key={img.id}
+                    onClick={() => {
+                      if (!selectedTemplateForImage) return;
+                      saveTemplateImageMutation.mutate({
+                        templateName: selectedTemplateForImage.name,
+                        imageUrl: img.file_url,
+                        title: img.title || img.file_name,
+                      });
+                      if (selectedTemplateForTest?.name === selectedTemplateForImage.name) {
+                        setTestHeaderImageUrl(img.file_url);
+                      }
+                    }}
+                    className={`group relative rounded-lg border-2 overflow-hidden cursor-pointer transition-all hover:scale-[1.02] bg-muted/20 aspect-square flex flex-col justify-between ${
+                      isSelected ? "border-emerald-600 ring-2 ring-emerald-500/20" : "border-border/60 hover:border-emerald-500/50"
+                    }`}
+                  >
+                    <img src={img.file_url} alt={img.title} className="w-full h-full object-cover" />
+                    {isSelected && (
+                      <div className="absolute top-1.5 right-1.5 bg-emerald-600 text-white rounded-full p-0.5 shadow-sm">
+                        <Check className="w-3.5 h-3.5" />
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/85 via-black/40 to-transparent p-1.5 text-white">
+                      <p className="text-[10px] font-medium truncate leading-tight">{img.title || img.file_name}</p>
+                      <span className="text-[8px] opacity-75">{img.category}</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Input Custom URL Option */}
+          <div className="border-t pt-3 space-y-1.5">
+            <Label className="text-[11px] font-semibold">Atau Gunakan Tautan Gambar Langsung (HTTPS):</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="https://.../gambar-flyer-baru.png"
+                value={customImageUrlInput}
+                onChange={(e) => setCustomImageUrlInput(e.target.value)}
+                className="text-xs h-8 font-mono flex-1"
+              />
+              <Button
+                size="sm"
+                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={!customImageUrlInput.trim() || !selectedTemplateForImage || saveTemplateImageMutation.isPending}
+                onClick={() => {
+                  if (!selectedTemplateForImage || !customImageUrlInput.trim()) return;
+                  saveTemplateImageMutation.mutate({
+                    templateName: selectedTemplateForImage.name,
+                    imageUrl: customImageUrlInput.trim(),
+                    title: "Flyer Kustom",
+                  });
+                  if (selectedTemplateForTest?.name === selectedTemplateForImage.name) {
+                    setTestHeaderImageUrl(customImageUrlInput.trim());
+                  }
+                }}
+              >
+                Gunakan URL
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button variant="outline" size="sm" onClick={() => setImagePickerModalOpen(false)}>
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>

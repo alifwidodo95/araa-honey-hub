@@ -149,8 +149,20 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
         const headerComp = currentTpl.components?.find((c) => c.type === "HEADER");
         if (headerComp?.format === "IMAGE") {
           if (!headerImageUrl || headerImageUrl.includes("scontent.whatsapp.net") || headerImageUrl.includes("fbcdn.net")) {
-            // Default to the exact approved Araa Honey Repeat Order flyer image
-            headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+            try {
+              const imgMapRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_template_images'");
+              const imgMap = imgMapRes.rows[0]?.value || {};
+              if (imgMap[data.templateName]?.url) {
+                headerImageUrl = imgMap[data.templateName].url;
+              }
+            } catch (e) {
+              console.warn("Could not query waba_template_images:", e);
+            }
+
+            // Fallback to default approved Araa Honey Repeat Order flyer image if still unset
+            if (!headerImageUrl || headerImageUrl.includes("scontent.whatsapp.net") || headerImageUrl.includes("fbcdn.net")) {
+              headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+            }
           }
         }
 
@@ -227,5 +239,51 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
       if (pool) try { await pool.end(); } catch (e) {}
       console.error("[sendMetaTemplateMessage Error]:", err);
       throw new Error(err.message || "Gagal mengirim pesan template Meta");
+    }
+  });
+
+// 3. Get all mapped template images from app_settings
+export const getWabaTemplateImages = createServerFn({ method: "GET" }).handler(async () => {
+  let pool: pg.Pool | null = null;
+  try {
+    pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+    const res = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_template_images'");
+    await pool.end();
+    return (res.rows[0]?.value || {}) as Record<string, { url: string; title?: string }>;
+  } catch (err) {
+    if (pool) try { await pool.end(); } catch (e) {}
+    console.error("[getWabaTemplateImages Error]:", err);
+    return {} as Record<string, { url: string; title?: string }>;
+  }
+});
+
+// 4. Save template image mapping to app_settings
+export const saveWabaTemplateImage = createServerFn({ method: "POST" })
+  .validator((d: { templateName: string; imageUrl: string; title?: string }) => d)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+      const currentRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_template_images'");
+      const currentMap: Record<string, { url: string; title?: string }> = currentRes.rows[0]?.value || {};
+      
+      currentMap[data.templateName] = {
+        url: data.imageUrl,
+        title: data.title || "Flyer Template",
+      };
+
+      await pool.query(
+        `INSERT INTO app_settings (key, value, updated_at)
+         VALUES ('waba_template_images', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+        [JSON.stringify(currentMap)]
+      );
+
+      await pool.end();
+      return { success: true, mapping: currentMap };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[saveWabaTemplateImage Error]:", err);
+      throw new Error(err.message || "Gagal menyimpan gambar template");
     }
   });
