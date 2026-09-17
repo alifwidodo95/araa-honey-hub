@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
-  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle
+  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
