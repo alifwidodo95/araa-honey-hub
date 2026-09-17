@@ -356,10 +356,13 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
         // Record outgoing message in whatsapp_chat_logs for Live Chat Monitor
         try {
+          const logMessage = data.templateName
+            ? `[Template Resmi Meta: ${data.templateName}]\n\nHalo Bapak/Ibu ${data.customerName || "Pelanggan"}, salam hangat dari Araa Honey 🍯✨\n\nMengingat pesanan terakhir pada tanggal ${data.namedParameters?.tanggal_order || "Tahun 2025"}, sudah cukup lama belum stok Madu Araa-nya lagi nih 😊\n\n🚚 Subsidi ongkir\n🎁 1 Kg Madu Araa + BONUS 100 gr\n\n[Tombol Respon: ORDER LAGI]`
+            : data.message;
           await pool.query(
-            `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
-             VALUES ($1, $2, $3, $4, 'outgoing', 'waba', now())`,
-            [chatId, rawPhone, data.customerName, data.message]
+            `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, replied_by, created_at)
+             VALUES ($1, $2, $3, $4, 'outgoing', 'waba', $5, now())`,
+            [chatId, rawPhone, data.customerName, logMessage, data.templateName ? "template" : "system"]
           );
         } catch (chatLogErr) {
           console.warn("Could not write outgoing to whatsapp_chat_logs:", chatLogErr);

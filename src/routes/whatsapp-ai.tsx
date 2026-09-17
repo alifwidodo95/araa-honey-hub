@@ -807,17 +807,24 @@ function WhatsAppAiPage() {
                                 WA 1
                               </Badge>
                             )}
-                            {chat.latestLog.direction === "outgoing" && (
-                              <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${
-                                isError
-                                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                                  : chat.latestLog.replied_by === "ai"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
-                              }`}>
-                                {isError ? "Error" : chat.latestLog.replied_by === "ai" ? "AI" : "Manual"}
-                              </Badge>
-                            )}
+                            {chat.latestLog.direction === "outgoing" && (() => {
+                              const isTemplate = chat.latestLog.replied_by === "template" || chat.latestLog.message.startsWith("[Template") || chat.latestLog.channel === "waba";
+                              return (
+                                <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${
+                                  isError
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : chat.latestLog.replied_by === "ai"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : isTemplate
+                                    ? "bg-teal-50 text-teal-700 border-teal-200 font-semibold"
+                                    : chat.latestLog.replied_by === "manual"
+                                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : "bg-slate-50 text-slate-700 border-slate-200"
+                                }`}>
+                                  {isError ? "Error" : chat.latestLog.replied_by === "ai" ? "AI" : isTemplate ? "Template" : chat.latestLog.replied_by === "manual" ? "Manual" : "Sistem"}
+                                </Badge>
+                              );
+                            })()}
                           </div>
                         </div>
                       </button>
@@ -896,14 +903,26 @@ function WhatsAppAiPage() {
                               <div className={`max-w-[75%] rounded-2xl p-3 shadow-xs ${
                                 isIncoming 
                                   ? "bg-white border text-slate-800 rounded-tl-none" 
+                                  : msg.channel === "waba"
+                                  ? "bg-emerald-600 text-white rounded-tr-none shadow-sm"
                                   : "bg-amber-500 text-white rounded-tr-none"
                               }`}>
+                                {msg.channel === "waba" && !isIncoming && (
+                                  <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-emerald-500/40 text-[11px] font-semibold text-emerald-100">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                    <span>Pesan Resmi WABA (Meta HSM)</span>
+                                  </div>
+                                )}
                                 <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-                                <div className={`flex items-center gap-1.5 justify-end mt-1 ${isIncoming ? "text-slate-400" : "text-amber-100"}`}>
+                                <div className={`flex items-center gap-1.5 justify-end mt-1 ${isIncoming ? "text-slate-400" : msg.channel === "waba" ? "text-emerald-200" : "text-amber-100"}`}>
                                   <span className="text-[9px]">{msgTime}</span>
                                   {!isIncoming && (
-                                    <span className="text-[9px] font-bold uppercase">
-                                      {msg.replied_by || "system"}
+                                    <span className="text-[9px] font-bold uppercase tracking-wider">
+                                      {msg.replied_by === "ai"
+                                        ? "AI BOT"
+                                        : msg.channel === "waba" || msg.replied_by === "template"
+                                        ? "WABA TEMPLATE"
+                                        : msg.replied_by || "SISTEM"}
                                     </span>
                                   )}
                                 </div>
