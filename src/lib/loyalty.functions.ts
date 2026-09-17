@@ -262,6 +262,10 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         favoriteHoney: z.string().optional(),
         imageUrl: z.string().optional().default(""),
         senderSession: z.string().optional(),
+        templateName: z.string().optional(),
+        templateLanguage: z.string().optional(),
+        namedParameters: z.record(z.string()).optional(),
+        headerImageUrl: z.string().optional(),
       })
       .parse(data)
   )
@@ -280,26 +284,62 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
 
       const chatId = `${rawPhone}@c.us`;
 
-      // 1. DISPATCH VIA WABA (Official Meta Cloud API - 100% Anti-Banned with Interactive Buttons)
+      // 1. DISPATCH VIA WABA (Official Meta Cloud API - 100% Anti-Banned)
       if (data.senderSession === "waba") {
         const wabaRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
         const wabaConfig = wabaRes.rows[0]?.value || {};
 
-        const res = await sendWhatsAppMessage({
-          to: rawPhone,
-          message: data.message,
-          imageUrl: data.imageUrl,
-          channel: "waba",
-          buttons: [
-            { id: "btn_repeat_order", title: "🍯 Pesan Madu Lagi" },
-            { id: "btn_ask_cs", title: "💬 Tanya CS / Stok" },
-          ],
-          footerText: "Araa Honey • Loyal Customer",
-          wabaConfig: {
-            phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
-            permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
-          },
-        });
+        let res;
+        if (data.templateName) {
+          // Official Meta Template (HSM) Dispatch
+          let headerImageUrl = data.headerImageUrl || data.imageUrl;
+          if (!headerImageUrl) {
+            // Check stored template images or fallback to approved flyer
+            try {
+              const imgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_template_images'");
+              const imgMap = imgRes.rows[0]?.value || {};
+              if (imgMap[data.templateName]?.url) {
+                headerImageUrl = imgMap[data.templateName].url;
+              }
+            } catch (e) {}
+            if (!headerImageUrl) {
+              headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+            }
+          }
+
+          res = await sendWhatsAppMessage({
+            to: rawPhone,
+            message: `[Template: ${data.templateName}]`,
+            channel: "waba",
+            template: {
+              name: data.templateName,
+              language: data.templateLanguage || "id",
+              namedParameters: data.namedParameters,
+              headerImageUrl,
+            },
+            wabaConfig: {
+              phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+              permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+            },
+          });
+        } else {
+          // Free-form interactive button fallback (within 24h window)
+          res = await sendWhatsAppMessage({
+            to: rawPhone,
+            message: data.message,
+            imageUrl: data.imageUrl,
+            channel: "waba",
+            buttons: [
+              { id: "btn_repeat_order", title: "🍯 Pesan Madu Lagi" },
+              { id: "btn_ask_cs", title: "💬 Tanya CS / Stok" },
+            ],
+            footerText: "Araa Honey • Loyal Customer",
+            wabaConfig: {
+              phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+              permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+            },
+          });
+        }
 
         if (!res.success) {
           console.error("[sendDirectLoyaltyWhatsApp WABA Error]:", res.error);

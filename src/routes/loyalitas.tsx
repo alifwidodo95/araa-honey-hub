@@ -18,7 +18,7 @@ import {
   Sparkles, HeartHandshake, ShoppingBag, 
   ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
   Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, ShieldCheck, CheckSquare, Square, Filter, PackageCheck,
-  Smartphone
+  Smartphone, ExternalLink, Image as ImageIcon
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { 
@@ -27,6 +27,7 @@ import {
   saveLoyaltyTemplates, 
   sendDirectLoyaltyWhatsApp 
 } from "@/lib/loyalty.functions";
+import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -120,6 +121,26 @@ function LoyaltyPage() {
     staleTime: 15 * 1000,
     refetchInterval: 15 * 1000,
   });
+
+  // Fetch Meta Message Templates (Official HSM)
+  const { data: metaTemplatesData, isLoading: isTemplatesLoading, refetch: refetchMetaTemplates } = useQuery({
+    queryKey: ["meta-message-templates"],
+    queryFn: () => getMetaMessageTemplates(),
+  });
+
+  const approvedMetaTemplates = useMemo(() => {
+    return (metaTemplatesData?.templates || []).filter((t: any) => t.status === "APPROVED");
+  }, [metaTemplatesData]);
+
+  const [selectedMetaTemplateName, setSelectedMetaTemplateName] = useState<string>("repeat_order");
+
+  const activeMetaTemplate = useMemo(() => {
+    if (!approvedMetaTemplates.length) return null;
+    return (
+      approvedMetaTemplates.find((t: any) => t.name === selectedMetaTemplateName) ||
+      approvedMetaTemplates[0]
+    );
+  }, [approvedMetaTemplates, selectedMetaTemplateName]);
 
   // 1. Fetch Loyalty Statistics
   const { data: apiResponse, isLoading, isFetching, refetch } = useQuery({
@@ -303,6 +324,10 @@ function LoyaltyPage() {
       favoriteHoney,
       imageUrl,
       senderSession,
+      templateName,
+      templateLanguage,
+      namedParameters,
+      headerImageUrl,
     }: {
       phone: string;
       customerName: string;
@@ -310,6 +335,10 @@ function LoyaltyPage() {
       favoriteHoney?: string;
       imageUrl?: string;
       senderSession?: string;
+      templateName?: string;
+      templateLanguage?: string;
+      namedParameters?: Record<string, string>;
+      headerImageUrl?: string;
     }) => {
       return await sendDirectLoyaltyWhatsApp({
         data: {
@@ -319,6 +348,10 @@ function LoyaltyPage() {
           favoriteHoney,
           imageUrl,
           senderSession: senderSession || selectedSenderSession,
+          templateName,
+          templateLanguage,
+          namedParameters,
+          headerImageUrl,
         },
       });
     },
@@ -326,11 +359,11 @@ function LoyaltyPage() {
       const activeSess = variables.senderSession || selectedSenderSession;
       const channelLabel =
         activeSess === "waba"
-          ? "WABA Resmi Meta (+62 856-4540-6949)"
+          ? (variables.templateName ? `WABA Resmi Meta HSM [${variables.templateName}]` : "WABA Resmi Meta (+62 856-4540-6949)")
           : activeSess === "default"
           ? "Slot 1 (CS)"
           : "Slot 2 (Kampanye)";
-      toast.success(`✅ Pesan ${variables.imageUrl ? "bergambar " : ""}berhasil dikirim ke ${variables.customerName} (${variables.phone}) via ${channelLabel}!`);
+      toast.success(`✅ Pesan ${variables.templateName ? "Template Resmi Meta " : variables.imageUrl ? "bergambar " : ""}berhasil dikirim ke ${variables.customerName} (${variables.phone}) via ${channelLabel}!`);
       setSentMap((prev) => ({ ...prev, [variables.phone]: true }));
       queryClient.invalidateQueries({ queryKey: ["customer-loyalty-serverfn-stats"] });
       setPreviewDialogCustomer(null);
@@ -553,6 +586,7 @@ function LoyaltyPage() {
   // Execute Direct Send via WABA or WAHA
   const handleExecuteSend = () => {
     if (!previewDialogCustomer) return;
+    const isWaba = selectedSenderSession === "waba";
     sendWhatsAppMutation.mutate({
       phone: previewDialogCustomer.phone,
       customerName: previewDialogCustomer.name,
@@ -560,6 +594,13 @@ function LoyaltyPage() {
       favoriteHoney: previewDialogCustomer.favoriteHoney,
       imageUrl: previewImageUrl,
       senderSession: selectedSenderSession,
+      templateName: isWaba ? selectedMetaTemplateName : undefined,
+      templateLanguage: isWaba ? (activeMetaTemplate?.language || "id") : undefined,
+      namedParameters: isWaba ? {
+        nama: previewDialogCustomer.name || "Pelanggan",
+        tanggal_order: formatDateIndo(previewDialogCustomer.lastOrderDate),
+      } : undefined,
+      headerImageUrl: isWaba ? (previewImageUrl || undefined) : undefined,
     });
   };
 
@@ -701,6 +742,7 @@ function LoyaltyPage() {
       const imgKey = `${activeTab}_image_url` as keyof typeof templates;
       const imgUrl = templates[imgKey] || "";
 
+      const isWaba = selectedSenderSession === "waba";
       try {
         await sendDirectLoyaltyWhatsApp({
           data: {
@@ -710,6 +752,13 @@ function LoyaltyPage() {
             favoriteHoney: c.favoriteHoney,
             imageUrl: imgUrl,
             senderSession: selectedSenderSession,
+            templateName: isWaba ? selectedMetaTemplateName : undefined,
+            templateLanguage: isWaba ? (activeMetaTemplate?.language || "id") : undefined,
+            namedParameters: isWaba ? {
+              nama: c.name || "Pelanggan",
+              tanggal_order: formatDateIndo(c.lastOrderDate),
+            } : undefined,
+            headerImageUrl: isWaba ? (imgUrl || undefined) : undefined,
           },
         });
         setSentMap((prev) => ({ ...prev, [c.phone]: true }));
@@ -879,6 +928,35 @@ function LoyaltyPage() {
               </SelectItem>
             </SelectContent>
           </Select>
+
+          {selectedSenderSession === "waba" && (
+            <div className="flex items-center gap-1.5">
+              <Select value={selectedMetaTemplateName} onValueChange={setSelectedMetaTemplateName}>
+                <SelectTrigger className="h-9 text-xs font-bold min-w-[210px] bg-emerald-500/10 border-emerald-500/40 text-emerald-800 dark:text-emerald-200">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Template: {selectedMetaTemplateName || "repeat_order"}</span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {approvedMetaTemplates.length === 0 ? (
+                    <SelectItem value="repeat_order" className="text-xs font-bold">
+                      repeat_order (MARKETING)
+                    </SelectItem>
+                  ) : (
+                    approvedMetaTemplates.map((tpl: any) => (
+                      <SelectItem key={tpl.id} value={tpl.name} className="text-xs">
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <span className="font-bold">{tpl.name}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase">{tpl.category}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <Link to="/pengaturan/whatsapp">
             <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" title="Buka Pengaturan WhatsApp">
@@ -1645,19 +1723,40 @@ function LoyaltyPage() {
                     <span>Jumlah Penerima:</span>
                     <span className="text-emerald-600 font-bold">{selectedPhones.length} Kontak Valid</span>
                   </div>
+                  <div className="flex justify-between items-center text-muted-foreground">
+                    <span>Jalur Pengirim:</span>
+                    <span className="font-bold text-foreground flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${selectedSenderSession === "waba" ? "bg-emerald-500" : "bg-blue-500"}`} />
+                      {selectedSenderSession === "waba" ? "WABA Resmi Meta (+62 856-4540-6949)" : selectedSenderSession === "campaign" ? "WAHA Slot 2" : "WAHA Slot 1"}
+                    </span>
+                  </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimasi Waktu:</span>
                     <span>~{Math.ceil((selectedPhones.length * 12) / 60)} menit</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Template Pesan:</span>
-                    <span className="capitalize font-medium">Segmen {activeTab.replace('_', ' ')}</span>
+                    <span>Template Digunakan:</span>
+                    <span className="font-medium text-foreground">
+                      {selectedSenderSession === "waba" ? `HSM Meta: ${selectedMetaTemplateName}` : `Segmen ${activeTab.replace('_', ' ')}`}
+                    </span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
-                  ⚠️ <strong>Proteksi Nomor Bisnis:</strong> Setiap pesan diberi jeda acak manusiawi agar nomor WhatsApp tetap aman dan nyaman bagi pelanggan.
-                </div>
+                {selectedSenderSession === "waba" ? (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Jalur Resmi Meta Cloud API (100% Anti-Banned)
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Pesan akan dikirim menggunakan template resmi <b>{selectedMetaTemplateName}</b> yang telah disetujui Meta. Setiap penerima akan otomatis mendapatkan parameter nama dan riwayat order secara personal.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
+                    ⚠️ <strong>Proteksi Nomor Bisnis:</strong> Setiap pesan diberi jeda acak manusiawi agar nomor WhatsApp tetap aman dan nyaman bagi pelanggan.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4 py-2">
@@ -1732,6 +1831,25 @@ function LoyaltyPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {selectedSenderSession === "waba" && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300 flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Jalur Pengirim Aktif: WABA Resmi Meta (+62 856-4540-6949)
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Sesuai aturan Meta, pesan bisnis di luar 24 jam otomatis menggunakan <b>Template Resmi (HSM)</b> seperti <code>repeat_order</code>. Pengaturan teks bebas di bawah ini digunakan saat mengirim melalui <b>WA 1 (CS)</b> atau <b>WA 2 (Kampanye)</b>.
+                  </p>
+                </div>
+                <Link to="/pengaturan/whatsapp">
+                  <Button size="sm" variant="outline" className="text-[11px] h-7 shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                    Kelola Template Meta
+                  </Button>
+                </Link>
+              </div>
+            )}
+
             {/* Template Segment Selector */}
             <div className="grid grid-cols-4 gap-1.5 bg-muted/40 p-1 rounded-xl">
               <Button
@@ -1892,11 +2010,11 @@ function LoyaltyPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Send className="w-5 h-5 text-emerald-500" />
-              Kirim Pesan WhatsApp CRM ({selectedSenderSession === "waba" ? "WABA Resmi Meta" : selectedSenderSession === "campaign" ? "WAHA Slot 2" : "WAHA Slot 1"})
+              Kirim Pesan WhatsApp CRM ({selectedSenderSession === "waba" ? "WABA Resmi Meta HSM" : selectedSenderSession === "campaign" ? "WAHA Slot 2" : "WAHA Slot 1"})
             </DialogTitle>
             <DialogDescription className="text-xs">
               {selectedSenderSession === "waba"
-                ? "Pesan sapaan loyalitas akan dikirim via WABA Resmi Meta Cloud API (+62 856-4540-6949) + Tombol Interaktif."
+                ? "Pesan dikirim via WABA Resmi Meta Cloud API menggunakan Template Resmi (HSM) anti-banned 100%."
                 : "Pesan akan langsung dikirim dari server WAHA Araa Honey ke nomor penerima."}
             </DialogDescription>
           </DialogHeader>
@@ -1948,46 +2066,130 @@ function LoyaltyPage() {
                 </div>
               )}
 
-              {/* Image Preview Banner in Send Dialog */}
-              {previewImageUrl && (
-                <div className="relative rounded-xl overflow-hidden border border-emerald-500/30 bg-emerald-500/5 p-2.5 flex items-center gap-3">
-                  <img
-                    src={previewImageUrl}
-                    alt="Promo Preview"
-                    className="h-14 w-14 object-cover rounded-lg border shadow-2xs"
-                    onError={(e) => {
-                      (e.target as any).style.display = "none";
-                    }}
-                  />
-                  <div className="text-xs flex-1">
-                    <div className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Pesan Bergambar (Flyer Promo)
+              {/* JIKA WABA: TAMPILKAN PRATINJAU TEMPLATE RESMI META (HSM) */}
+              {selectedSenderSession === "waba" ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <div>
+                        <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                          Template Resmi Meta (HSM)
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">Wajib lolos 24h window & Anti-Banned 100%</div>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">Gambar akan dikirim bersama caption teks di bawah ke WA pelanggan.</p>
+                    <Select value={selectedMetaTemplateName} onValueChange={setSelectedMetaTemplateName}>
+                      <SelectTrigger className="h-8 text-xs font-bold bg-background min-w-[170px] border-emerald-500/40">
+                        <SelectValue placeholder="Pilih Template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {approvedMetaTemplates.length === 0 ? (
+                          <SelectItem value="repeat_order" className="text-xs font-bold">repeat_order (MARKETING)</SelectItem>
+                        ) : (
+                          approvedMetaTemplates.map((t: any) => (
+                            <SelectItem key={t.id} value={t.name} className="text-xs">
+                              {t.name} ({t.category})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPreviewImageUrl("")}
-                    className="h-7 text-[11px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 px-2"
-                    title="Kirim sebagai teks saja tanpa gambar"
-                  >
-                    Hapus Foto
-                  </Button>
-                </div>
-              )}
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">Isi Caption Teks:</label>
-                <Textarea
-                  rows={5}
-                  value={previewMessage}
-                  onChange={(e) => setPreviewMessage(e.target.value)}
-                  className="text-xs font-sans leading-relaxed"
-                />
-              </div>
+                  {/* WhatsApp Chat Simulated Bubble Preview */}
+                  <div className="rounded-xl border border-emerald-500/20 bg-muted/20 overflow-hidden shadow-xs">
+                    {/* Header Image */}
+                    <div className="w-full bg-black/5 flex items-center justify-center relative overflow-hidden border-b border-border/40">
+                      <img
+                        src={previewImageUrl || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png"}
+                        alt="Flyer Repeat Order"
+                        className="w-full h-40 object-cover"
+                        onError={(e) => {
+                          (e.target as any).src = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+                        }}
+                      />
+                      <Badge className="absolute top-2 right-2 bg-black/70 text-white backdrop-blur-xs text-[9px] border-none font-semibold">
+                        Header Flyer Meta
+                      </Badge>
+                    </div>
+
+                    {/* Body Text */}
+                    <div className="p-3 space-y-2 text-xs">
+                      <p className="whitespace-pre-line text-foreground leading-relaxed font-sans">
+                        {activeMetaTemplate?.components?.find((c: any) => c.type === "BODY")?.text
+                          ? activeMetaTemplate.components.find((c: any) => c.type === "BODY").text
+                              .replace(/\{\{nama\}\}/g, previewDialogCustomer.name || "Pelanggan")
+                              .replace(/\{\{tanggal_order\}\}/g, formatDateIndo(previewDialogCustomer.lastOrderDate))
+                              .replace(/\{\{1\}\}/g, previewDialogCustomer.name || "Pelanggan")
+                              .replace(/\{\{2\}\}/g, formatDateIndo(previewDialogCustomer.lastOrderDate))
+                          : `Halo Bapak/Ibu ${previewDialogCustomer.name || "Pelanggan"}, salam hangat dari Araa Honey 🍯✨\n\nMengingat pesanan terakhir Bapak/Ibu pada tanggal ${formatDateIndo(previewDialogCustomer.lastOrderDate)}, sudah cukup lama belum stok Madu Araa-nya lagi nih 😊\n\nKebetulan kami baru saja selesai panen dan minggu ini ada promo khusus pelanggan setia:\n🚚 Subsidi ongkir\n🎁 1 Kg Madu Araa + BONUS 100 gr\n\nKalau stok madu di rumah sudah habis, tinggal klik "Order Lagi" di bawah ya Kak. Kami bantu proses pengirimannya 😊`}
+                      </p>
+
+                      <p className="text-[10px] text-muted-foreground pt-1.5 border-t border-border/40">
+                        {activeMetaTemplate?.components?.find((c: any) => c.type === "FOOTER")?.text || "Araa Honey • Solusi Madu yang Terjamin Murni"}
+                      </p>
+
+                      {/* Interactive Button */}
+                      <div className="pt-2 border-t border-border/40">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shadow-2xs">
+                          <ShoppingBag className="w-3.5 h-3.5" /> ORDER LAGI
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
+                    <span>Parameter Otomatis:</span>
+                    <span className="font-semibold text-foreground">
+                      nama = <b>{previewDialogCustomer.name}</b>, tanggal = <b>{formatDateIndo(previewDialogCustomer.lastOrderDate)}</b>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* JIKA WAHA: TAMPILKAN FORMAT GAMBAR & TEXTAREA BIASA */
+                <>
+                  {previewImageUrl && (
+                    <div className="relative rounded-xl overflow-hidden border border-emerald-500/30 bg-emerald-500/5 p-2.5 flex items-center gap-3">
+                      <img
+                        src={previewImageUrl}
+                        alt="Promo Preview"
+                        className="h-14 w-14 object-cover rounded-lg border shadow-2xs"
+                        onError={(e) => {
+                          (e.target as any).style.display = "none";
+                        }}
+                      />
+                      <div className="text-xs flex-1">
+                        <div className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Pesan Bergambar (Flyer Promo)
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Gambar akan dikirim bersama caption teks di bawah ke WA pelanggan.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPreviewImageUrl("")}
+                        className="h-7 text-[11px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 px-2"
+                        title="Kirim sebagai teks saja tanpa gambar"
+                      >
+                        Hapus Foto
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground">Isi Caption Teks:</label>
+                    <Textarea
+                      rows={5}
+                      value={previewMessage}
+                      onChange={(e) => setPreviewMessage(e.target.value)}
+                      className="text-xs font-sans leading-relaxed"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -2009,12 +2211,12 @@ function LoyaltyPage() {
               {sendWhatsAppMutation.isPending ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Mengirim via WAHA...
+                  Mengirim via {selectedSenderSession === "waba" ? "WABA..." : "WAHA..."}
                 </>
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />
-                  Kirim Sekarang 🚀
+                  {selectedSenderSession === "waba" ? "Kirim via WABA Resmi (HSM) 🚀" : "Kirim Sekarang 🚀"}
                 </>
               )}
             </Button>

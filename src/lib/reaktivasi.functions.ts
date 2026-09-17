@@ -270,6 +270,10 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
     product?: string;
     imageUrl?: string;
     senderSession?: string;
+    templateName?: string;
+    templateLanguage?: string;
+    namedParameters?: Record<string, string>;
+    headerImageUrl?: string;
   }) => data)
   .handler(async ({ data }) => {
     let pool: pg.Pool | null = null;
@@ -284,16 +288,51 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
         const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
         const wabaConfig = wabaConfigRes.rows[0]?.value || {};
 
-        const res = await sendWhatsAppMessage({
-          to: rawPhone,
-          message: data.message,
-          imageUrl: data.imageUrl,
-          channel: "waba",
-          wabaConfig: {
-            phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
-            permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
-          },
-        });
+        let res;
+        if (data.templateName) {
+          // Official Meta Template (HSM) Dispatch
+          let headerImageUrl = data.headerImageUrl || data.imageUrl;
+          if (!headerImageUrl) {
+            try {
+              const imgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_template_images'");
+              const imgMap = imgRes.rows[0]?.value || {};
+              if (imgMap[data.templateName]?.url) {
+                headerImageUrl = imgMap[data.templateName].url;
+              }
+            } catch (e) {}
+            if (!headerImageUrl) {
+              headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+            }
+          }
+
+          res = await sendWhatsAppMessage({
+            to: rawPhone,
+            message: `[Template: ${data.templateName}]`,
+            channel: "waba",
+            template: {
+              name: data.templateName,
+              language: data.templateLanguage || "id",
+              namedParameters: data.namedParameters,
+              headerImageUrl,
+            },
+            wabaConfig: {
+              phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+              permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+            },
+          });
+        } else {
+          // Free-form message
+          res = await sendWhatsAppMessage({
+            to: rawPhone,
+            message: data.message,
+            imageUrl: data.imageUrl,
+            channel: "waba",
+            wabaConfig: {
+              phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+              permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+            },
+          });
+        }
 
         if (!res.success) {
           console.error("[sendDirectReaktivasiWhatsApp WABA Error]:", res.error);
