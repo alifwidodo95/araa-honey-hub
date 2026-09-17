@@ -17,8 +17,13 @@ import {
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
   XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2,
-  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink
+  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink, Layers, FileText, Check, Sparkles
 } from "lucide-react";
+import {
+  getMetaMessageTemplates,
+  sendMetaTemplateMessage,
+  MetaTemplateItem
+} from "@/lib/waba-templates.functions";
 
 export const Route = createFileRoute("/pengaturan/whatsapp")({
   component: () => (
@@ -65,6 +70,58 @@ function WhatsAppPage() {
   const [wabaTestPhone, setWabaTestPhone] = useState("081901942233");
   const [wabaTestMessage, setWabaTestMessage] = useState("Halo Kak, ini adalah uji coba pesan resmi dari WhatsApp Business API Araa Honey 🍯🐝");
   const [wabaSendingTest, setWabaSendingTest] = useState(false);
+
+  // Meta Message Templates States & Query
+  const [selectedTemplateForTest, setSelectedTemplateForTest] = useState<MetaTemplateItem | null>(null);
+  const [testTemplateModalOpen, setTestTemplateModalOpen] = useState(false);
+  const [templateTestPhone, setTemplateTestPhone] = useState("081901942233");
+  const [templateParamValues, setTemplateParamValues] = useState<Record<string, string>>({});
+
+  const {
+    data: metaTemplatesData,
+    isLoading: loadingMetaTemplates,
+    isRefetching: refetchingMetaTemplates,
+    refetch: refetchMetaTemplates
+  } = useQuery({
+    queryKey: ["meta-message-templates"],
+    queryFn: () => getMetaMessageTemplates(),
+    staleTime: 60000,
+  });
+
+  const sendMetaTemplateMutation = useMutation({
+    mutationFn: (payload: {
+      to: string;
+      templateName: string;
+      languageCode?: string;
+      bodyParameters?: string[];
+      headerImageUrl?: string;
+    }) => sendMetaTemplateMessage({ data: payload }),
+    onSuccess: () => {
+      toast.success("Pesan template resmi Meta berhasil dikirim!");
+      setTestTemplateModalOpen(false);
+      setSelectedTemplateForTest(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Gagal mengirim template Meta.");
+    },
+  });
+
+  const handleOpenTestTemplate = (tpl: MetaTemplateItem) => {
+    setSelectedTemplateForTest(tpl);
+    // detect variables like {{1}}, {{2}} from body text
+    const bodyComp = tpl.components.find(c => c.type === "BODY");
+    const bodyText = bodyComp?.text || "";
+    const matches = bodyText.match(/\{\{(\d+)\}\}/g) || [];
+    const initialParams: Record<string, string> = {};
+    matches.forEach((m, idx) => {
+      const varNum = m.replace(/[\{\}]/g, "");
+      if (idx === 0) initialParams[varNum] = "Big Bos";
+      else if (idx === 1) initialParams[varNum] = "Madu Akasia Riau 1 KG";
+      else initialParams[varNum] = `Data ${varNum}`;
+    });
+    setTemplateParamValues(initialParams);
+    setTestTemplateModalOpen(true);
+  };
 
   // CRM State Configurations
   const [crmEnabled, setCrmEnabled] = useState(true);
@@ -2470,9 +2527,266 @@ function WhatsAppPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Meta Official Message Templates (HSM) Card */}
+            <Card className="border-honey/40 shadow-xs">
+              <CardHeader className="pb-3 border-b flex flex-row items-center justify-between flex-wrap gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      <Layers className="w-5 h-5 text-emerald-600" />
+                      Template Pesan Resmi Meta (HSM)
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-500/30">
+                      {metaTemplatesData?.templates?.length || 0} Template Terdaftar
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs mt-1">
+                    Daftar template pesan yang telah disetujui Meta untuk broadcast massal luar 24 jam.
+                  </CardDescription>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      refetchMetaTemplates();
+                      toast.success("Memperbarui daftar template dari Meta Cloud API...");
+                    }}
+                    disabled={loadingMetaTemplates || refetchingMetaTemplates}
+                    className="h-8 text-xs gap-1.5 font-medium"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refetchingMetaTemplates ? "animate-spin" : ""}`} />
+                    <span>Sinkronkan dari Meta</span>
+                  </Button>
+
+                  <a
+                    href="https://business.facebook.com/wa/manage/message-templates"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Buat Template Baru di Meta</span>
+                    </Button>
+                  </a>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-4 space-y-4">
+                {/* Explanation Banner */}
+                <div className="p-3 rounded-xl bg-muted/40 border border-border text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-foreground">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Bagaimana Template Resmi Meta (HSM) Bekerja?</span>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed text-[11px]">
+                    Template di bawah ini ditarik secara langsung dari akun Meta Cloud API Araa Honey. Ketika Big Bos membuat atau mengedit template di Meta Business Suite, template yang berstatus <strong>APPROVED (Disetujui)</strong> akan langsung muncul di sini dan dapat digunakan untuk pengiriman broadcast resmi atau follow-up di luar batas 24 jam dengan <strong>100% Anti-Banned</strong>.
+                  </p>
+                </div>
+
+                {/* Templates Grid/List */}
+                {loadingMetaTemplates ? (
+                  <div className="py-12 text-center text-muted-foreground space-y-2">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-emerald-600" />
+                    <p className="text-xs">Menghubungi server Meta Cloud API...</p>
+                  </div>
+                ) : !metaTemplatesData?.templates || metaTemplatesData.templates.length === 0 ? (
+                  <div className="py-10 text-center text-muted-foreground space-y-2 bg-muted/20 rounded-xl border border-dashed">
+                    <Layers className="w-8 h-8 mx-auto opacity-30" />
+                    <p className="text-xs font-semibold">Belum ada template pesan di akun Meta ini.</p>
+                    <p className="text-[11px]">
+                      Klik tombol <strong>"Buat Template Baru di Meta"</strong> untuk mulai mendaftarkan template pertama Anda.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {metaTemplatesData.templates.map((tpl) => {
+                      const headerComp = tpl.components.find((c) => c.type === "HEADER");
+                      const bodyComp = tpl.components.find((c) => c.type === "BODY");
+                      const footerComp = tpl.components.find((c) => c.type === "FOOTER");
+                      const buttonsComp = tpl.components.find((c) => c.type === "BUTTONS");
+
+                      const isApproved = tpl.status === "APPROVED";
+
+                      return (
+                        <div
+                          key={tpl.id}
+                          className="rounded-xl border border-border/80 bg-card p-4 space-y-3 flex flex-col justify-between hover:border-emerald-500/40 transition-colors shadow-2xs"
+                        >
+                          <div className="space-y-2.5">
+                            {/* Template Header Badges */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="font-mono font-bold text-xs text-foreground truncate max-w-[200px]" title={tpl.name}>
+                                  {tpl.name}
+                                </h4>
+                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                  <Badge variant="outline" className={`text-[9px] font-semibold uppercase ${
+                                    tpl.category === "MARKETING"
+                                      ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20"
+                                      : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20"
+                                  }`}>
+                                    {tpl.category}
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-[9px] font-mono">
+                                    {tpl.language}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              <Badge className={`text-[10px] font-bold ${
+                                isApproved
+                                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                                  : tpl.status === "PENDING"
+                                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                                  : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                              }`}>
+                                {isApproved ? "Disetujui" : tpl.status}
+                              </Badge>
+                            </div>
+
+                            {/* Template Bubble Preview */}
+                            <div className="p-3 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-500/15 text-xs space-y-1.5">
+                              {headerComp && (
+                                <div className="font-bold text-foreground text-xs pb-1 border-b border-emerald-500/10 flex items-center gap-1">
+                                  <span>{headerComp.text || `[Header ${headerComp.format || "Media"}]`}</span>
+                                </div>
+                              )}
+                              <p className="text-foreground whitespace-pre-line text-[11px] leading-relaxed">
+                                {bodyComp?.text || "—"}
+                              </p>
+                              {footerComp && (
+                                <div className="text-[10px] text-muted-foreground pt-1 border-t border-emerald-500/10">
+                                  {footerComp.text}
+                                </div>
+                              )}
+
+                              {buttonsComp?.buttons && buttonsComp.buttons.length > 0 && (
+                                <div className="pt-2 flex flex-col gap-1">
+                                  {buttonsComp.buttons.map((btn, bIdx) => (
+                                    <div
+                                      key={bIdx}
+                                      className="text-center py-1 px-2 rounded bg-background/80 border text-[10px] font-semibold text-primary"
+                                    >
+                                      {btn.text}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Quick Actions */}
+                          <div className="pt-2 flex items-center justify-between border-t border-border/50">
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              ID: {tpl.id}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenTestTemplate(tpl)}
+                              disabled={!isApproved}
+                              className="h-7 text-xs font-semibold gap-1.5 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10"
+                            >
+                              <Send className="w-3 h-3" />
+                              <span>Uji Coba Kirim</span>
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
+
+      {/* Modal Uji Coba Template Meta */}
+      <Dialog open={testTemplateModalOpen} onOpenChange={setTestTemplateModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Send className="w-5 h-5 text-emerald-600" />
+              <span>Uji Coba Kirim Template Meta</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Kirim template resmi <strong>{selectedTemplateForTest?.name}</strong> langsung ke nomor WhatsApp penerima.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTemplateForTest && (
+            <div className="space-y-4 my-2 text-xs">
+              <div className="space-y-1.5">
+                <Label htmlFor="tpl-test-phone" className="font-semibold">Nomor WhatsApp Tujuan:</Label>
+                <Input
+                  id="tpl-test-phone"
+                  placeholder="081901942233"
+                  value={templateTestPhone}
+                  onChange={(e) => setTemplateTestPhone(e.target.value)}
+                  className="font-mono text-xs"
+                />
+              </div>
+
+              {/* Dynamic Parameter Inputs if template has {{1}}, {{2}} */}
+              {Object.keys(templateParamValues).length > 0 && (
+                <div className="space-y-2 p-3 rounded-xl bg-muted/40 border">
+                  <span className="font-semibold text-foreground text-xs block">Isi Variabel Template:</span>
+                  {Object.keys(templateParamValues).map((varKey) => (
+                    <div key={varKey} className="space-y-1">
+                      <Label className="text-[11px] font-mono text-muted-foreground">Variabel {'{{' + varKey + '}}'}:</Label>
+                      <Input
+                        value={templateParamValues[varKey]}
+                        onChange={(e) => setTemplateParamValues({ ...templateParamValues, [varKey]: e.target.value })}
+                        className="h-8 text-xs"
+                        placeholder={`Nilai untuk {{${varKey}}}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Preview Box */}
+              <div className="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500/20 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                  Pratinjau Pesan:
+                </span>
+                <p className="text-[11px] whitespace-pre-line text-foreground">
+                  {selectedTemplateForTest.components.find(c => c.type === "BODY")?.text || ""}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setTestTemplateModalOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!selectedTemplateForTest) return;
+                const sortedKeys = Object.keys(templateParamValues).sort((a, b) => Number(a) - Number(b));
+                const bodyParams = sortedKeys.map(k => templateParamValues[k]);
+                sendMetaTemplateMutation.mutate({
+                  to: templateTestPhone,
+                  templateName: selectedTemplateForTest.name,
+                  languageCode: selectedTemplateForTest.language,
+                  bodyParameters: bodyParams.length > 0 ? bodyParams : undefined,
+                });
+              }}
+              disabled={sendMetaTemplateMutation.isPending || !templateTestPhone.trim()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5"
+            >
+              {sendMetaTemplateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <span>Kirim Sekarang</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

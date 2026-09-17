@@ -31,6 +31,7 @@ import {
   searchOrdersForLinking
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
+import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
 
 export const Route = createFileRoute("/scalev/leads")({
   component: () => (
@@ -93,6 +94,10 @@ export function ScalevLeadsPage() {
   const [customMessage, setCustomMessage] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [selectedFollowUpSession, setSelectedFollowUpSession] = useState<string>("waba");
+  const [followUpMode, setFollowUpMode] = useState<"custom" | "meta_template">("custom");
+  const [selectedMetaTemplateName, setSelectedMetaTemplateName] = useState<string>("");
+  const [metaParam1, setMetaParam1] = useState<string>("");
+  const [metaParam2, setMetaParam2] = useState<string>("");
 
   // Manual Closing Modal State
   const [manualClosingLead, setManualClosingLead] = useState<any | null>(null);
@@ -174,6 +179,28 @@ export function ScalevLeadsPage() {
     queryFn: () => getScalevConfig(),
   });
 
+  // Query: Meta Message Templates (Official HSM)
+  const {
+    data: metaTemplatesData,
+    isLoading: isTemplatesLoading,
+    refetch: refetchMetaTemplates,
+  } = useQuery({
+    queryKey: ["meta-message-templates"],
+    queryFn: () => getMetaMessageTemplates(),
+  });
+
+  const approvedMetaTemplates = useMemo(() => {
+    return (metaTemplatesData?.templates || []).filter((t: any) => t.status === "APPROVED");
+  }, [metaTemplatesData]);
+
+  const activeMetaTemplate = useMemo(() => {
+    if (!approvedMetaTemplates.length) return null;
+    return (
+      approvedMetaTemplates.find((t: any) => t.name === selectedMetaTemplateName) ||
+      approvedMetaTemplates[0]
+    );
+  }, [approvedMetaTemplates, selectedMetaTemplateName]);
+
   // Keep form in sync when currentConfig loads
   useMemo(() => {
     if (currentConfig) {
@@ -241,15 +268,26 @@ export function ScalevLeadsPage() {
       senderSession?: string;
       step?: number;
       mediaUrl?: string;
+      template?: {
+        name: string;
+        language?: string;
+        bodyParameters?: string[];
+        headerImageUrl?: string;
+        headerVideoUrl?: string;
+      };
     }) => sendScalevFollowUpWhatsApp({ data: payload }),
     onSuccess: (_, variables) => {
-      const channelLabel =
-        variables.senderSession === "waba"
-          ? "WABA Resmi Meta (+62 856-4540-6949)"
-          : variables.senderSession === "default"
-          ? "Slot 1 (CS Utama)"
-          : `Slot 2 (${wahaInfo?.campaignSession?.me?.id ? "0878-3703-5470" : "ADMIN AYUMI"})`;
-      toast.success(`Follow-Up ${variables.step || 1} terkirim via ${channelLabel}!`);
+      if (variables.template) {
+        toast.success(`Template Meta "${variables.template.name}" berhasil terkirim via WABA Resmi Meta!`);
+      } else {
+        const channelLabel =
+          variables.senderSession === "waba"
+            ? "WABA Resmi Meta (+62 856-4540-6949)"
+            : variables.senderSession === "default"
+            ? "Slot 1 (CS Utama)"
+            : `Slot 2 (${wahaInfo?.campaignSession?.me?.id ? "0878-3703-5470" : "ADMIN AYUMI"})`;
+        toast.success(`Follow-Up ${variables.step || 1} terkirim via ${channelLabel}!`);
+      }
       setFollowUpModalOpen(false);
       setSelectedLead(null);
       refetchMetrics();
@@ -374,6 +412,12 @@ export function ScalevLeadsPage() {
     setActiveStep(targetStep);
     setCustomMessage(getTemplateForStep(targetStep, lead));
     setMediaUrl(getMediaForStep(targetStep));
+    setFollowUpMode("custom");
+    setMetaParam1(lead?.customer_name || "");
+    setMetaParam2(lead?.product_name || "Madu Araa");
+    if (approvedMetaTemplates.length > 0 && !selectedMetaTemplateName) {
+      setSelectedMetaTemplateName(approvedMetaTemplates[0].name);
+    }
     setFollowUpModalOpen(true);
   };
 
@@ -953,7 +997,7 @@ export function ScalevLeadsPage() {
         </CardContent>
       </Card>
 
-      {/* DIALOG 1: Follow-Up WhatsApp Modal (3-Step Bertahap & Media Support) */}
+      {/* DIALOG 1: Follow-Up WhatsApp Modal (3-Step Bertahap & Official Meta HSM Support) */}
       <Dialog open={followUpModalOpen} onOpenChange={setFollowUpModalOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -964,18 +1008,31 @@ export function ScalevLeadsPage() {
               <div>
                 <DialogTitle className="text-base font-bold flex items-center gap-2">
                   <span>Follow-Up Lead Scalev</span>
-                  <Badge variant="outline" className={`text-[10px] font-bold ${
-                    activeStep === 1
-                      ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
-                      : activeStep === 2
-                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                  }`}>
-                    Tahap {activeStep} of 3
-                  </Badge>
+                  {followUpMode === "custom" ? (
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] font-bold ${
+                        activeStep === 1
+                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                          : activeStep === 2
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                          : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                      }`}
+                    >
+                      Tahap {activeStep} of 3
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 flex items-center gap-1"
+                    >
+                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                      HSM Meta Template
+                    </Badge>
+                  )}
                 </DialogTitle>
                 <DialogDescription className="text-xs">
-                  Pilih tahap follow-up terstruktur dengan pesan khusus, media pendukung, dan tombol interaktif.
+                  Pilih follow-up bertahap interaktif atau kirim template resmi Meta HSM (100% Anti-Banned).
                 </DialogDescription>
               </div>
             </div>
@@ -983,48 +1040,41 @@ export function ScalevLeadsPage() {
 
           {selectedLead && (
             <div className="space-y-3.5 my-1">
-              {/* Step Tab Switcher */}
-              <div className="flex rounded-xl bg-muted p-1 gap-1">
+              {/* Follow-Up Mode Switcher (Pesan Kustom Interaktif vs Template Resmi Meta HSM) */}
+              <div className="flex rounded-xl bg-muted p-1 gap-1 text-xs font-semibold">
                 <button
                   type="button"
-                  onClick={() => handleSwitchStepInModal(1)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    activeStep === 1
-                      ? "bg-background text-foreground shadow-xs border border-border/50"
+                  onClick={() => setFollowUpMode("custom")}
+                  className={`flex-1 py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                    followUpMode === "custom"
+                      ? "bg-background text-foreground shadow-xs border border-border/50 font-bold"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <span>1️⃣ FU 1: Sapaan</span>
-                  {selectedLead?.fu1_at && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" title="FU 1 sudah pernah dikirim" />
-                  )}
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <span>Pesan Interaktif (FU 1-3)</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSwitchStepInModal(2)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    activeStep === 2
-                      ? "bg-background text-foreground shadow-xs border border-border/50"
+                  onClick={() => {
+                    setFollowUpMode("meta_template");
+                    setSelectedFollowUpSession("waba");
+                    if (!selectedMetaTemplateName && approvedMetaTemplates.length > 0) {
+                      setSelectedMetaTemplateName(approvedMetaTemplates[0].name);
+                    }
+                  }}
+                  className={`flex-1 py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                    followUpMode === "meta_template"
+                      ? "bg-background text-foreground shadow-xs border border-border/50 font-bold text-emerald-700 dark:text-emerald-300"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <span>2️⃣ FU 2: Edukasi</span>
-                  {selectedLead?.fu2_at && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="FU 2 sudah pernah dikirim" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSwitchStepInModal(3)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                    activeStep === 3
-                      ? "bg-background text-foreground shadow-xs border border-border/50"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <span>3️⃣ FU 3: Final Call</span>
-                  {selectedLead?.fu3_at && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="FU 3 sudah pernah dikirim" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Template Resmi Meta (HSM)</span>
+                  {approvedMetaTemplates.length > 0 && (
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                      {approvedMetaTemplates.length} Ready
+                    </Badge>
                   )}
                 </button>
               </div>
@@ -1084,170 +1134,418 @@ export function ScalevLeadsPage() {
                 </div>
               </div>
 
-              {/* Sender Engine Selector */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                  <span>Nomor WhatsApp Pengirim:</span>
-                  <span className="text-[10px] text-muted-foreground">Pilih jalur pengirim pesan</span>
-                </label>
-                <Select
-                  value={selectedFollowUpSession}
-                  onValueChange={setSelectedFollowUpSession}
-                >
-                  <SelectTrigger className="h-8 text-xs font-medium bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="waba" className="text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <span className="font-semibold">WABA Resmi Meta (+62 856-4540-6949)</span>
-                        <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                          Resmi Meta • Anti-Banned
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="campaign" className="text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${isSlot2Online ? "bg-emerald-500" : "bg-amber-500"}`} />
-                        <span>Slot 2: Nomor Kampanye ({slot2Phone})</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="default" className="text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span>Slot 1: CS Utama (WAHA)</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                {selectedFollowUpSession === "waba" ? (
-                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Pesan dikirim via WhatsApp Business API Resmi + Tombol Interaktif Otomatis!
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Status sesi: {selectedFollowUpSession === "campaign" ? (isSlot2Online ? "Online" : "Offline") : "Online"}
-                  </p>
-                )}
-              </div>
-
-              {/* Media URL Input with Live Preview */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Image className="w-3.5 h-3.5 text-primary" />
-                    <span>Link Gambar / Video (Opsional):</span>
-                  </span>
-                  {mediaUrl && (
+              {/* MODE 1: CUSTOM INTERACTIVE BUTTONS & MEDIA */}
+              {followUpMode === "custom" ? (
+                <>
+                  {/* Step Tab Switcher */}
+                  <div className="flex rounded-xl bg-muted p-1 gap-1">
                     <button
                       type="button"
-                      onClick={() => setMediaUrl("")}
-                      className="text-[10px] text-rose-500 hover:underline"
+                      onClick={() => handleSwitchStepInModal(1)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        activeStep === 1
+                          ? "bg-background text-foreground shadow-xs border border-border/50"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
                     >
-                      Hapus Media
+                      <span>1️⃣ FU 1: Sapaan</span>
+                      {selectedLead?.fu1_at && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" title="FU 1 sudah pernah dikirim" />
+                      )}
                     </button>
-                  )}
-                </label>
-                <Input
-                  type="url"
-                  placeholder="https://... (URL gambar flyer .jpg/.png atau video .mp4)"
-                  value={mediaUrl}
-                  onChange={(e) => setMediaUrl(e.target.value)}
-                  className="h-8 text-xs font-mono"
-                />
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchStepInModal(2)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        activeStep === 2
+                          ? "bg-background text-foreground shadow-xs border border-border/50"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span>2️⃣ FU 2: Edukasi</span>
+                      {selectedLead?.fu2_at && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="FU 2 sudah pernah dikirim" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchStepInModal(3)}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        activeStep === 3
+                          ? "bg-background text-foreground shadow-xs border border-border/50"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span>3️⃣ FU 3: Final Call</span>
+                      {selectedLead?.fu3_at && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="FU 3 sudah pernah dikirim" />
+                      )}
+                    </button>
+                  </div>
 
-                {/* Media Live Preview */}
-                {mediaUrl && mediaUrl.startsWith("http") && (
-                  <div className="p-2 rounded-lg bg-muted/40 border border-border/60 flex items-center gap-3">
-                    {/\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(mediaUrl) ? (
-                      <div className="flex items-center gap-2 text-xs font-medium text-purple-600 dark:text-purple-400">
-                        <Video className="w-5 h-5 shrink-0" />
-                        <span className="truncate max-w-[320px]">Header Video: {mediaUrl}</span>
+                  {/* Sender Engine Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                      <span>Nomor WhatsApp Pengirim:</span>
+                      <span className="text-[10px] text-muted-foreground">Pilih jalur pengirim pesan</span>
+                    </label>
+                    <Select
+                      value={selectedFollowUpSession}
+                      onValueChange={setSelectedFollowUpSession}
+                    >
+                      <SelectTrigger className="h-8 text-xs font-medium bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="waba" className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="font-semibold">WABA Resmi Meta (+62 856-4540-6949)</span>
+                            <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                              Resmi Meta • Anti-Banned
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="campaign" className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${isSlot2Online ? "bg-emerald-500" : "bg-amber-500"}`} />
+                            <span>Slot 2: Nomor Kampanye ({slot2Phone})</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="default" className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-500" />
+                            <span>Slot 1: CS Utama (WAHA)</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {selectedFollowUpSession === "waba" ? (
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        Pesan dikirim via WhatsApp Business API Resmi + Tombol Interaktif Otomatis!
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Status sesi: {selectedFollowUpSession === "campaign" ? (isSlot2Online ? "Online" : "Offline") : "Online"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Media URL Input with Live Preview */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Image className="w-3.5 h-3.5 text-primary" />
+                        <span>Link Gambar / Video (Opsional):</span>
+                      </span>
+                      {mediaUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setMediaUrl("")}
+                          className="text-[10px] text-rose-500 hover:underline"
+                        >
+                          Hapus Media
+                        </button>
+                      )}
+                    </label>
+                    <Input
+                      type="url"
+                      placeholder="https://... (URL gambar flyer .jpg/.png atau video .mp4)"
+                      value={mediaUrl}
+                      onChange={(e) => setMediaUrl(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+
+                    {/* Media Live Preview */}
+                    {mediaUrl && mediaUrl.startsWith("http") && (
+                      <div className="p-2 rounded-lg bg-muted/40 border border-border/60 flex items-center gap-3">
+                        {/\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(mediaUrl) ? (
+                          <div className="flex items-center gap-2 text-xs font-medium text-purple-600 dark:text-purple-400">
+                            <Video className="w-5 h-5 shrink-0" />
+                            <span className="truncate max-w-[320px]">Header Video: {mediaUrl}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2.5">
+                            <img
+                              src={mediaUrl}
+                              alt="Preview"
+                              className="w-12 h-12 object-cover rounded border border-border shrink-0"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none";
+                              }}
+                            />
+                            <div className="text-[11px] text-muted-foreground truncate max-w-[280px]">
+                              Header Gambar aktif untuk pesan WhatsApp
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Textarea */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                      <span>Pesan WhatsApp (FU {activeStep}):</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedLead) setCustomMessage(getTemplateForStep(activeStep, selectedLead));
+                        }}
+                        className="text-[10px] text-primary hover:underline"
+                      >
+                        Reset Template FU {activeStep}
+                      </button>
+                    </label>
+                    <Textarea
+                      rows={5}
+                      value={customMessage}
+                      onChange={(e) => setCustomMessage(e.target.value)}
+                      className="text-xs resize-none font-sans"
+                      placeholder="Ketik pesan follow-up..."
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Pesan otomatis dipersonalisasi dengan nama dan produk pelanggan.
+                    </p>
+                  </div>
+
+                  {/* Interactive Buttons Preview (Meta Cloud API) */}
+                  {selectedFollowUpSession === "waba" && (
+                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-800 dark:text-emerald-300">
+                      <div className="font-semibold flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        Tombol Balasan Cepat Otomatis (Meta Cloud API):
+                      </div>
+                      <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                        {activeStep === 1 ? (
+                          <>
+                            <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                              ✅ Mau Bayar Sekarang
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                              💬 Tanya CS / Rekening
+                            </span>
+                          </>
+                        ) : activeStep === 2 ? (
+                          <>
+                            <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                              🍯 Amankan Pesanan
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                              💬 Tanya Stok / Promo
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                              🔥 Konfirmasi Kirim
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                              ❌ Batalkan Pesanan
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* MODE 2: META HSM APPROVED TEMPLATE */
+                <div className="space-y-3">
+                  {/* Sender Channel Info */}
+                  <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="font-semibold text-foreground">WABA Resmi Meta (+62 856-4540-6949)</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                      Cloud API • Anti-Banned
+                    </Badge>
+                  </div>
+
+                  {/* Step Selector for Tracking */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                      <span>Catat Sebagai Tahap Follow-Up:</span>
+                      <span className="text-[10px] text-muted-foreground">Untuk pencatatan riwayat kontak</span>
+                    </label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3].map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setActiveStep(st)}
+                          className={`flex-1 py-1 rounded-md border text-xs font-medium transition-all ${
+                            activeStep === st
+                              ? "bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs"
+                              : "border-border/60 hover:bg-muted/40 text-muted-foreground"
+                          }`}
+                        >
+                          FU {st} {st === 1 ? "(Sapaan)" : st === 2 ? "(Edukasi)" : "(Final Call)"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Template Dropdown Selector */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Pilih Template Resmi Meta (Approved):</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => refetchMetaTemplates()}
+                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          title="Segarkan daftar template dari Meta"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isTemplatesLoading ? "animate-spin" : ""}`} />
+                          <span>Sync</span>
+                        </button>
+                        <a
+                          href="https://business.facebook.com/wa/manage/message-templates"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5"
+                        >
+                          Meta Manager <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                    </div>
+
+                    {approvedMetaTemplates.length === 0 ? (
+                      <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                        <p className="font-semibold">Belum Ada Template Approved</p>
+                        <p className="text-[11px] leading-relaxed">
+                          Tidak ditemukan template berstatus <code>APPROVED</code> di WhatsApp Business Manager. Buka Meta Manager untuk membuat template baru.
+                        </p>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={mediaUrl}
-                          alt="Preview"
-                          className="w-12 h-12 object-cover rounded border border-border shrink-0"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = "none";
-                          }}
-                        />
-                        <div className="text-[11px] text-muted-foreground truncate max-w-[280px]">
-                          Header Gambar aktif untuk pesan WhatsApp
+                      <Select
+                        value={activeMetaTemplate?.name || ""}
+                        onValueChange={(val) => setSelectedMetaTemplateName(val)}
+                      >
+                        <SelectTrigger className="h-9 text-xs font-medium bg-background">
+                          <SelectValue placeholder="Pilih Template Resmi" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {approvedMetaTemplates.map((tpl: any) => (
+                            <SelectItem key={tpl.id} value={tpl.name} className="text-xs">
+                              <div className="flex items-center justify-between gap-4 w-full">
+                                <span className="font-semibold">{tpl.name}</span>
+                                <span className="text-[10px] text-muted-foreground uppercase">
+                                  {tpl.category} • {tpl.language}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  {/* Template Variable Parameter Inputs */}
+                  {activeMetaTemplate && (() => {
+                    const bodyComp = activeMetaTemplate.components?.find((c: any) => c.type === "BODY");
+                    const text = bodyComp?.text || "";
+                    const hasParam1 = text.includes("{{1}}");
+                    const hasParam2 = text.includes("{{2}}");
+
+                    if (!hasParam1 && !hasParam2) return null;
+
+                    return (
+                      <div className="space-y-2 p-2.5 rounded-xl border bg-muted/20">
+                        <span className="text-[11px] font-semibold text-foreground">
+                          Parameter Variabel Pesan Template:
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {hasParam1 && (
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-muted-foreground">Parameter 1 ({`{{1}}`}):</label>
+                              <Input
+                                value={metaParam1}
+                                onChange={(e) => setMetaParam1(e.target.value)}
+                                placeholder="Nama Konsumen"
+                                className="h-7 text-xs"
+                              />
+                            </div>
+                          )}
+                          {hasParam2 && (
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-muted-foreground">Parameter 2 ({`{{2}}`}):</label>
+                              <Input
+                                value={metaParam2}
+                                onChange={(e) => setMetaParam2(e.target.value)}
+                                placeholder="Nama Produk"
+                                className="h-7 text-xs"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                    );
+                  })()}
 
-              {/* Message Textarea */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                  <span>Pesan WhatsApp (FU {activeStep}):</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedLead) setCustomMessage(getTemplateForStep(activeStep, selectedLead));
-                    }}
-                    className="text-[10px] text-primary hover:underline"
-                  >
-                    Reset Template FU {activeStep}
-                  </button>
-                </label>
-                <Textarea
-                  rows={5}
-                  value={customMessage}
-                  onChange={(e) => setCustomMessage(e.target.value)}
-                  className="text-xs resize-none font-sans"
-                  placeholder="Ketik pesan follow-up..."
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Pesan otomatis dipersonalisasi dengan nama dan produk pelanggan.
-                </p>
-              </div>
+                  {/* Live Template Preview Card */}
+                  {activeMetaTemplate && (
+                    <div className="p-3 rounded-xl border bg-emerald-500/5 border-emerald-500/20 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Pratinjau Pesan Template Meta:
+                        </span>
+                        <Badge variant="outline" className="text-[9px] bg-background">
+                          {activeMetaTemplate.name} ({activeMetaTemplate.category})
+                        </Badge>
+                      </div>
 
-              {/* Interactive Buttons Preview (Meta Cloud API) */}
-              {selectedFollowUpSession === "waba" && (
-                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-800 dark:text-emerald-300">
-                  <div className="font-semibold flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    Tombol Balasan Cepat Otomatis (Meta Cloud API):
-                  </div>
-                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                    {activeStep === 1 ? (
-                      <>
-                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
-                          ✅ Mau Bayar Sekarang
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
-                          💬 Tanya CS / Rekening
-                        </span>
-                      </>
-                    ) : activeStep === 2 ? (
-                      <>
-                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
-                          🍯 Amankan Pesanan
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
-                          💬 Tanya Stok / Promo
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
-                          🔥 Konfirmasi Kirim
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
-                          ❌ Batalkan Pesanan
-                        </span>
-                      </>
-                    )}
-                  </div>
+                      <div className="bg-background rounded-lg p-3 border shadow-2xs space-y-2 text-xs">
+                        {/* Header */}
+                        {activeMetaTemplate.components?.find((c: any) => c.type === "HEADER") && (
+                          <div className="font-semibold text-foreground pb-1 border-b border-border/40">
+                            {activeMetaTemplate.components.find((c: any) => c.type === "HEADER")?.text || "[Header Media]"}
+                          </div>
+                        )}
+
+                        {/* Body */}
+                        <p className="whitespace-pre-line text-foreground/90 leading-relaxed font-sans">
+                          {(activeMetaTemplate.components?.find((c: any) => c.type === "BODY")?.text || "")
+                            .replace(/{{1}}/g, metaParam1 || selectedLead.customer_name || "Pelanggan")
+                            .replace(/{{2}}/g, metaParam2 || selectedLead.product_name || "Madu Araa")}
+                        </p>
+
+                        {/* Footer */}
+                        {activeMetaTemplate.components?.find((c: any) => c.type === "FOOTER")?.text && (
+                          <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                            {activeMetaTemplate.components.find((c: any) => c.type === "FOOTER")?.text}
+                          </p>
+                        )}
+
+                        {/* Buttons */}
+                        {activeMetaTemplate.components?.find((c: any) => c.type === "BUTTONS")?.buttons && (
+                          <div className="pt-2 border-t border-border/40 flex flex-wrap gap-1.5">
+                            {activeMetaTemplate.components
+                              .find((c: any) => c.type === "BUTTONS")
+                              ?.buttons?.map((btn: any, idx: number) => (
+                                <span
+                                  key={idx}
+                                  className="px-2.5 py-1 rounded-md bg-muted text-[11px] font-semibold text-primary border border-border flex items-center gap-1"
+                                >
+                                  {btn.text}
+                                </span>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        🛡️ Template ini telah diverifikasi & disetujui resmi oleh Meta. Aman 100% dari pemblokiran saat menyapa calon pembeli baru.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1266,20 +1564,53 @@ export function ScalevLeadsPage() {
               size="sm"
               onClick={() => {
                 if (!selectedLead) return;
-                followUpMutation.mutate({
-                  leadId: selectedLead.id,
-                  phone: selectedLead.customer_phone,
-                  customerName: selectedLead.customer_name,
-                  productName: selectedLead.product_name,
-                  customMessage,
-                  senderSession: selectedFollowUpSession,
-                  step: activeStep,
-                  mediaUrl: mediaUrl.trim() || undefined,
-                });
+                if (followUpMode === "meta_template") {
+                  if (!activeMetaTemplate) {
+                    toast.error("Pilih template resmi Meta terlebih dahulu.");
+                    return;
+                  }
+                  const bodyComp = activeMetaTemplate.components?.find((c: any) => c.type === "BODY");
+                  const bText = bodyComp?.text || "";
+                  const bodyParams: string[] = [];
+                  if (bText.includes("{{1}}")) bodyParams.push(metaParam1 || selectedLead.customer_name || "Pelanggan");
+                  if (bText.includes("{{2}}")) bodyParams.push(metaParam2 || selectedLead.product_name || "Madu Araa");
+
+                  followUpMutation.mutate({
+                    leadId: selectedLead.id,
+                    phone: selectedLead.customer_phone,
+                    customerName: selectedLead.customer_name,
+                    productName: selectedLead.product_name,
+                    senderSession: "waba",
+                    step: activeStep,
+                    customMessage: `[Meta Template: ${activeMetaTemplate.name}]`,
+                    template: {
+                      name: activeMetaTemplate.name,
+                      language: activeMetaTemplate.language,
+                      bodyParameters: bodyParams.length > 0 ? bodyParams : undefined,
+                    },
+                  });
+                } else {
+                  followUpMutation.mutate({
+                    leadId: selectedLead.id,
+                    phone: selectedLead.customer_phone,
+                    customerName: selectedLead.customer_name,
+                    productName: selectedLead.product_name,
+                    customMessage,
+                    senderSession: selectedFollowUpSession,
+                    step: activeStep,
+                    mediaUrl: mediaUrl.trim() || undefined,
+                  });
+                }
               }}
-              disabled={followUpMutation.isPending || !customMessage.trim()}
+              disabled={
+                followUpMutation.isPending ||
+                (followUpMode === "custom" && !customMessage.trim()) ||
+                (followUpMode === "meta_template" && !activeMetaTemplate)
+              }
               className={`text-white gap-1.5 font-bold shadow-xs ${
-                activeStep === 1
+                followUpMode === "meta_template"
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : activeStep === 1
                   ? "bg-emerald-600 hover:bg-emerald-700"
                   : activeStep === 2
                   ? "bg-blue-600 hover:bg-blue-700"
@@ -1292,7 +1623,15 @@ export function ScalevLeadsPage() {
                 <Send className="w-4 h-4" />
               )}
               <span>
-                Kirim FU {activeStep} via {selectedFollowUpSession === "waba" ? "WABA Resmi Meta" : selectedFollowUpSession === "campaign" ? "Slot 2" : "Slot 1"}
+                {followUpMode === "meta_template"
+                  ? `Kirim Template "${activeMetaTemplate?.name || 'HSM'}" via WABA`
+                  : `Kirim FU ${activeStep} via ${
+                      selectedFollowUpSession === "waba"
+                        ? "WABA Resmi Meta"
+                        : selectedFollowUpSession === "campaign"
+                        ? "Slot 2"
+                        : "Slot 1"
+                    }`}
               </span>
             </Button>
           </DialogFooter>

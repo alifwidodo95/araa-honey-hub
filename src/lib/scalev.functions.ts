@@ -372,7 +372,7 @@ export const syncScalevHistory = createServerFn({ method: "POST" })
     }
   });
 
-// 5. Send Personalized Follow-Up WhatsApp to Scalev Lead (Step 1, 2, 3 with Media & Interactive Buttons)
+// 5. Send Personalized Follow-Up WhatsApp to Scalev Lead (Step 1, 2, 3 with Media & Interactive Buttons or Meta HSM Template)
 export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
   .validator((data: {
     leadId: string;
@@ -384,6 +384,13 @@ export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
     step?: number; // 1, 2, or 3
     mediaUrl?: string; // Direct image or video URL
     mediaType?: "image" | "video";
+    template?: {
+      name: string;
+      language?: string;
+      bodyParameters?: string[];
+      headerImageUrl?: string;
+      headerVideoUrl?: string;
+    };
   }) => data)
   .handler(async ({ data }) => {
     let pool: pg.Pool | null = null;
@@ -400,7 +407,7 @@ export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
 
       // Compose message text if not custom
       let messageText = (data.customMessage || "").trim();
-      if (!messageText) {
+      if (!messageText && !data.template) {
         let template = "";
         if (step === 1) {
           template = scalevCfg.fu1Template || scalevCfg.followUpTemplate ||
@@ -416,6 +423,8 @@ export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
         messageText = template
           .replace(/{nama}/g, data.customerName || "Pelanggan")
           .replace(/{produk}/g, data.productName || "Madu Araa");
+      } else if (!messageText && data.template) {
+        messageText = `[Meta Template: ${data.template.name}]`;
       }
 
       // Determine step buttons and footer
@@ -457,11 +466,12 @@ export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
       const res = await sendWhatsAppMessage({
         to: rawPhone,
         message: messageText,
-        mediaUrl,
+        mediaUrl: data.template?.headerImageUrl || data.template?.headerVideoUrl ? undefined : mediaUrl,
         mediaType: data.mediaType,
         channel,
-        buttons,
-        footerText,
+        buttons: data.template ? undefined : buttons,
+        footerText: data.template ? undefined : footerText,
+        template: data.template,
         wabaConfig: {
           phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
           permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,

@@ -20,6 +20,13 @@ export interface SendWhatsAppOptions {
   channel?: WhatsAppChannel;
   buttons?: WhatsAppButton[]; // Quick reply buttons (up to 3 for WABA)
   footerText?: string;
+  template?: {
+    name: string;
+    language?: string;
+    bodyParameters?: string[];
+    headerImageUrl?: string;
+    headerVideoUrl?: string;
+  };
   wahaConfig?: {
     wahaUrl?: string;
     sessionName?: string;
@@ -88,7 +95,41 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
       const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
       
       let payload: any;
-      if (opts.buttons && opts.buttons.length > 0) {
+      if (opts.template) {
+        const components: any[] = [];
+        if (opts.template.headerImageUrl) {
+          components.push({
+            type: 'header',
+            parameters: [{ type: 'image', image: { link: opts.template.headerImageUrl.trim() } }]
+          });
+        } else if (opts.template.headerVideoUrl) {
+          components.push({
+            type: 'header',
+            parameters: [{ type: 'video', video: { link: opts.template.headerVideoUrl.trim() } }]
+          });
+        }
+
+        if (opts.template.bodyParameters && opts.template.bodyParameters.length > 0) {
+          components.push({
+            type: 'body',
+            parameters: opts.template.bodyParameters.map(val => ({ type: 'text', text: String(val) }))
+          });
+        }
+
+        payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhone,
+          type: 'template',
+          template: {
+            name: opts.template.name,
+            language: {
+              code: opts.template.language || 'id'
+            },
+            ...(components.length > 0 ? { components } : {})
+          }
+        };
+      } else if (opts.buttons && opts.buttons.length > 0) {
         // Meta Cloud API supports up to 3 interactive reply buttons (max 20 chars per title)
         const actionButtons = opts.buttons.slice(0, 3).map((b, idx) => ({
           type: 'reply',
