@@ -1087,7 +1087,7 @@ function WhatsAppPage() {
     message: string, 
     imageUrl?: string, 
     channelOverride?: "waba" | "waha_main" | "waha_campaign"
-  ): Promise<boolean> => {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const targetChannel = channelOverride || (activeTab === "crm" ? crmChannel : defaultResiChannel);
       const res = await fetch("/api/whatsapp/send", {
@@ -1097,18 +1097,25 @@ function WhatsAppPage() {
           to,
           message,
           imageUrl,
-          channel: targetChannel
+          channel: targetChannel,
+          wahaConfig: {
+            wahaUrl: wahaUrl || "https://waha.araahoney.my.id",
+            apiKey: apiKey || "araahoney123",
+            sessionName: sessionName || "default",
+            campaignSessionName: campaignSessionName || "campaign"
+          }
         })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        console.error("Gagal kirim via /api/whatsapp/send:", data);
-        return false;
+        const errMsg = data.error || `Error status ${res.status}`;
+        console.error("Gagal kirim via /api/whatsapp/send:", errMsg, data);
+        return { success: false, error: errMsg };
       }
-      return true;
-    } catch (err) {
+      return { success: true };
+    } catch (err: any) {
       console.error("Error calling /api/whatsapp/send:", err);
-      return false;
+      return { success: false, error: err.message || "Network error" };
     }
   };
 
@@ -1175,13 +1182,13 @@ function WhatsAppPage() {
       .replace(/{tracking_number}/g, order.tracking_number || "")
       .replace(/{expedition}/g, order.expedition || "");
 
-    const success = await sendWhatsAppMessage(order.customer_phone, message, undefined, defaultResiChannel);
+    const sendResult = await sendWhatsAppMessage(order.customer_phone, message, undefined, defaultResiChannel);
 
-    if (success) {
+    if (sendResult.success) {
       // Update DB
       const { data, error } = await supabase
         .from("orders")
-        .update({ resi_shared_via_wa: true })
+        .update({ resi_shared_via_wa: true, wa_share_error: null })
         .eq("id", order.id)
         .select();
 
@@ -1194,9 +1201,10 @@ function WhatsAppPage() {
       }
     } else {
       // Log Error to DB
+      const errDetail = sendResult.error || `Gagal terhubung atau terkirim dari gateway WhatsApp (${defaultResiChannel})`;
       const { data, error } = await supabase
         .from("orders")
-        .update({ wa_share_error: `Gagal terhubung atau terkirim dari gateway WhatsApp (${defaultResiChannel})` })
+        .update({ wa_share_error: errDetail })
         .eq("id", order.id)
         .select();
 
@@ -1204,7 +1212,7 @@ function WhatsAppPage() {
         console.error("Gagal mencatat log error pengiriman WA ke database:", error);
       }
 
-      addLog(`❌ [Gagal] Gagal mengirim pesan ke ${order.customer_name}. Periksa status WAHA Anda.`);
+      addLog(`❌ [Gagal] Gagal mengirim ke ${order.customer_name}: ${errDetail}`);
     }
 
     // Schedule next step

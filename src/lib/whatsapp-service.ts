@@ -253,7 +253,7 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
     : (opts.wahaConfig?.sessionName || 'default');
 
   const wahaUrl = opts.wahaConfig?.wahaUrl || process.env.WAHA_URL || 'https://waha.araahoney.my.id';
-  const apiKey = opts.wahaConfig?.apiKey || process.env.WAHA_API_KEY || '';
+  const apiKey = opts.wahaConfig?.apiKey || process.env.WAHA_API_KEY || 'araahoney123';
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) {
