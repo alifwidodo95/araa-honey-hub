@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
+import { sendWhatsAppMessage } from '@/lib/whatsapp-service';
 
 export const Route = createFileRoute('/api/webhooks/whatsapp')({
   server: {
@@ -12,7 +13,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           const token = url.searchParams.get('hub.verify_token');
           const challenge = url.searchParams.get('hub.challenge');
 
-          const verifyToken = process.env.META_VERIFY_TOKEN || 'araahoney123';
+          const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN || 'araahoney123';
 
           if (mode === 'subscribe' && token === verifyToken) {
             console.log('[WhatsApp Webhook] Verification successful');
@@ -30,15 +31,220 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           const body = await request.json() as any;
           console.log('[WA Webhook] Received payload:', JSON.stringify(body));
 
-          // 1. Verify it is a message event and not sent by ourselves (to prevent loops)
+          const dbUrl = process.env.DATABASE_URL || "postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres";
+          pool = new pg.Pool({
+            connectionString: dbUrl,
+            ssl: { rejectUnauthorized: false }
+          });
+
+          // =========================================================================
+          // CASE 1: META CLOUD API (WABA) WEBHOOK
+          // =========================================================================
+          if (body.object === 'whatsapp_business_account') {
+            const entries = body.entry || [];
+            
+            for (const entry of entries) {
+              const changes = entry.changes || [];
+              for (const change of changes) {
+                const val = change.value || {};
+                
+                // Ignore delivery receipts / statuses (sent, delivered, read)
+                if (val.statuses && (!val.messages || val.messages.length === 0)) {
+                  console.log('[Meta Webhook] Status update acknowledged (sent/delivered/read).');
+                  continue;
+                }
+
+                const messages = val.messages || [];
+                if (messages.length === 0) continue;
+
+                // Lookup AI settings & fallback user_id
+                const aiSettingsRes = await pool.query('SELECT * FROM public.whatsapp_ai_settings ORDER BY updated_at DESC LIMIT 1');
+                const aiSettings = aiSettingsRes.rows[0] || {};
+                let userId = aiSettings.user_id;
+
+                if (!userId) {
+                  const fallbackUser = await pool.query('SELECT id FROM auth.users ORDER BY created_at ASC LIMIT 1');
+                  userId = fallbackUser.rows[0]?.id;
+                }
+
+                const contacts = val.contacts || [];
+                const customerName = contacts[0]?.profile?.name || 'Pelanggan WA';
+
+                for (const msg of messages) {
+                  const customerPhone = msg.from; // e.g. "6281901942233"
+                  const chatId = `${customerPhone}@c.us`;
+                  const messageType = msg.type || 'text';
+                  let incomingText = '';
+
+                  if (messageType === 'text') {
+                    incomingText = msg.text?.body || '';
+                  } else if (messageType === 'image') {
+                    incomingText = msg.image?.caption || '[Pelanggan Mengirim Gambar]';
+                  } else if (messageType === 'audio' || messageType === 'voice') {
+                    incomingText = '[Pesan Suara]';
+                  } else if (messageType === 'interactive') {
+                    incomingText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
+                  } else if (messageType === 'button') {
+                    incomingText = msg.button?.text || '';
+                  } else {
+                    incomingText = `[Pesan ${messageType}]`;
+                  }
+
+                  if (!incomingText) continue;
+
+                  console.log(`[Meta Webhook] Inbound WABA message from ${customerPhone} (${customerName}): "${incomingText}"`);
+
+                  // Fetch last 5 messages for history context
+                  const historyRes = await pool.query(`
+                    SELECT message, direction FROM public.whatsapp_chat_logs
+                    WHERE (chat_id = $1 OR customer_phone = $2)
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                  `, [chatId, customerPhone]);
+
+                  const chatHistory = (historyRes.rows || []).reverse().map((r: any) => ({
+                    role: r.direction === 'incoming' ? 'user' : 'assistant',
+                    content: r.message
+                  }));
+
+                  // Save incoming message to database with channel='waba'
+                  await pool.query(`
+                    INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+                    VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', now())
+                  `, [userId, chatId, customerPhone, customerName, incomingText]);
+
+                  // Check if AI auto-reply is active
+                  const {
+                    deepseek_api_key: deepseekApiKey,
+                    system_prompt: systemPrompt,
+                    is_active: isActive,
+                    biteship_origin_area_id: biteshipOriginAreaId,
+                    biteship_origin_name: biteshipOriginName
+                  } = aiSettings;
+
+                  if (isActive && deepseekApiKey) {
+                    let biteshipRatesText = '';
+                    const lowercaseInput = incomingText.toLowerCase();
+                    const asksForOngkir = 
+                      lowercaseInput.includes('ongkir') || 
+                      lowercaseInput.includes('ongkos kirim') || 
+                      lowercaseInput.includes('tarif kirim') || 
+                      lowercaseInput.includes('biaya kirim') || 
+                      lowercaseInput.includes('kirim ke') || 
+                      lowercaseInput.includes('ongkos ke');
+
+                    // Check Biteship if asking for ongkir
+                    if (asksForOngkir && process.env.BITESHIP_API_KEY && biteshipOriginAreaId) {
+                      try {
+                        const biteshipKey = process.env.BITESHIP_API_KEY;
+                        // Search destination
+                        const searchAreaRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(incomingText)}`, {
+                          method: 'GET',
+                          headers: {
+                            'Authorization': `Bearer ${biteshipKey}`,
+                            'Content-Type': 'application/json'
+                          }
+                        });
+
+                        if (searchAreaRes.ok) {
+                          const searchAreaData = await searchAreaRes.json() as any;
+                          const areas = searchAreaData.areas || [];
+                          if (areas.length > 0) {
+                            const destinationAreaId = areas[0].id;
+                            const destinationAreaName = areas[0].name;
+
+                            const ratesRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
+                              method: 'POST',
+                              headers: {
+                                'Authorization': `Bearer ${biteshipKey}`,
+                                'Content-Type': 'application/json'
+                              },
+                              body: JSON.stringify({
+                                origin_area_id: biteshipOriginAreaId,
+                                destination_area_id: destinationAreaId,
+                                items: [{ name: 'Madu Araa', value: 50000, weight: 1000, quantity: 1 }]
+                              })
+                            });
+
+                            if (ratesRes.ok) {
+                              const ratesData = await ratesRes.json() as any;
+                              const pricing = ratesData.pricing || [];
+                              if (pricing.length > 0) {
+                                biteshipRatesText = `\n\n[INFO ONGKIR LIVE BITESHIP]\nTujuan: ${destinationAreaName}\nTarif: ` + 
+                                  pricing.slice(0, 3).map((p: any) => `${p.company.toUpperCase()} (${p.type}): Rp ${Number(p.price).toLocaleString('id-ID')}`).join(', ');
+                              }
+                            }
+                          }
+                        }
+                      } catch (bErr) {
+                        console.error('[Meta Webhook] Biteship lookup error:', bErr);
+                      }
+                    }
+
+                    // Query DeepSeek
+                    const finalSystemInstruction = `${systemPrompt || 'Kamu adalah asisten CS ramah Araa Honey.'}${biteshipRatesText}`;
+                    const deepseekMessages = [
+                      { role: 'system', content: finalSystemInstruction },
+                      ...chatHistory,
+                      { role: 'user', content: incomingText }
+                    ];
+
+                    const deepseekRes = await fetch('https://api.deepseek.com/chat/completions', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${deepseekApiKey}`
+                      },
+                      body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: deepseekMessages,
+                        temperature: 0.5,
+                        max_tokens: 200
+                      })
+                    });
+
+                    if (deepseekRes.ok) {
+                      const deepseekData = await deepseekRes.json() as any;
+                      const replyText = deepseekData.choices?.[0]?.message?.content?.trim();
+
+                      if (replyText) {
+                        console.log(`[Meta Webhook] AI generated reply: "${replyText}". Dispatching via WABA...`);
+                        const sendResult = await sendWhatsAppMessage({
+                          to: customerPhone,
+                          message: replyText,
+                          channel: 'waba'
+                        });
+
+                        if (sendResult.success) {
+                          await pool.query(`
+                            INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+                            VALUES ($1, $2, $3, $4, $5, 'outgoing', 'ai', 'waba', now())
+                          `, [userId, chatId, customerPhone, customerName, replyText]);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            await pool.end();
+            return new Response('EVENT_RECEIVED', { status: 200 });
+          }
+
+          // =========================================================================
+          // CASE 2: WAHA WEBHOOK (SESSION BASED)
+          // =========================================================================
           if (body.event !== 'message') {
-            return new Response('Ignored event', { status: 200 });
+            if (pool) await pool.end();
+            return new Response('Ignored non-message event', { status: 200 });
           }
 
           const payload = body.payload || {};
           const isFromMe = payload.fromMe === true;
           if (isFromMe) {
             console.log('[WA Webhook] Ignored outgoing message (fromMe = true)');
+            if (pool) await pool.end();
             return new Response('Ignored outgoing message', { status: 200 });
           }
 
@@ -47,17 +253,9 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           const customerPhone = chatId.split('@')[0];
           const customerName = payload.sender?.name || 'Pelanggan WA';
           const incomingMessageText = payload.body || '';
-          const messageType = payload.type || 'chat'; // 'chat', 'image', 'voice', 'audio', etc.
+          const messageType = payload.type || 'chat';
           const messageId = payload.id;
-
-          if (!process.env.DATABASE_URL) {
-            throw new Error('DATABASE_URL is not configured');
-          }
-
-          pool = new pg.Pool({
-            connectionString: process.env.DATABASE_URL,
-            ssl: { rejectUnauthorized: false }
-          });
+          const channelName = session === 'campaign' ? 'waha_campaign' : 'waha_main';
 
           // 2. Lookup AI settings for this WAHA session
           const settingsRes = await pool.query(
@@ -105,7 +303,6 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           let voiceLogText = '';
           let imageAnalysisText = '';
 
-          // Helper headers for WAHA
           const getWahaHeaders = () => {
             const h: Record<string, string> = { 'Content-Type': 'application/json' };
             if (wahaApiKey) {
@@ -114,11 +311,9 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
             return h;
           };
 
-          // 3. Handle Multimodal Input (Voice / Image)
+          // Handle Multimodal Input (Voice / Image)
           if (payload.hasMedia) {
             const mediaUrl = `${wahaUrl}/api/${session}/files/${encodeURIComponent(messageId)}/download`;
-            console.log(`[WA Webhook] Fetching media file from WAHA: ${mediaUrl}`);
-            
             try {
               const mediaRes = await fetch(mediaUrl, { headers: getWahaHeaders() });
               if (mediaRes.ok) {
@@ -127,7 +322,6 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
 
                 // Case A: Voice Note / Audio Transcription (using OpenAI Whisper)
                 if ((messageType === 'voice' || messageType === 'audio' || mimeType.includes('audio')) && openaiApiKey) {
-                  console.log('[WA Webhook] Processing voice note transcription...');
                   const formData = new FormData();
                   const file = new File([buffer], 'voice.ogg', { type: mimeType || 'audio/ogg' });
                   formData.append('file', file);
@@ -144,15 +338,11 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     const whisperData = await whisperRes.json() as any;
                     processedInputText = whisperData.text || '';
                     voiceLogText = `[Pesan Suara (Transkripsi)]: ${processedInputText}`;
-                    console.log(`[WA Webhook] Transcribed Voice: "${processedInputText}"`);
-                  } else {
-                    console.error('[WA Webhook] Whisper API failed:', await whisperRes.text());
                   }
                 }
 
                 // Case B: Image analysis (using OpenAI GPT-4o-mini Vision)
                 if ((messageType === 'image' || mimeType.includes('image')) && openaiApiKey) {
-                  console.log('[WA Webhook] Processing image analysis...');
                   const base64Image = Buffer.from(buffer).toString('base64');
                   const dataUrl = `data:${mimeType || 'image/png'};base64,${base64Image}`;
 
@@ -186,29 +376,21 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                   if (visionRes.ok) {
                     const visionData = await visionRes.json() as any;
                     imageAnalysisText = visionData.choices?.[0]?.message?.content || '';
-                    console.log(`[WA Webhook] Image analysis result: "${imageAnalysisText}"`);
-                    // We append the image description so DeepSeek knows what the customer sent
                     processedInputText = `${incomingMessageText}\n\n[Analisis Gambar/Bukti Transfer]: ${imageAnalysisText}`.trim();
-                  } else {
-                    console.error('[WA Webhook] Vision API failed:', await visionRes.text());
                   }
                 }
-              } else {
-                console.error('[WA Webhook] Failed to download media from WAHA:', await mediaRes.text());
               }
             } catch (mediaErr) {
               console.error('[WA Webhook] Media processing exception:', mediaErr);
             }
           }
 
-          // If it is just a media message with no text and we couldn't parse it, ignore
           if (!processedInputText && !voiceLogText && !imageAnalysisText) {
-            console.log('[WA Webhook] Empty message text and no media parsed, ignoring.');
             await pool.end();
             return new Response('No content', { status: 200 });
           }
 
-          // 4. Fetch last 5 messages for conversation memory/history (fetch before inserting current message to avoid duplicates)
+          // Fetch last 5 messages for conversation memory
           const historyRes = await pool.query(`
             SELECT message, direction FROM public.whatsapp_chat_logs
             WHERE user_id = $1 AND chat_id = $2
@@ -224,11 +406,11 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           // Log the incoming message to database
           const incomingLoggedText = voiceLogText || incomingMessageText || (imageAnalysisText ? `[Mengirim Gambar] ${imageAnalysisText}` : '');
           await pool.query(`
-            INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, created_at)
-            VALUES ($1, $2, $3, $4, $5, 'incoming', now())
-          `, [userId, chatId, customerPhone, customerName, incomingLoggedText]);
+            INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+            VALUES ($1, $2, $3, $4, $5, 'incoming', $6, now())
+          `, [userId, chatId, customerPhone, customerName, incomingLoggedText, channelName]);
 
-          // 4.5. Check if user is asking about shipping cost via Biteship API
+          // Biteship Ongkir Check
           let biteshipRatesText = '';
           const lowercaseInput = (processedInputText || '').toLowerCase();
           const asksForOngkir = 
@@ -240,10 +422,8 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
             lowercaseInput.includes('ongkos ke');
 
           if (asksForOngkir && process.env.BITESHIP_API_KEY && biteshipOriginAreaId) {
-            console.log('[WA Webhook] Asks for ongkir. Extracting location...');
             try {
               let extractedLocation = '';
-              
               if (openaiApiKey) {
                 const extractionRes = await fetch('https://api.openai.com/v1/chat/completions', {
                   method: 'POST',
@@ -258,10 +438,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                         role: 'system',
                         content: 'Tugas Anda adalah mengekstrak nama KECAMATAN dan KABUPATEN/KOTA tujuan pengiriman dari chat pelanggan WhatsApp. Jawab HANYA dengan nama kecamatan dan kabupaten/kota tersebut (Contoh: "Blimbing, Malang" atau "Dawe, Kudus"). Jika tidak ada lokasi spesifik yang disebutkan, balas dengan kata "NONE".'
                       },
-                      {
-                        role: 'user',
-                        content: processedInputText
-                      }
+                      { role: 'user', content: processedInputText }
                     ],
                     max_tokens: 30,
                     temperature: 0.1
@@ -273,15 +450,12 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                   const locationText = (extractionData.choices?.[0]?.message?.content || '').trim();
                   if (locationText && locationText.toUpperCase() !== 'NONE') {
                     extractedLocation = locationText;
-                    console.log(`[WA Webhook] Extracted location for ongkir: "${extractedLocation}"`);
                   }
                 }
               }
 
               if (extractedLocation) {
                 const biteshipKey = process.env.BITESHIP_API_KEY;
-                
-                // 1. Search destination area ID on Biteship Maps
                 const searchAreaRes = await fetch(`https://api.biteship.com/v1/maps/areas?countries=ID&input=${encodeURIComponent(extractedLocation)}`, {
                   method: 'GET',
                   headers: {
@@ -296,9 +470,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                   if (areas.length > 0) {
                     const destinationAreaId = areas[0].id;
                     const destinationAreaName = areas[0].name;
-                    console.log(`[WA Webhook] Found Biteship Area ID: "${destinationAreaId}" for "${destinationAreaName}"`);
 
-                    // 2. Fetch rates from Biteship Rates API
                     const ratesRes = await fetch('https://api.biteship.com/v1/rates/couriers', {
                       method: 'POST',
                       headers: {
@@ -308,29 +480,15 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                       body: JSON.stringify({
                         origin_area_id: biteshipOriginAreaId,
                         destination_area_id: destinationAreaId,
-                        items: [
-                          {
-                            name: 'Paket Jualan',
-                            value: 50000,
-                            weight: 1000, // default 1kg
-                            quantity: 1
-                          }
-                        ]
+                        items: [{ name: 'Paket Jualan', value: 50000, weight: 1000, quantity: 1 }]
                       })
                     });
 
                     if (ratesRes.ok) {
                       const ratesData = await ratesRes.json() as any;
                       const pricing = ratesData.pricing || [];
-                      
                       if (pricing.length > 0) {
-                        biteshipRatesText = `\n\n[INFORMASI ONGKIR LIVE VIA BITESHIP]
-Gudang Asal: ${biteshipOriginName || 'Gudang Utama'}
-Kecamatan Tujuan: ${destinationAreaName}
-Berat Paket: 1 kg
-
-Daftar Tarif Kurir:`;
-                        
+                        biteshipRatesText = `\n\n[INFORMASI ONGKIR LIVE VIA BITESHIP]\nGudang Asal: ${biteshipOriginName || 'Gudang Utama'}\nKecamatan Tujuan: ${destinationAreaName}\nBerat Paket: 1 kg\n\nDaftar Tarif Kurir:`;
                         const popularCouriers = ['jne', 'jnt', 'sicepat', 'spx', 'tiki', 'pos'];
                         const added = new Set<string>();
 
@@ -348,18 +506,10 @@ Daftar Tarif Kurir:`;
                             }
                           }
                         }
-                        
                         biteshipRatesText += `\n\nCatatan: Beritahukan ongkir ini kepada pelanggan dengan sopan.`;
-                        console.log('[WA Webhook] Injected Biteship Rates:', biteshipRatesText);
                       }
-                    } else {
-                      console.error('[WA Webhook] Biteship Rates API failed:', await ratesRes.text());
                     }
-                  } else {
-                    console.log(`[WA Webhook] No matching Biteship area found for "${extractedLocation}"`);
                   }
-                } else {
-                  console.error('[WA Webhook] Biteship Maps API failed:', await searchAreaRes.text());
                 }
               }
             } catch (biteshipErr) {
@@ -367,11 +517,7 @@ Daftar Tarif Kurir:`;
             }
           }
 
-          // Compile final system instruction (directly use systemPrompt to remain product-agnostic, with live shipping rates if any)
           const finalSystemInstruction = `${systemPrompt || ''}${biteshipRatesText}`;
-
-          // 5. Ask DeepSeek for the response
-          console.log(`[WA Webhook] Querying DeepSeek V3 for ${chatId}...`);
           const deepseekMessages = [
             { role: 'system', content: finalSystemInstruction },
             ...chatHistory,
@@ -401,14 +547,11 @@ Daftar Tarif Kurir:`;
           const replyText = deepseekData.choices?.[0]?.message?.content?.trim();
 
           if (!replyText) {
-            console.log('[WA Webhook] Empty response from DeepSeek, ignoring.');
             await pool.end();
             return new Response('No AI response', { status: 200 });
           }
 
-          console.log(`[WA Webhook] DeepSeek generated reply: "${replyText}". Sending via WAHA...`);
-
-          // 6. Send message back via WAHA
+          // Send message back via WAHA
           const sendRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
             method: 'POST',
             headers: getWahaHeaders(),
@@ -420,14 +563,10 @@ Daftar Tarif Kurir:`;
           });
 
           if (sendRes.ok) {
-            console.log('[WA Webhook] Reply sent successfully via WAHA.');
-            // Log outgoing reply to database
             await pool.query(`
-              INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, created_at)
-              VALUES ($1, $2, $3, $4, $5, 'outgoing', 'ai', now())
-            `, [userId, chatId, customerPhone, customerName, replyText]);
-          } else {
-            console.error('[WA Webhook] Failed to send message via WAHA:', await sendRes.text());
+              INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+              VALUES ($1, $2, $3, $4, $5, 'outgoing', 'ai', $6, now())
+            `, [userId, chatId, customerPhone, customerName, replyText, channelName]);
           }
 
           await pool.end();

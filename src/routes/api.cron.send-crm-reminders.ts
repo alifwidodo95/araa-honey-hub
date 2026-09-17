@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
+import { sendWhatsAppMessage, WhatsAppChannel } from '@/lib/whatsapp-service';
 
 export const Route = createFileRoute('/api/cron/send-crm-reminders')({
   server: {
@@ -17,13 +18,11 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          if (!process.env.DATABASE_URL) {
-            throw new Error('DATABASE_URL environment variable is not defined.');
-          }
+          const dbUrl = process.env.DATABASE_URL || "postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres";
 
           // 2. Connect directly to Postgres
           pool = new pg.Pool({
-            connectionString: process.env.DATABASE_URL,
+            connectionString: dbUrl,
             ssl: { rejectUnauthorized: false }
           });
 
@@ -38,7 +37,8 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
           }
 
           const crmConfig = crmConfigRes.rows[0].value;
-          const { enabled, delayDays, template: crmTemplate, maxDailyLimit, imageUrl: crmImageUrl } = crmConfig || {};
+          const { enabled, template: crmTemplate, maxDailyLimit, imageUrl: crmImageUrl } = crmConfig || {};
+          const crmChannel: WhatsAppChannel = (crmConfig?.channel as WhatsAppChannel) || 'waha_campaign';
           const dailyLimit = Number(maxDailyLimit) || 50;
 
           // If CRM reminders are disabled, do not run the cron job
@@ -50,7 +50,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          // 3.5. Enforce working hours (09:00 WIB to 20:00 WIB)
+          // Enforce working hours (09:00 WIB to 20:00 WIB)
           const nowJakarta = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
           const currentHour = nowJakarta.getHours();
           
@@ -65,26 +65,9 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          // 4. Fetch WAHA configuration
+          // 4. Fetch WAHA configuration fallback
           const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
-          if (wahaConfigRes.rowCount === 0) {
-            await pool.end();
-            return new Response(JSON.stringify({ message: 'WAHA configuration not found' }), {
-              status: 404,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-
-          const wahaConfig = wahaConfigRes.rows[0].value;
-          const { wahaUrl, sessionName, apiKey } = wahaConfig || {};
-
-          if (!wahaUrl || !sessionName) {
-            await pool.end();
-            return new Response(JSON.stringify({ message: 'WAHA URL or Session Name is not configured' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
+          const wahaConfig = wahaConfigRes.rows[0]?.value || {};
 
           // 5. Check daily quota limits (based on Asia/Jakarta timezone)
           const quotaRes = await pool.query(`
@@ -106,28 +89,6 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
           }
 
-          // Helper to format phone number
-          const formatPhoneNumber = (phone: string): string => {
-            let clean = phone.replace(/[^0-9]/g, '');
-            if (clean.startsWith('0')) {
-              clean = '62' + clean.slice(1);
-            } else if (clean.startsWith('8')) {
-              clean = '62' + clean;
-            }
-            return `${clean}@c.us`;
-          };
-
-          // Helper to extract just the phone digits for checkNumberStatus
-          const extractPhoneDigits = (phone: string): string => {
-            let clean = phone.replace(/[^0-9]/g, '');
-            if (clean.startsWith('0')) {
-              clean = '62' + clean.slice(1);
-            } else if (clean.startsWith('8')) {
-              clean = '62' + clean;
-            }
-            return clean;
-          };
-
           // Helper to format Indonesian date (e.g. "12 Juli 2026")
           const formatDateIndo = (dateStr: string): string => {
             if (!dateStr) return '';
@@ -137,132 +98,6 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             const year = date.getFullYear();
             const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
             return `${day} ${months[monthIdx]} ${year}`;
-          };
-
-          // Common headers for WAHA requests
-          const wahaHeaders: Record<string, string> = {
-            'Content-Type': 'application/json',
-          };
-          if (apiKey) {
-            wahaHeaders['x-api-key'] = apiKey;
-          }
-
-          // Check if phone number is registered on WhatsApp
-          const checkNumberExists = async (phone: string): Promise<boolean> => {
-            try {
-              const phoneDigits = extractPhoneDigits(phone);
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-              const res = await fetch(`${wahaUrl}/api/contacts/check-exists?phone=${phoneDigits}&session=${sessionName}`, {
-                method: 'GET',
-                headers: wahaHeaders,
-                signal: controller.signal
-              });
-              clearTimeout(timeoutId);
-
-              if (res.ok) {
-                const data = await res.json();
-                return data.exists === true || data.numberExists === true;
-              }
-              return true; // if endpoint fails, assume valid and proceed to send
-            } catch (err) {
-              console.warn('[Cron CRM] Failed checking contact existence, proceeding anyway:', err);
-              return true;
-            }
-          };
-
-          // Send message via WAHA (supports Image + Caption or Text)
-          const sendMessage = async (phone: string, text: string): Promise<{ success: boolean; error?: string; isNumberError?: boolean }> => {
-            try {
-              const chatId = formatPhoneNumber(phone);
-              const hasImage = !!(crmImageUrl && crmImageUrl.trim().startsWith('http'));
-
-              if (hasImage) {
-                const imgController = new AbortController();
-                const imgTimeoutId = setTimeout(() => imgController.abort(), 10000);
-
-                const imagePayload = {
-                  session: sessionName,
-                  chatId,
-                  file: {
-                    url: crmImageUrl.trim(),
-                    mimetype: 'image/jpeg',
-                    filename: 'promo-madu-araa.jpg'
-                  },
-                  caption: text
-                };
-
-                let imgRes = await fetch(`${wahaUrl}/api/sendImage`, {
-                  method: 'POST',
-                  headers: wahaHeaders,
-                  body: JSON.stringify(imagePayload),
-                  signal: imgController.signal
-                }).catch(() => null);
-
-                if (!imgRes || !imgRes.ok) {
-                  imgRes = await fetch(`${wahaUrl}/api/sendFile`, {
-                    method: 'POST',
-                    headers: wahaHeaders,
-                    body: JSON.stringify(imagePayload),
-                  }).catch(() => null);
-                }
-
-                clearTimeout(imgTimeoutId);
-                if (imgRes && imgRes.ok) return { success: true };
-              }
-
-              // Send text message (primary or fallback)
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-              const res = await fetch(`${wahaUrl}/api/sendText`, {
-                method: 'POST',
-                headers: wahaHeaders,
-                body: JSON.stringify({
-                  session: sessionName,
-                  chatId,
-                  text
-                }),
-                signal: controller.signal
-              });
-              clearTimeout(timeoutId);
-              if (res.ok) return { success: true };
-
-              // Check if it's a number-specific error (not a gateway error)
-              const errText = await res.text().catch(() => '');
-              const isNumberError = errText.includes('No LID for user') || 
-                                    errText.includes('number does not exist') ||
-                                    errText.includes('not registered') ||
-                                    errText.includes('invalid phone');
-              
-              if (isNumberError) {
-                return { success: false, error: errText.substring(0, 200), isNumberError: true };
-              }
-
-              // Try fallback endpoint
-              const fallbackController = new AbortController();
-              const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 6000);
-
-              const fallbackRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
-                method: 'POST',
-                headers: wahaHeaders,
-                body: JSON.stringify({
-                  session: sessionName,
-                  chatId,
-                  text
-                }),
-                signal: fallbackController.signal
-              });
-              clearTimeout(fallbackTimeoutId);
-              if (fallbackRes.ok) return { success: true };
-              
-              const fallbackErrText = await fallbackRes.text().catch(() => '');
-              return { success: false, error: `WAHA returned status ${fallbackRes.status}: ${fallbackErrText.substring(0, 200)}` };
-            } catch (err: any) {
-              console.error('[Cron CRM] Error sending message via WAHA:', err);
-              return { success: false, error: err.name === 'AbortError' ? 'Request timed out after 6 seconds' : (err.message || 'Connection failed') };
-            }
           };
 
           const defaultTemplate = `Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`;
@@ -306,7 +141,10 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             }
 
             // Double check: If customer has already placed a newer repeat order, cancel this reminder and skip
-            const normPhone = formatPhoneNumber(reminder.customer_phone).replace('@c.us', '');
+            let cleanPhone = reminder.customer_phone.replace(/[^0-9]/g, '');
+            if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.slice(1);
+            else if (cleanPhone.startsWith('8')) cleanPhone = '62' + cleanPhone;
+
             const newerOrderCheck = await pool.query(
               `SELECT id FROM orders 
                WHERE public.normalize_phone(customer_phone) = $1 
@@ -314,7 +152,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
                  AND returned = FALSE 
                  AND created_at > $2 
                LIMIT 1`,
-              [normPhone, reminder.last_order_date]
+              [cleanPhone, reminder.last_order_date]
             );
 
             if (newerOrderCheck.rows.length > 0) {
@@ -331,41 +169,46 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               continue;
             }
 
-            // Check if number exists on WhatsApp before sending
-            const numberExists = await checkNumberExists(reminder.customer_phone);
-            if (!numberExists) {
-              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = 'Nomor tidak terdaftar di WhatsApp', updated_at = now() WHERE id = $1", [reminder.id]);
-              results.push({ id: reminder.id, customer: reminder.customer_name, phone: reminder.customer_phone, status: 'SKIPPED', reason: 'Number not registered on WhatsApp' });
-              continue;
-            }
-
             const formattedMessage = template
               .replace(/{customer_name}/g, reminder.customer_name || '')
               .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
               .replace(/{last_order_date}/g, formatDateIndo(reminder.last_order_date) || '');
 
-            const sendResult = await sendMessage(reminder.customer_phone, formattedMessage);
+            const sendResult = await sendWhatsAppMessage({
+              to: reminder.customer_phone,
+              message: formattedMessage,
+              imageUrl: crmImageUrl,
+              channel: crmChannel,
+              wahaConfig
+            });
 
             if (sendResult.success) {
-              await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now() WHERE id = $1", [reminder.id]);
-              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS' });
+              await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now(), error_message = null WHERE id = $1", [reminder.id]);
+              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS', channel: crmChannel });
               successCount++;
-            } else if (sendResult.isNumberError) {
-              // Number-specific error (e.g., "No LID for user") — mark as failed, move on
-              await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = $2, updated_at = now() WHERE id = $1", [reminder.id, (sendResult.error || 'Nomor tidak valid di WhatsApp').substring(0, 500)]);
-              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'FAILED_NUMBER', reason: sendResult.error });
             } else {
-              // Actual WAHA Gateway/Session Error — stop processing, leave as pending for retry
-              gatewayError = true;
-              results.push({ id: reminder.id, customer: reminder.customer_name, status: 'GATEWAY_ERROR', reason: sendResult.error });
-              break;
+              const errMsg = sendResult.error || 'Gagal mengirim dari gateway WhatsApp';
+              const isNumberError = errMsg.includes('No LID') || errMsg.includes('not registered') || errMsg.includes('invalid');
+
+              if (isNumberError) {
+                await pool.query("UPDATE crm_reminders SET status = 'failed', error_message = $2, updated_at = now() WHERE id = $1", [reminder.id, errMsg.substring(0, 500)]);
+                results.push({ id: reminder.id, customer: reminder.customer_name, status: 'FAILED_NUMBER', reason: errMsg });
+              } else {
+                gatewayError = true;
+                results.push({ id: reminder.id, customer: reminder.customer_name, status: 'GATEWAY_ERROR', reason: errMsg });
+                break;
+              }
             }
+
+            // Delay 1.5 seconds between dispatches
+            await new Promise(resolve => setTimeout(resolve, 1500));
           }
 
           if (gatewayError && successCount === 0) {
             await pool.end();
             return new Response(JSON.stringify({ 
-              error: `WAHA Gateway Error. Reminders left as pending for retry.`,
+              error: `WhatsApp Gateway Error. Reminders left as pending for retry.`,
+              channelUsed: crmChannel,
               results
             }), {
               status: 502,
@@ -379,6 +222,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             message: `CRM Auto-Reminders cron completed. Processed ${pendingReminders.length}, sent ${successCount}.`, 
             processed: pendingReminders.length,
             sent: successCount,
+            channelUsed: crmChannel,
             results 
           }), {
             status: 200,

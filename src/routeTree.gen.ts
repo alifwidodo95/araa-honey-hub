@@ -38,6 +38,7 @@ import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
 import { Route as ApiScalevWebhookRouteImport } from './routes/api.scalev-webhook'
 import { Route as ApiLoyaltyStatsRouteImport } from './routes/api.loyalty-stats'
+import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api.webhooks.whatsapp'
 import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
 import { Route as ApiMetaSyncCommentsRouteImport } from './routes/api.meta.sync-comments'
@@ -199,6 +200,11 @@ const ApiLoyaltyStatsRoute = ApiLoyaltyStatsRouteImport.update({
   path: '/api/loyalty-stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappSendRoute = ApiWhatsappSendRouteImport.update({
+  id: '/api/whatsapp/send',
+  path: '/api/whatsapp/send',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
   id: '/api/webhooks/whatsapp',
   path: '/api/webhooks/whatsapp',
@@ -321,6 +327,7 @@ export interface FileRoutesByFullPath {
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
+  '/api/whatsapp/send': typeof ApiWhatsappSendRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -367,6 +374,7 @@ export interface FileRoutesByTo {
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
+  '/api/whatsapp/send': typeof ApiWhatsappSendRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -414,6 +422,7 @@ export interface FileRoutesById {
   '/api/meta/sync-comments': typeof ApiMetaSyncCommentsRoute
   '/api/webhooks/meta-comments': typeof ApiWebhooksMetaCommentsRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
+  '/api/whatsapp/send': typeof ApiWhatsappSendRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -462,6 +471,7 @@ export interface FileRouteTypes {
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
     | '/api/webhooks/whatsapp'
+    | '/api/whatsapp/send'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -508,6 +518,7 @@ export interface FileRouteTypes {
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
     | '/api/webhooks/whatsapp'
+    | '/api/whatsapp/send'
   id:
     | '__root__'
     | '/'
@@ -554,6 +565,7 @@ export interface FileRouteTypes {
     | '/api/meta/sync-comments'
     | '/api/webhooks/meta-comments'
     | '/api/webhooks/whatsapp'
+    | '/api/whatsapp/send'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -601,6 +613,7 @@ export interface RootRouteChildren {
   ApiMetaSyncCommentsRoute: typeof ApiMetaSyncCommentsRoute
   ApiWebhooksMetaCommentsRoute: typeof ApiWebhooksMetaCommentsRoute
   ApiWebhooksWhatsappRoute: typeof ApiWebhooksWhatsappRoute
+  ApiWhatsappSendRoute: typeof ApiWhatsappSendRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -808,6 +821,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLoyaltyStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp/send': {
+      id: '/api/whatsapp/send'
+      path: '/api/whatsapp/send'
+      fullPath: '/api/whatsapp/send'
+      preLoaderRoute: typeof ApiWhatsappSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/whatsapp': {
       id: '/api/webhooks/whatsapp'
       path: '/api/webhooks/whatsapp'
@@ -961,6 +981,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMetaSyncCommentsRoute: ApiMetaSyncCommentsRoute,
   ApiWebhooksMetaCommentsRoute: ApiWebhooksMetaCommentsRoute,
   ApiWebhooksWhatsappRoute: ApiWebhooksWhatsappRoute,
+  ApiWhatsappSendRoute: ApiWhatsappSendRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

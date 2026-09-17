@@ -1,6 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
+import { sendWhatsAppMessage, WhatsAppChannel } from '@/lib/whatsapp-service';
 
 export const Route = createFileRoute('/api/cron/send-resi')({
   server: {
@@ -17,13 +18,11 @@ export const Route = createFileRoute('/api/cron/send-resi')({
             });
           }
 
-          if (!process.env.DATABASE_URL) {
-            throw new Error('DATABASE_URL environment variable is not defined.');
-          }
+          const dbUrl = process.env.DATABASE_URL || "postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres";
 
           // 2. Connect directly to Postgres
           pool = new pg.Pool({
-            connectionString: process.env.DATABASE_URL,
+            connectionString: dbUrl,
             ssl: { rejectUnauthorized: false }
           });
 
@@ -37,22 +36,15 @@ export const Route = createFileRoute('/api/cron/send-resi')({
             });
           }
 
-          const wahaConfig = configRes.rows[0].value;
-          const { wahaUrl, sessionName, apiKey, messageTemplate, autoSchedule } = wahaConfig || {};
+          const wahaConfig = configRes.rows[0].value || {};
+          const { messageTemplate, autoSchedule } = wahaConfig;
+          const resiChannel: WhatsAppChannel = (wahaConfig.default_resi_channel as WhatsAppChannel) || 'waba';
 
           // If automatic sending is toggled off, do not run the cron job
           if (autoSchedule === false) {
             await pool.end();
             return new Response(JSON.stringify({ message: 'Automatic scheduling is disabled', count: 0 }), {
               status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-
-          if (!wahaUrl || !sessionName) {
-            await pool.end();
-            return new Response(JSON.stringify({ message: 'WAHA URL or Session Name is not configured' }), {
-              status: 400,
               headers: { 'Content-Type': 'application/json' },
             });
           }
@@ -76,59 +68,9 @@ export const Route = createFileRoute('/api/cron/send-resi')({
             });
           }
 
-          console.log(`[Cron Resi] Found ${pendingOrders.length} pending orders to process.`);
+          console.log(`[Cron Resi] Found ${pendingOrders.length} pending orders to process via channel ${resiChannel}.`);
 
           const results = [];
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (apiKey) {
-            headers['X-Api-Key'] = apiKey;
-          }
-
-          // Helper to format phone number
-          const formatPhoneNumber = (phone: string): string => {
-            let clean = phone.replace(/[^0-9]/g, '');
-            if (clean.startsWith('0')) {
-              clean = '62' + clean.slice(1);
-            } else if (clean.startsWith('8')) {
-              clean = '62' + clean;
-            }
-            return `${clean}@c.us`;
-          };
-
-          // Helper to send message
-          const sendMessage = async (to: string, text: string) => {
-            const chatId = formatPhoneNumber(to);
-            // Try sendText first
-            try {
-              const res = await fetch(`${wahaUrl}/api/sendText`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                  session: sessionName,
-                  chatId,
-                  text
-                })
-              });
-              if (res.ok) return true;
-
-              // Fallback
-              const fallbackRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                  session: sessionName,
-                  chatId,
-                  text
-                })
-              });
-              return fallbackRes.ok;
-            } catch (err) {
-              console.error('[Cron Resi] Error sending message via WAHA:', err);
-              return false;
-            }
-          };
-
-          // 5. Process each order
           const template = messageTemplate || `Halo Kak {customer_name},\n\nPaket madu Araa Honey pesanan Kakak telah dikirim menggunakan {expedition}.\n\n*Resi Pengiriman:* {tracking_number}\n\nKakak bisa melacak status pengiriman secara berkala di aplikasi pelacakan ekspedisi terkait. Terima kasih banyak telah berbelanja di Araa Honey! 🍯🐝`;
 
           for (const order of pendingOrders) {
@@ -142,19 +84,22 @@ export const Route = createFileRoute('/api/cron/send-resi')({
               .replace(/{tracking_number}/g, order.tracking_number || '')
               .replace(/{expedition}/g, order.expedition || '');
 
-            const success = await sendMessage(order.customer_phone, formattedMessage);
+            const sendResult = await sendWhatsAppMessage({
+              to: order.customer_phone,
+              message: formattedMessage,
+              channel: resiChannel,
+              wahaConfig
+            });
 
-            if (success) {
-              // Update database status
-              await pool.query('UPDATE orders SET resi_shared_via_wa = true WHERE id = $1', [order.id]);
-              results.push({ id: order.id, customer: order.customer_name, status: 'SUCCESS' });
+            if (sendResult.success) {
+              await pool.query('UPDATE orders SET resi_shared_via_wa = true, wa_share_error = null WHERE id = $1', [order.id]);
+              results.push({ id: order.id, customer: order.customer_name, status: 'SUCCESS', channel: resiChannel });
             } else {
-              // Log failure error
-              await pool.query("UPDATE orders SET wa_share_error = 'Gagal mengirim dari cron gateway WAHA' WHERE id = $1", [order.id]);
-              results.push({ id: order.id, customer: order.customer_name, status: 'FAILED' });
+              await pool.query('UPDATE orders SET wa_share_error = $1 WHERE id = $2', [sendResult.error || 'Gagal mengirim dari gateway WhatsApp', order.id]);
+              results.push({ id: order.id, customer: order.customer_name, status: 'FAILED', error: sendResult.error });
             }
 
-            // Optional: Small delay to prevent spamming
+            // Small delay to maintain gentle dispatch rate
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
 
@@ -163,6 +108,7 @@ export const Route = createFileRoute('/api/cron/send-resi')({
           return new Response(JSON.stringify({ 
             message: 'Cron job execution completed', 
             processed: pendingOrders.length,
+            channelUsed: resiChannel,
             results 
           }), {
             status: 200,

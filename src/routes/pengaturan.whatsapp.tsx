@@ -17,7 +17,7 @@ import {
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
   XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2,
-  Building2, Rocket, Smartphone, ShieldCheck
+  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink
 } from "lucide-react";
 
 export const Route = createFileRoute("/pengaturan/whatsapp")({
@@ -51,7 +51,20 @@ function WhatsAppPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<"waha" | "crm">("waha");
+  const [activeTab, setActiveTab] = useState<"waha" | "crm" | "waba">("waha");
+
+  // Multi-Channel Dispatch States
+  const [defaultResiChannel, setDefaultResiChannel] = useState<"waba" | "waha_main" | "waha_campaign">(
+    () => (localStorage.getItem("default_resi_channel") as any) || "waba"
+  );
+  const [crmChannel, setCrmChannel] = useState<"waba" | "waha_main" | "waha_campaign">(
+    () => (localStorage.getItem("default_crm_channel") as any) || "waha_campaign"
+  );
+
+  // WABA Direct Test States
+  const [wabaTestPhone, setWabaTestPhone] = useState("081901942233");
+  const [wabaTestMessage, setWabaTestMessage] = useState("Halo Kak, ini adalah uji coba pesan resmi dari WhatsApp Business API Araa Honey 🍯🐝");
+  const [wabaSendingTest, setWabaSendingTest] = useState(false);
 
   // CRM State Configurations
   const [crmEnabled, setCrmEnabled] = useState(true);
@@ -136,6 +149,10 @@ function WhatsAppPage() {
       if (dbCrmConfig.template) setCrmTemplate(dbCrmConfig.template);
       if (dbCrmConfig.maxDailyLimit !== undefined) setCrmMaxDailyLimit(dbCrmConfig.maxDailyLimit);
       if (dbCrmConfig.imageUrl !== undefined) setCrmImageUrl(dbCrmConfig.imageUrl);
+      if (dbCrmConfig.channel) {
+        setCrmChannel(dbCrmConfig.channel);
+        localStorage.setItem("default_crm_channel", dbCrmConfig.channel);
+      }
     }
   }, [dbCrmConfig]);
 
@@ -186,10 +203,12 @@ function WhatsAppPage() {
             delayDays: Number(crmDelayDays),
             template: crmTemplate.trim(),
             maxDailyLimit: Number(crmMaxDailyLimit),
-            imageUrl: crmImageUrl.trim()
+            imageUrl: crmImageUrl.trim(),
+            channel: crmChannel
           }
         });
       if (error) throw error;
+      localStorage.setItem("default_crm_channel", crmChannel);
       toast.success("Konfigurasi CRM berhasil disimpan!");
       refetchCrmConfig();
     } catch (err: any) {
@@ -210,7 +229,8 @@ function WhatsAppPage() {
             delayDays: Number(crmDelayDays),
             template: crmTemplate.trim(),
             maxDailyLimit: Number(crmMaxDailyLimit),
-            imageUrl: crmImageUrl.trim()
+            imageUrl: crmImageUrl.trim(),
+            channel: crmChannel
           }
         });
       if (error) throw error;
@@ -287,7 +307,7 @@ function WhatsAppPage() {
         .replace(/{honey_type}/g, reminder.honey_type || 'Madu Araa')
         .replace(/{last_order_date}/g, formatDateIndo(reminder.orders?.created_at) || '');
 
-      const success = await sendWhatsAppMessage(reminder.customer_phone, formattedMessage, crmImageUrl);
+      const success = await sendWhatsAppMessage(reminder.customer_phone, formattedMessage, crmImageUrl, crmChannel);
 
       if (success) {
         const { error } = await supabase
@@ -299,11 +319,11 @@ function WhatsAppPage() {
           })
           .eq("id", reminder.id);
         if (error) throw error;
-        toast.success(`Pengingat CRM berhasil dikirim ke ${reminder.customer_name}!`);
+        toast.success(`Pengingat CRM berhasil dikirim ke ${reminder.customer_name} via ${crmChannel === 'waba' ? 'WABA Meta' : crmChannel === 'waha_campaign' ? 'WA 2 Kampanye' : 'WA 1 CS'}!`);
         refetchActiveReminders();
         refetchCrmHistory();
       } else {
-        throw new Error("Gagal mengirim dari gateway WAHA.");
+        throw new Error(`Gagal mengirim dari gateway WhatsApp (${crmChannel}).`);
       }
     } catch (err: any) {
       await supabase
@@ -339,6 +359,35 @@ function WhatsAppPage() {
       refetchCrmHistory();
     } catch (err: any) {
       toast.error(err.message || "Gagal membatalkan pengingat.");
+    }
+  };
+
+  // Send test message directly via WABA Meta Cloud API
+  const handleSendWabaTest = async () => {
+    if (!wabaTestPhone.trim() || !wabaTestMessage.trim()) {
+      toast.error("Nomor tujuan dan isi pesan wajib diisi.");
+      return;
+    }
+    setWabaSendingTest(true);
+    try {
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: wabaTestPhone.trim(),
+          message: wabaTestMessage.trim(),
+          channel: "waba"
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Gagal mengirim via Meta Cloud API");
+      }
+      toast.success(`Pesan uji coba resmi WABA berhasil dikirim ke ${wabaTestPhone}!`);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengirim pesan uji coba.");
+    } finally {
+      setWabaSendingTest(false);
     }
   };
 
@@ -398,8 +447,29 @@ function WhatsAppPage() {
         setFollowUpTemplate(wahaConfig.followUpTemplate);
         localStorage.setItem("waha_followup_template", wahaConfig.followUpTemplate);
       }
+      if (wahaConfig.default_resi_channel) {
+        setDefaultResiChannel(wahaConfig.default_resi_channel);
+        localStorage.setItem("default_resi_channel", wahaConfig.default_resi_channel);
+      }
     }
   }, [wahaConfig]);
+
+  // Fetch WABA Meta Cloud API Config from Supabase
+  const { data: wabaConfig, refetch: refetchWabaConfig } = useQuery({
+    queryKey: ["waba-config-settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "waba_config")
+        .maybeSingle();
+      if (error) {
+        console.error("Gagal memuat waba_config:", error);
+        throw error;
+      }
+      return data?.value as any || null;
+    }
+  });
 
   // Multi-Session UI States
   const [selectedSlot, setSelectedSlot] = useState<"main" | "campaign">("main");
@@ -466,7 +536,8 @@ function WhatsAppPage() {
             intervalVal,
             autoSchedule,
             messageTemplate,
-            followUpTemplate
+            followUpTemplate,
+            default_resi_channel: defaultResiChannel
           }
         });
       if (error) throw error;
@@ -480,6 +551,7 @@ function WhatsAppPage() {
       localStorage.setItem("waha_auto_schedule", String(autoSchedule));
       localStorage.setItem("waha_message_template", messageTemplate);
       localStorage.setItem("waha_followup_template", followUpTemplate);
+      localStorage.setItem("default_resi_channel", defaultResiChannel);
       
       toast.success("Pengaturan berhasil disimpan ke database!");
       refetchConfig();
@@ -506,7 +578,8 @@ function WhatsAppPage() {
             intervalVal,
             autoSchedule: checked,
             messageTemplate,
-            followUpTemplate
+            followUpTemplate,
+            default_resi_channel: defaultResiChannel
           }
         });
       if (error) throw error;
@@ -891,88 +964,33 @@ function WhatsAppPage() {
     return `${clean}@c.us`;
   };
 
-  // Send Single WA Message via WAHA (supports Text or Image + Caption)
-  const sendWhatsAppMessage = async (to: string, message: string, imageUrl?: string): Promise<boolean> => {
-    const chatId = formatPhoneNumber(to);
-    const hasImage = !!(imageUrl && imageUrl.trim().startsWith("http"));
-    
+  // Send Single WA Message via Unified Dispatcher (/api/whatsapp/send)
+  const sendWhatsAppMessage = async (
+    to: string, 
+    message: string, 
+    imageUrl?: string, 
+    channelOverride?: "waba" | "waha_main" | "waha_campaign"
+  ): Promise<boolean> => {
     try {
-      if (hasImage) {
-        const imagePayload = {
-          session: sessionName,
-          chatId: chatId,
-          file: {
-            url: imageUrl.trim(),
-            mimetype: "image/jpeg",
-            filename: "promo-madu-araa.jpg"
-          },
-          caption: message
-        };
-
-        // Try /api/sendImage first
-        let imgRes = await fetch("/api/waha-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: `${wahaUrl}/api/sendImage`,
-            method: "POST",
-            headers: getWahaHeaders(),
-            body: imagePayload
-          })
-        });
-
-        if (imgRes.ok) return true;
-
-        // Try fallback /api/sendFile
-        const sendFileRes = await fetch("/api/waha-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: `${wahaUrl}/api/sendFile`,
-            method: "POST",
-            headers: getWahaHeaders(),
-            body: imagePayload
-          })
-        });
-
-        if (sendFileRes.ok) return true;
+      const targetChannel = channelOverride || (activeTab === "crm" ? crmChannel : defaultResiChannel);
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to,
+          message,
+          imageUrl,
+          channel: targetChannel
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        console.error("Gagal kirim via /api/whatsapp/send:", data);
+        return false;
       }
-
-      // Send plain text (or fallback if image fails)
-      const res = await fetch("/api/waha-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: `${wahaUrl}/api/sendText`,
-          method: "POST",
-          headers: getWahaHeaders(),
-          body: {
-            session: sessionName,
-            chatId: chatId,
-            text: message
-          }
-        })
-      });
-      if (res.ok) return true;
-
-      // Fallback text endpoint
-      const fallbackRes = await fetch("/api/waha-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: `${wahaUrl}/api/messages/sendText`,
-          method: "POST",
-          headers: getWahaHeaders(),
-          body: {
-            session: sessionName,
-            chatId: chatId,
-            text: message
-          }
-        })
-      });
-      return fallbackRes.ok;
+      return true;
     } catch (err) {
-      console.error("Error API WAHA:", err);
+      console.error("Error calling /api/whatsapp/send:", err);
       return false;
     }
   };
@@ -988,7 +1006,7 @@ function WhatsAppPage() {
       toast.message("Antrean pengiriman dijeda.");
     } else {
       // Start
-      if (sessionStatus !== "WORKING") {
+      if (defaultResiChannel !== "waba" && sessionStatus !== "WORKING") {
         toast.error("Hubungkan sesi WhatsApp Anda terlebih dahulu!");
         return;
       }
@@ -998,7 +1016,8 @@ function WhatsAppPage() {
       }
       setQueueActive(true);
       queueActiveRef.current = true;
-      toast.success("Antrean pengiriman resi dimulai!");
+      const channelLabel = defaultResiChannel === "waba" ? "WABA Resmi Meta (+62 856-4540-6949)" : defaultResiChannel === "waha_campaign" ? "WA 2 Kampanye" : "WA 1 CS Utama";
+      toast.success(`Antrean pengiriman resi dimulai via ${channelLabel}!`);
       runQueueStep(queueIndex);
     }
   };
@@ -1039,7 +1058,7 @@ function WhatsAppPage() {
       .replace(/{tracking_number}/g, order.tracking_number || "")
       .replace(/{expedition}/g, order.expedition || "");
 
-    const success = await sendWhatsAppMessage(order.customer_phone, message);
+    const success = await sendWhatsAppMessage(order.customer_phone, message, undefined, defaultResiChannel);
 
     if (success) {
       // Update DB
@@ -1060,7 +1079,7 @@ function WhatsAppPage() {
       // Log Error to DB
       const { data, error } = await supabase
         .from("orders")
-        .update({ wa_share_error: "Gagal terhubung atau terkirim dari gateway WAHA" })
+        .update({ wa_share_error: `Gagal terhubung atau terkirim dari gateway WhatsApp (${defaultResiChannel})` })
         .eq("id", order.id)
         .select();
 
@@ -1129,7 +1148,7 @@ function WhatsAppPage() {
       </div>
 
       {/* Top Navigation Tabs */}
-      <div className="flex bg-muted/60 p-1 rounded-xl border border-border/60 max-w-md">
+      <div className="flex bg-muted/60 p-1 rounded-xl border border-border/60 max-w-xl">
         <button
           type="button"
           onClick={() => setActiveTab("waha")}
@@ -1152,6 +1171,18 @@ function WhatsAppPage() {
         >
           CRM Auto-Reminders
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("waba")}
+          className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all duration-200 flex items-center justify-center gap-1.5 ${
+            activeTab === "waba"
+              ? "bg-white dark:bg-slate-950 shadow-sm text-emerald-600 dark:text-emerald-400"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+          WABA Resmi Meta
+        </button>
       </div>
 
       {activeTab === "waha" ? (
@@ -1159,6 +1190,70 @@ function WhatsAppPage() {
         
         {/* Left column: Server Settings & Scheduler */}
         <div className="space-y-6 lg:col-span-1">
+          {/* Channel Selector for Resi Card */}
+          <Card className="border-honey/40 shadow-xs">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                  Jalur Pengirim Resi
+                </span>
+                <Badge variant="outline" className={defaultResiChannel === "waba" ? "border-emerald-400 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30" : "border-blue-400 text-blue-600 bg-blue-50 dark:bg-blue-950/30"}>
+                  {defaultResiChannel === "waba" ? "WABA Resmi Meta" : defaultResiChannel === "waha_campaign" ? "WA 2 Kampanye" : "WA 1 CS Utama"}
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Tentukan saluran WhatsApp yang digunakan untuk mengirim pesan resi (otomatis jam 19:00 & antrean manual).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="resi-channel-select" className="text-xs font-semibold">Saluran Pengirim Resi Aktif:</Label>
+                <Select
+                  value={defaultResiChannel}
+                  onValueChange={(val: any) => {
+                    setDefaultResiChannel(val);
+                    localStorage.setItem("default_resi_channel", val);
+                  }}
+                >
+                  <SelectTrigger id="resi-channel-select" className="h-9 text-xs">
+                    <SelectValue placeholder="Pilih saluran" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="waba" className="text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                        <span>WABA Resmi Meta (+62 856-4540-6949) — Anti-Banned 100%</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="waha_main" className="text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+                        <span>WA 1 (CS Utama - Sesi default)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="waha_campaign" className="text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-2 h-2 rounded-full bg-purple-500" />
+                        <span>WA 2 (Nomor Kampanye - Sesi campaign)</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                {defaultResiChannel === "waba" 
+                  ? "✅ WABA Resmi Meta Cloud API bekerja 24/7 di cloud, 100% anti-banned, dan tidak memerlukan HP atau sesi lokal menyala."
+                  : defaultResiChannel === "waha_campaign"
+                  ? "⚡ Dikirim menggunakan Slot 2 (Nomor Kampanye). Pastikan sesi terhubung."
+                  : "💬 Dikirim menggunakan Slot 1 (CS Utama). Pastikan sesi terhubung."}
+              </p>
+              <Button onClick={handleSaveConfig} size="sm" className="w-full bg-honey hover:bg-honey-dark text-honey-foreground text-xs font-medium">
+                Simpan Pilihan Jalur
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Server Settings Card */}
           <Card>
             <CardHeader>
@@ -1784,7 +1879,7 @@ function WhatsAppPage() {
           </Card>
         </div>
       </div>
-    ) : (
+    ) : activeTab === "crm" ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* CRM Left Column: Configurations */}
           <div className="space-y-6 lg:col-span-1">
@@ -1839,12 +1934,54 @@ function WhatsAppPage() {
                   </div>
                 </div>
 
+                <div className="space-y-1.5 pt-2 border-t">
+                  <Label htmlFor="crm-channel-select" className="text-xs font-semibold">Saluran Pengirim CRM Repeat Order:</Label>
+                  <Select
+                    value={crmChannel}
+                    onValueChange={(val: any) => {
+                      setCrmChannel(val);
+                      localStorage.setItem("default_crm_channel", val);
+                    }}
+                  >
+                    <SelectTrigger id="crm-channel-select" className="h-9 text-xs">
+                      <SelectValue placeholder="Pilih saluran CRM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="waha_campaign" className="text-xs font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-2 h-2 rounded-full bg-purple-500" />
+                          <span>WA 2 (Nomor Kampanye) — Rekomendasi Blast Promo</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="waba" className="text-xs font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>WABA Resmi Meta (+62 856-4540-6949) — Anti-Banned</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="waha_main" className="text-xs font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+                          <span>WA 1 (CS Utama - Sesi default)</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    {crmChannel === "waha_campaign"
+                      ? "Nomor kampanye khusus blast promo agar nomor CS utama tetap aman terlindungi."
+                      : crmChannel === "waba"
+                      ? "Mengirim via nomor resmi Meta Cloud API Araa Honey (24/7 di cloud)."
+                      : "Mengirim langsung dari nomor CS utama."}
+                  </p>
+                </div>
+
                 <Button 
                   onClick={handleSaveCrmConfig} 
                   size="sm"
                   className="w-full mt-2 bg-honey hover:bg-honey-dark text-honey-foreground font-semibold text-xs"
                 >
-                  Simpan Pengaturan CRM (Jeda & Batas)
+                  Simpan Pengaturan CRM
                 </Button>
 
                 <div className="border-t pt-3 mt-3 space-y-2">
@@ -2168,6 +2305,168 @@ function WhatsAppPage() {
                       )}
                     </TableBody>
                   </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ) : (
+        /* WABA Meta Cloud API Tab */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Account Info & Verification */}
+          <div className="space-y-6 lg:col-span-1">
+            <Card className="border-emerald-500/30 shadow-xs">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <Badge className="bg-emerald-600 text-white font-semibold flex items-center gap-1 text-[11px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    LIVE & TERHUBUNG
+                  </Badge>
+                  <span className="text-xs font-mono text-muted-foreground">Meta Cloud API</span>
+                </div>
+                <CardTitle className="text-lg flex items-center gap-2 pt-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                  WABA Resmi Araa Honey
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Nomor WhatsApp Business API resmi terverifikasi langsung dari Meta Cloud.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs">
+                <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg p-3 space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Nomor Telepon:</span>
+                    <span className="font-bold font-mono text-emerald-700 dark:text-emerald-300 text-sm">
+                      {wabaConfig?.display_phone_number || "+62 856-4540-6949"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Nama Tampilan:</span>
+                    <span className="font-bold text-foreground">{wabaConfig?.verified_name || "Araa Honey"}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Status Verifikasi:</span>
+                    <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" /> Disetujui Meta
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Phone Number ID:</span>
+                    <span className="font-mono text-[11px] text-foreground">{wabaConfig?.phone_number_id || "1289613457572802"}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">WABA ID:</span>
+                    <span className="font-mono text-[11px] text-foreground">{wabaConfig?.waba_id || "1355091936699699"}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground">Koneksi Webhook Masuk (Two-Way Chat):</Label>
+                  <div className="p-2.5 rounded bg-muted/40 border border-border/80 font-mono text-[10px] space-y-1">
+                    <div className="text-muted-foreground break-all">URL: https://app.araahoney.my.id/api/webhooks/whatsapp</div>
+                    <div className="text-emerald-600 font-semibold">Status: Aktif & Berlangganan (Subscribed)</div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-normal">
+                    Pesan masuk dari konsumen ke nomor ini langsung otomatis tersimpan di Riwayat Chat Monitor di web dan dibalas AI DeepSeek secara instan.
+                  </p>
+                </div>
+
+                <div className="border-t pt-3 space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground">Kelola Profil WhatsApp di Meta:</Label>
+                  <p className="text-[10px] text-muted-foreground leading-normal">
+                    Untuk mengganti foto profil, jam kerja, atau deskripsi bisnis di nomor WABA ini, buka portal resmi Meta WhatsApp Manager:
+                  </p>
+                  <a
+                    href="https://business.facebook.com/wa/manage/phone-numbers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-honey-dark hover:underline font-semibold pt-1"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Buka Meta WhatsApp Manager
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column: Direct Live Test Dispatcher */}
+          <div className="space-y-6 lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Send className="w-5 h-5 text-honey" /> Uji Coba Pengiriman Pesan Resmi Meta
+                </CardTitle>
+                <CardDescription>
+                  Tes kirim pesan resmi WhatsApp langsung dari server Meta Cloud API ke nomor HP Big Bos atau konsumen.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="waba-test-phone">Nomor HP Tujuan (Format 08xxx atau 628xxx):</Label>
+                  <Input
+                    id="waba-test-phone"
+                    placeholder="081901942233"
+                    value={wabaTestPhone}
+                    onChange={(e) => setWabaTestPhone(e.target.value)}
+                    className="font-mono text-sm max-w-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="waba-test-msg">Isi Pesan:</Label>
+                  <textarea
+                    id="waba-test-msg"
+                    rows={4}
+                    value={wabaTestMessage}
+                    onChange={(e) => setWabaTestMessage(e.target.value)}
+                    className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="Tulis pesan..."
+                  />
+                </div>
+
+                <Button
+                  onClick={handleSendWabaTest}
+                  disabled={wabaSendingTest}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center gap-2"
+                >
+                  {wabaSendingTest ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Mengirim via Meta...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Kirim Pesan Resmi via Meta API
+                    </>
+                  )}
+                </Button>
+
+                <div className="border-t pt-4 mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div className="p-3 bg-muted/40 rounded-lg border border-border/70 space-y-1">
+                    <div className="font-semibold flex items-center gap-1 text-foreground">
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" /> 100% Anti-Banned
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-normal">
+                      Menggunakan kuota API Cloud resmi Meta sehingga tidak memiliki resiko pemblokiran seperti WA biasa.
+                    </p>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-lg border border-border/70 space-y-1">
+                    <div className="font-semibold flex items-center gap-1 text-foreground">
+                      <Rocket className="w-4 h-4 text-blue-500" /> Cloud 24/7
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-normal">
+                      Tidak bergantung pada aplikasi di HP atau server lokal. Pengiriman tetap berjalan meskipun HP mati.
+                    </p>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-lg border border-border/70 space-y-1">
+                    <div className="font-semibold flex items-center gap-1 text-foreground">
+                      <Building2 className="w-4 h-4 text-amber-500" /> Verifikasi Bisnis
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-normal">
+                      Dapat ditingkatkan ke centang hijau resmi Meta setelah verifikasi dokumen legalitas usaha (NIB/PT).
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

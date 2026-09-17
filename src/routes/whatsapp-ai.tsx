@@ -45,6 +45,7 @@ interface ChatLog {
   message: string;
   direction: 'incoming' | 'outgoing';
   replied_by: 'ai' | 'manual' | null;
+  channel?: 'waba' | 'waha_main' | 'waha_campaign' | string | null;
   created_at: string;
 }
 
@@ -443,47 +444,35 @@ function WhatsAppAiPage() {
     toast.success(`Gudang keberangkatan dipilih: ${fullName}`);
   };
 
-  // Send Manual Reply via WAHA Proxy and log to DB
+  // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send) and log to DB
   const handleSendManualReply = async () => {
     const text = manualReplyText.trim();
     if (!text || !selectedChatId || !userId) return;
 
     setSendingReply(true);
     try {
-      // 1. Get WAHA configurations
-      const currentWahaUrl = wahaUrl.trim() || "https://waha.araahoney.my.id";
-      const currentWahaApiKey = wahaApiKey.trim() || "";
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (currentWahaApiKey) {
-        headers["X-Api-Key"] = currentWahaApiKey;
-      }
+      const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
+      const targetChannel = (activeChatInfo?.channel as any) || (selectedChatId.includes("waba") ? "waba" : "waha_main");
+      const customerPhone = selectedChatId.split("@")[0].replace("waba:", "");
+      const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
 
-      // 2. Call WAHA Proxy to send text
-      const sendRes = await fetch("/api/waha-proxy", {
+      // 1. Call Unified WhatsApp Send API
+      const sendRes = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${currentWahaUrl}/api/messages/sendText`,
-          method: "POST",
-          headers,
-          body: {
-            session: wahaSession,
-            chatId: selectedChatId,
-            text
-          }
+          to: customerPhone,
+          message: text,
+          channel: targetChannel
         })
       });
 
-      if (!sendRes.ok) {
-        const errText = await sendRes.text();
-        throw new Error(`Gagal mengirim via WAHA: ${errText}`);
+      const sendData = await sendRes.json().catch(() => ({}));
+      if (!sendRes.ok || !sendData.success) {
+        throw new Error(sendData.error || `Gagal mengirim via gateway ${targetChannel}`);
       }
 
-      // 3. Log manual message to database
-      const customerPhone = selectedChatId.split("@")[0];
-      const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
-      const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
-
+      // 2. Log manual message to database
       const { error: logErr } = await supabase
         .from("whatsapp_chat_logs")
         .insert({
@@ -494,6 +483,7 @@ function WhatsAppAiPage() {
           message: text,
           direction: "outgoing",
           replied_by: "manual",
+          channel: targetChannel,
           created_at: new Date().toISOString()
         });
 
@@ -501,7 +491,8 @@ function WhatsAppAiPage() {
         console.error("Gagal mencatat log manual:", logErr.message);
       }
 
-      toast.success("Balasan manual berhasil dikirim!");
+      const channelLabel = targetChannel === "waba" ? "WABA Resmi Meta" : targetChannel === "waha_campaign" ? "WA 2 Kampanye" : "WA 1 CS Utama";
+      toast.success(`Balasan manual berhasil dikirim via ${channelLabel}!`);
       setManualReplyText("");
       refetchLogs();
     } catch (err: any) {
@@ -606,13 +597,28 @@ function WhatsAppAiPage() {
                         </div>
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
                           <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
-                          {chat.direction === "outgoing" && (
-                            <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${
-                              chat.replied_by === "ai" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-blue-50 text-blue-700 border-blue-200"
-                            }`}>
-                              {chat.replied_by === "ai" ? "AI" : "Manual"}
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-1">
+                            {chat.channel === "waba" ? (
+                              <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
+                                WABA
+                              </Badge>
+                            ) : chat.channel === "waha_campaign" ? (
+                              <Badge className="bg-purple-600/15 text-purple-700 dark:text-purple-400 border-purple-300 text-[9px] px-1.5 py-0 font-bold">
+                                WA 2
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-blue-600/15 text-blue-700 dark:text-blue-400 border-blue-300 text-[9px] px-1.5 py-0 font-bold">
+                                WA 1
+                              </Badge>
+                            )}
+                            {chat.direction === "outgoing" && (
+                              <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${
+                                chat.replied_by === "ai" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}>
+                                {chat.replied_by === "ai" ? "AI" : "Manual"}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </button>
                     );
@@ -628,13 +634,24 @@ function WhatsAppAiPage() {
               <>
                 <CardHeader className="py-3 border-b flex flex-row items-center justify-between shrink-0">
                   <div>
-                    <CardTitle className="text-base">
-                      {uniqueChats.find(c => c.chat_id === selectedChatId)?.customer_name || `+${selectedChatId.split("@")[0]}`}
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span>{uniqueChats.find(c => c.chat_id === selectedChatId)?.customer_name || `+${selectedChatId.split("@")[0].replace("waba:", "")}`}</span>
+                      {uniqueChats.find(c => c.chat_id === selectedChatId)?.channel === "waba" ? (
+                        <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
+                      ) : uniqueChats.find(c => c.chat_id === selectedChatId)?.channel === "waha_campaign" ? (
+                        <Badge className="bg-purple-600 text-white text-[10px]">WA 2 Kampanye</Badge>
+                      ) : (
+                        <Badge className="bg-blue-600 text-white text-[10px]">WA 1 CS Utama</Badge>
+                      )}
                     </CardTitle>
-                    <p className="text-[11px] text-muted-foreground">ID Sesi WAHA: {wahaSession}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {uniqueChats.find(c => c.chat_id === selectedChatId)?.channel === "waba"
+                        ? "Jalur: Meta Cloud API (+62 856-4540-6949)"
+                        : `Sesi WAHA: ${wahaSession}`}
+                    </p>
                   </div>
-                  <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
-                    Sesi Aktif
+                  <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
+                    Aktif
                   </Badge>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/50 space-y-4">
