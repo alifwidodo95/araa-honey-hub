@@ -149,8 +149,8 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
         const headerComp = currentTpl.components?.find((c) => c.type === "HEADER");
         if (headerComp?.format === "IMAGE") {
           if (!headerImageUrl || headerImageUrl.includes("scontent.whatsapp.net") || headerImageUrl.includes("fbcdn.net")) {
-            // Default to verified public Araa Honey product image (Meta crawler requires a public unauthenticated direct image link)
-            headerImageUrl = "https://waha.araahoney.my.id/media/1788407689250-chatgpt-image-sep-2-2026-09_39_43-pm.png";
+            // Default to the exact approved Araa Honey Repeat Order flyer image
+            headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
           }
         }
 
