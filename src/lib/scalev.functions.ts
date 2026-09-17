@@ -158,7 +158,9 @@ export const getScalevLeads = createServerFn({ method: "GET" })
           id, scalev_order_id, customer_name, customer_phone, customer_raw_phone,
           product_name, gross_revenue, scalev_status, payment_status, store_name,
           is_closed, matched_order_id, closed_at, followed_up_at, follow_up_count,
-          follow_up_session, created_at, updated_at
+          follow_up_session, created_at, updated_at,
+          COALESCE(follow_up_step, follow_up_count, 0) AS follow_up_step,
+          fu1_at, fu2_at, fu3_at, last_fu_notes
         FROM scalev_leads
         WHERE ${whereStr}
         ORDER BY created_at DESC
@@ -370,7 +372,7 @@ export const syncScalevHistory = createServerFn({ method: "POST" })
     }
   });
 
-// 5. Send Personalized Follow-Up WhatsApp to Scalev Lead via Slot 2 (Admin Ayumi)
+// 5. Send Personalized Follow-Up WhatsApp to Scalev Lead (Step 1, 2, 3 with Media & Interactive Buttons)
 export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
   .validator((data: {
     leadId: string;
@@ -379,133 +381,115 @@ export const sendScalevFollowUpWhatsApp = createServerFn({ method: "POST" })
     productName?: string;
     customMessage?: string;
     senderSession?: string;
+    step?: number; // 1, 2, or 3
+    mediaUrl?: string; // Direct image or video URL
+    mediaType?: "image" | "video";
   }) => data)
   .handler(async ({ data }) => {
     let pool: pg.Pool | null = null;
     try {
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 
-      // Get WAHA config
-      const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
-      const wahaConfig = wahaConfigRes.rows[0]?.value || {};
-      const { wahaUrl, apiKey, campaignSessionName } = wahaConfig;
+      const scalevCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
+      const scalevCfg = scalevCfgRes.rows[0]?.value || {};
 
-      if (!wahaUrl) throw new Error("Konfigurasi server WAHA belum diatur.");
-
-      // Preferred session: explicit senderSession -> campaignSessionName -> "campaign"
-      const activeSession = data.senderSession || campaignSessionName || "campaign";
+      const step = Math.min(Math.max(Number(data.step) || 1, 1), 3);
+      const activeSession = data.senderSession || scalevCfg.senderSession || "waba";
       const rawPhone = normalizePhone(data.phone);
       const chatId = `${rawPhone}@c.us`;
 
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiKey) headers["x-api-key"] = apiKey;
-
-      // Compose message text
-      let messageText = data.customMessage;
+      // Compose message text if not custom
+      let messageText = (data.customMessage || "").trim();
       if (!messageText) {
-        const scalevCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
-        const scalevCfg = scalevCfgRes.rows[0]?.value || {};
-        const template = scalevCfg.followUpTemplate || `Halo Kak {nama}, salam dari Araa Honey! 🍯
-
-Kami melihat Kakak baru saja mengisi data pemesanan untuk {produk}. Apakah ada yang bisa kami bantu terkait pembayaran atau pengirimannya Kak? 😊`;
+        let template = "";
+        if (step === 1) {
+          template = scalevCfg.fu1Template || scalevCfg.followUpTemplate ||
+            `Halo Kak {nama}, salam hangat dari Araa Honey! 🍯🐝\n\nKami melihat Kakak baru saja mengisi data pemesanan untuk *{produk}* di website kami.\n\nApakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait pengiriman dan cara pembayarannya Kak? Boleh kami bantu yaa. 😊🙏`;
+        } else if (step === 2) {
+          template = scalevCfg.fu2Template ||
+            `Halo Kak {nama}, pesanan *{produk}* Kakak saat ini masih kami simpankan di antrean khusus yaa. 🍯✨\n\nMadu Araa dipanen murni langsung dari nektar bunga alami tanpa campuran, kaya enzim & antioksidan untuk menjaga daya tahan tubuh keluarga.\n\nApakah pesanannya mau kami proses kirim hari ini Kak? Stok untuk batch panen ini sangat terbatas lho. 😊📦`;
+        } else {
+          template = scalevCfg.fu3Template ||
+            `Pemberitahuan Terakhir untuk Kak {nama} 🙏\n\nMengenai pesanan *{produk}* yang Kakak ajukan sebelumnya, mohon maaf batas waktu reservasi paket akan segera berakhir sore ini.\n\nJika Kakak masih berminat, silakan konfirmasi sekarang agar langsung kami kirimkan. Namun jika berhalangan, slot ini akan kami alihkan ke antrean berikutnya ya Kak. Terima kasih! 🍯🐝`;
+        }
 
         messageText = template
           .replace(/{nama}/g, data.customerName || "Pelanggan")
           .replace(/{produk}/g, data.productName || "Madu Araa");
       }
 
-      // 1. DISPATCH VIA WABA (Official Meta Cloud API - 100% Anti-Banned with Interactive Buttons)
-      if (activeSession === "waba") {
-        const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
-        const wabaConfig = wabaConfigRes.rows[0]?.value || {};
+      // Determine step buttons and footer
+      let buttons: { id: string; title: string }[] = [];
+      let footerText = "Araa Honey • Official Order";
 
-        const res = await sendWhatsAppMessage({
-          to: rawPhone,
-          message: messageText,
-          channel: "waba",
-          buttons: [
-            { id: "btn_pay_now", title: "✅ Mau Bayar Sekarang" },
-            { id: "btn_cs_help", title: "💬 Tanya CS / Rekening" },
-          ],
-          footerText: "Araa Honey • Official Order",
-          wabaConfig: {
-            phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
-            permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
-          },
-        });
-
-        if (!res.success) {
-          console.error("[sendScalevFollowUpWhatsApp WABA Error]:", res.error);
-          throw new Error(`Gagal mengirim via WABA Resmi Meta: ${res.error}`);
-        }
-
-        // Update lead follow up timestamp and count
-        await pool.query(
-          `UPDATE scalev_leads 
-           SET followed_up_at = now(), 
-               follow_up_count = follow_up_count + 1, 
-               follow_up_session = 'waba', 
-               updated_at = now() 
-           WHERE id = $1`,
-          [data.leadId]
-        );
-
-        // Record outgoing in whatsapp_chat_logs for Live Chat Monitor
-        try {
-          await pool.query(
-            `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
-             VALUES ($1, $2, $3, $4, 'outgoing', 'waba', now())`,
-            [chatId, rawPhone, data.customerName, messageText]
-          );
-        } catch (e) {
-          console.warn("Could not insert chat log:", e);
-        }
-
-        await pool.end();
-        return { ok: true, recipient: chatId, channel: "waba", messageId: res.messageId, sentAt: new Date().toISOString() };
+      if (step === 1) {
+        buttons = [
+          { id: "btn_pay_now", title: "✅ Mau Bayar Sekarang" },
+          { id: "btn_cs_help", title: "💬 Tanya CS / Rekening" },
+        ];
+        footerText = "Araa Honey • Konfirmasi Pesanan";
+      } else if (step === 2) {
+        buttons = [
+          { id: "btn_secure_order", title: "🍯 Amankan Pesanan" },
+          { id: "btn_promo_info", title: "💬 Tanya Stok / Promo" },
+        ];
+        footerText = "Araa Honey • Pengingat Pesanan";
+      } else {
+        buttons = [
+          { id: "btn_confirm_send", title: "🔥 Konfirmasi Kirim" },
+          { id: "btn_cancel_order", title: "❌ Batalkan Pesanan" },
+        ];
+        footerText = "Araa Honey • Batas Waktu Reservasi";
       }
 
-      // 2. DISPATCH VIA WAHA (Slot 1 Default or Slot 2 Campaign)
-      const payload = {
-        session: activeSession,
-        chatId,
-        text: messageText,
-      };
+      const mediaUrl = (data.mediaUrl || "").trim() ||
+        (step === 1 ? scalevCfg.fu1MediaUrl : step === 2 ? scalevCfg.fu2MediaUrl : scalevCfg.fu3MediaUrl) || undefined;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      // Fetch configs for dispatcher
+      const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
+      const wabaConfig = wabaConfigRes.rows[0]?.value || {};
 
-      let response = await fetch(`${wahaUrl}/api/sendText`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      }).catch(() => null);
+      const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
+      const wahaConfig = wahaConfigRes.rows[0]?.value || {};
 
-      if (!response || !response.ok) {
-        response = await fetch(`${wahaUrl}/api/messages/sendText`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-        }).catch(() => null);
+      const channel = activeSession === "waba" ? "waba" : (activeSession === "default" ? "waha_main" : "waha_campaign");
+
+      const res = await sendWhatsAppMessage({
+        to: rawPhone,
+        message: messageText,
+        mediaUrl,
+        mediaType: data.mediaType,
+        channel,
+        buttons,
+        footerText,
+        wabaConfig: {
+          phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+          permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+        },
+        wahaConfig: {
+          wahaUrl: wahaConfig.wahaUrl,
+          apiKey: wahaConfig.apiKey,
+          sessionName: activeSession,
+        },
+      });
+
+      if (!res.success) {
+        console.error("[sendScalevFollowUpWhatsApp Error]:", res.error);
+        throw new Error(`Gagal mengirim via ${channel.toUpperCase()}: ${res.error}`);
       }
 
-      clearTimeout(timeoutId);
-
-      if (!response || !response.ok) {
-        const errText = response ? await response.text().catch(() => "") : "Koneksi gateway terputus";
-        throw new Error(`Gagal mengirim via WAHA: ${errText.substring(0, 100)}`);
-      }
-
-      // Update lead follow up timestamp and count
+      // Update lead follow up step, timestamps and count
+      const stepCol = step === 1 ? "fu1_at" : step === 2 ? "fu2_at" : "fu3_at";
       await pool.query(
         `UPDATE scalev_leads 
          SET followed_up_at = now(), 
              follow_up_count = follow_up_count + 1, 
-             follow_up_session = $1, 
+             follow_up_step = $1,
+             ${stepCol} = now(),
+             follow_up_session = $2, 
              updated_at = now() 
-         WHERE id = $2`,
-        [activeSession, data.leadId]
+         WHERE id = $3`,
+        [step, activeSession, data.leadId]
       );
 
       // Record outgoing in whatsapp_chat_logs for Live Chat Monitor
@@ -513,14 +497,21 @@ Kami melihat Kakak baru saja mengisi data pemesanan untuk {produk}. Apakah ada y
         await pool.query(
           `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
            VALUES ($1, $2, $3, $4, 'outgoing', $5, now())`,
-          [chatId, rawPhone, data.customerName, messageText, activeSession === "default" ? "waha_main" : "waha_campaign"]
+          [chatId, rawPhone, data.customerName, messageText, channel]
         );
       } catch (e) {
         console.warn("Could not insert chat log:", e);
       }
 
       await pool.end();
-      return { ok: true, recipient: chatId, channel: activeSession === "default" ? "waha_main" : "waha_campaign", sentAt: new Date().toISOString() };
+      return {
+        ok: true,
+        recipient: chatId,
+        channel,
+        step,
+        messageId: res.messageId,
+        sentAt: new Date().toISOString(),
+      };
     } catch (err: any) {
       if (pool) try { await pool.end(); } catch (e) {}
       console.error("[sendScalevFollowUpWhatsApp Error]:", err);
@@ -535,12 +526,19 @@ export const getScalevConfig = createServerFn({ method: "GET" }).handler(async (
     pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
     const res = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
     await pool.end();
-    return res.rows[0]?.value || {
-      apiKey: "",
-      clientId: "",
-      signingSecret: "",
-      followUpTemplate: "",
-      senderSession: "campaign",
+    const val = res.rows[0]?.value || {};
+    return {
+      apiKey: val.apiKey || "",
+      clientId: val.clientId || "",
+      signingSecret: val.signingSecret || "",
+      senderSession: val.senderSession || "waba",
+      followUpTemplate: val.followUpTemplate || "",
+      fu1Template: val.fu1Template || val.followUpTemplate || `Halo Kak {nama}, salam hangat dari Araa Honey! 🍯🐝\n\nKami mendapati Kakak baru saja mengisi data pemesanan untuk *{produk}* di website kami.\n\nApakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait pengiriman dan cara pembayarannya Kak? Boleh kami bantu yaa. 😊🙏`,
+      fu1MediaUrl: val.fu1MediaUrl || "",
+      fu2Template: val.fu2Template || `Halo Kak {nama}, pesanan *{produk}* Kakak saat ini masih kami simpankan di antrean khusus yaa. 🍯✨\n\nMadu Araa dipanen murni langsung dari nektar bunga alami tanpa campuran, kaya enzim & antioksidan untuk menjaga daya tahan tubuh keluarga.\n\nApakah pesanannya mau kami proses kirim hari ini Kak? Stok untuk batch panen ini sangat terbatas lho. 😊📦`,
+      fu2MediaUrl: val.fu2MediaUrl || "",
+      fu3Template: val.fu3Template || `Pemberitahuan Terakhir untuk Kak {nama} 🙏\n\nMengenai pesanan *{produk}* yang Kakak ajukan sebelumnya, mohon maaf batas waktu reservasi paket akan segera berakhir sore ini.\n\nJika Kakak masih berminat, silakan konfirmasi sekarang agar langsung kami kirimkan. Namun jika berhalangan, slot ini akan kami alihkan ke antrean berikutnya ya Kak. Terima kasih! 🍯🐝`,
+      fu3MediaUrl: val.fu3MediaUrl || "",
     };
   } catch (err: any) {
     if (pool) try { await pool.end(); } catch (e) {}
@@ -548,8 +546,14 @@ export const getScalevConfig = createServerFn({ method: "GET" }).handler(async (
       apiKey: "",
       clientId: "",
       signingSecret: "",
+      senderSession: "waba",
       followUpTemplate: "",
-      senderSession: "campaign",
+      fu1Template: "",
+      fu1MediaUrl: "",
+      fu2Template: "",
+      fu2MediaUrl: "",
+      fu3Template: "",
+      fu3MediaUrl: "",
     };
   }
 });
@@ -559,8 +563,14 @@ export const saveScalevConfig = createServerFn({ method: "POST" })
     apiKey?: string;
     clientId?: string;
     signingSecret?: string;
-    followUpTemplate?: string;
     senderSession?: string;
+    followUpTemplate?: string;
+    fu1Template?: string;
+    fu1MediaUrl?: string;
+    fu2Template?: string;
+    fu2MediaUrl?: string;
+    fu3Template?: string;
+    fu3MediaUrl?: string;
   }) => data)
   .handler(async ({ data }) => {
     let pool: pg.Pool | null = null;

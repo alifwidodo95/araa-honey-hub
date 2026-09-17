@@ -15,6 +15,8 @@ export interface SendWhatsAppOptions {
   to: string;
   message: string;
   imageUrl?: string;
+  mediaUrl?: string; // Direct URL for image or video
+  mediaType?: 'image' | 'video'; // Auto-detected if omitted
   channel?: WhatsAppChannel;
   buttons?: WhatsAppButton[]; // Quick reply buttons (up to 3 for WABA)
   footerText?: string;
@@ -57,7 +59,9 @@ export function formatPhoneNumber(phone: string): { clean: string; wahaChatId: s
 export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<SendWhatsAppResult> {
   const channel = opts.channel || 'waba';
   const { clean: cleanPhone, wahaChatId } = formatPhoneNumber(opts.to);
-  const hasImage = !!(opts.imageUrl && opts.imageUrl.trim().startsWith('http'));
+  const mediaUrl = (opts.mediaUrl || opts.imageUrl || '').trim();
+  const hasMedia = !!mediaUrl && mediaUrl.startsWith('http');
+  const isVideo = opts.mediaType === 'video' || /\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(mediaUrl);
 
   // 1. CHANNEL: WABA (Meta Cloud API)
   if (channel === 'waba') {
@@ -104,11 +108,11 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
           }
         };
 
-        if (hasImage) {
+        if (hasMedia) {
           interactiveObj.header = {
-            type: 'image',
-            image: {
-              link: opts.imageUrl!.trim()
+            type: isVideo ? 'video' : 'image',
+            [isVideo ? 'video' : 'image']: {
+              link: mediaUrl
             }
           };
         }
@@ -126,14 +130,14 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
           type: 'interactive',
           interactive: interactiveObj
         };
-      } else if (hasImage) {
+      } else if (hasMedia) {
         payload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
           to: cleanPhone,
-          type: 'image',
-          image: {
-            link: opts.imageUrl!.trim(),
+          type: isVideo ? 'video' : 'image',
+          [isVideo ? 'video' : 'image']: {
+            link: mediaUrl,
             caption: opts.message
           }
         };
@@ -213,41 +217,40 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
   }
 
   try {
-    if (hasImage) {
-      const imagePayload = {
+    if (hasMedia) {
+      const mediaPayload = {
         session,
         chatId: wahaChatId,
         file: {
-          url: opts.imageUrl!.trim(),
-          mimetype: 'image/jpeg',
-          filename: 'promo-araa.jpg'
+          url: mediaUrl,
+          mimetype: isVideo ? 'video/mp4' : 'image/jpeg',
+          filename: isVideo ? 'video-araa.mp4' : 'promo-araa.jpg'
         },
         caption: wahaMessage
       };
 
-      console.log(`[WA Dispatch] Sending Image via WAHA (${session}) to ${wahaChatId}...`);
-      let imgRes = await fetch(`${wahaUrl}/api/sendImage`, {
+      console.log(`[WA Dispatch] Sending ${isVideo ? 'Video' : 'Image'} via WAHA (${session}) to ${wahaChatId}...`);
+      let mediaRes = await fetch(`${wahaUrl}/api/sendFile`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(imagePayload)
+        body: JSON.stringify(mediaPayload)
       });
 
-      if (!imgRes.ok) {
-        // Fallback to sendFile
-        imgRes = await fetch(`${wahaUrl}/api/sendFile`, {
+      if (!mediaRes.ok && !isVideo) {
+        mediaRes = await fetch(`${wahaUrl}/api/sendImage`, {
           method: 'POST',
           headers,
-          body: JSON.stringify(imagePayload)
+          body: JSON.stringify(mediaPayload)
         });
       }
 
-      if (imgRes.ok) {
-        const imgData = await imgRes.json().catch(() => ({}));
+      if (mediaRes.ok) {
+        const mediaData = await mediaRes.json().catch(() => ({}));
         return {
           success: true,
           channel,
-          messageId: imgData.id || imgData.messageId,
-          details: imgData
+          messageId: mediaData.id || mediaData.messageId,
+          details: mediaData
         };
       }
     }

@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import {
   Users, CheckCircle2, AlertCircle, RefreshCw, Settings2,
   Search, Filter, Clock, Calendar, CheckSquare,
-  ShieldCheck, Loader2, PartyPopper, Copy,
+  ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap
 } from "lucide-react";
 import {
@@ -89,7 +89,9 @@ export function ScalevLeadsPage() {
   const [syncMaxOrders, setSyncMaxOrders] = useState<number>(100);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
+  const [activeStep, setActiveStep] = useState<number>(1);
   const [customMessage, setCustomMessage] = useState("");
+  const [mediaUrl, setMediaUrl] = useState("");
   const [selectedFollowUpSession, setSelectedFollowUpSession] = useState<string>("waba");
 
   // Manual Closing Modal State
@@ -102,9 +104,16 @@ export function ScalevLeadsPage() {
     apiKey: "",
     clientId: "",
     signingSecret: "",
-    followUpTemplate: "",
     senderSession: "waba",
+    followUpTemplate: "",
+    fu1Template: "",
+    fu1MediaUrl: "",
+    fu2Template: "",
+    fu2MediaUrl: "",
+    fu3Template: "",
+    fu3MediaUrl: "",
   });
+  const [configTemplateTab, setConfigTemplateTab] = useState<"fu1" | "fu2" | "fu3">("fu1");
 
   // Calculate effective date bounds
   const { startDate, endDate } = useMemo(() => {
@@ -173,8 +182,14 @@ export function ScalevLeadsPage() {
         apiKey: currentConfig.apiKey || "",
         clientId: currentConfig.clientId || "",
         signingSecret: currentConfig.signingSecret || "",
-        followUpTemplate: currentConfig.followUpTemplate || "",
         senderSession: sess,
+        followUpTemplate: currentConfig.followUpTemplate || "",
+        fu1Template: currentConfig.fu1Template || currentConfig.followUpTemplate || "",
+        fu1MediaUrl: currentConfig.fu1MediaUrl || "",
+        fu2Template: currentConfig.fu2Template || "",
+        fu2MediaUrl: currentConfig.fu2MediaUrl || "",
+        fu3Template: currentConfig.fu3Template || "",
+        fu3MediaUrl: currentConfig.fu3MediaUrl || "",
       });
       setSelectedFollowUpSession(sess);
     }
@@ -224,6 +239,8 @@ export function ScalevLeadsPage() {
       productName?: string;
       customMessage?: string;
       senderSession?: string;
+      step?: number;
+      mediaUrl?: string;
     }) => sendScalevFollowUpWhatsApp({ data: payload }),
     onSuccess: (_, variables) => {
       const channelLabel =
@@ -232,12 +249,13 @@ export function ScalevLeadsPage() {
           : variables.senderSession === "default"
           ? "Slot 1 (CS Utama)"
           : `Slot 2 (${wahaInfo?.campaignSession?.me?.id ? "0878-3703-5470" : "ADMIN AYUMI"})`;
-      toast.success(`Follow-up terkirim via ${channelLabel}!`);
+      toast.success(`Follow-Up ${variables.step || 1} terkirim via ${channelLabel}!`);
       setFollowUpModalOpen(false);
       setSelectedLead(null);
       refetchMetrics();
       refetchLeads();
       queryClient.invalidateQueries({ queryKey: ["scalev-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["scalev-metrics"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Gagal mengirim WhatsApp follow-up.");
@@ -318,24 +336,52 @@ export function ScalevLeadsPage() {
     });
   };
 
-  // Open Follow-up modal with personalized template
-  const handleOpenFollowUp = (lead: any) => {
+  const getTemplateForStep = (step: number, lead: any) => {
+    let tpl = "";
+    if (step === 1) {
+      tpl =
+        currentConfig?.fu1Template ||
+        currentConfig?.followUpTemplate ||
+        `Halo Kak {nama}, salam hangat dari Araa Honey! 🍯🐝\n\nKami mendapati Kakak baru saja mengisi data pemesanan untuk *{produk}* di website kami.\n\nApakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait pengiriman dan cara pembayarannya Kak? Boleh kami bantu yaa. 😊🙏`;
+    } else if (step === 2) {
+      tpl =
+        currentConfig?.fu2Template ||
+        `Halo Kak {nama}, pesanan *{produk}* Kakak saat ini masih kami simpankan di antrean khusus yaa. 🍯✨\n\nMadu Araa dipanen murni langsung dari nektar bunga alami tanpa campuran, kaya enzim & antioksidan untuk menjaga daya tahan tubuh keluarga.\n\nApakah pesanannya mau kami proses kirim hari ini Kak? Stok untuk batch panen ini sangat terbatas lho. 😊📦`;
+    } else {
+      tpl =
+        currentConfig?.fu3Template ||
+        `Pemberitahuan Terakhir untuk Kak {nama} 🙏\n\nMengenai pesanan *{produk}* yang Kakak ajukan sebelumnya, mohon maaf batas waktu reservasi paket akan segera berakhir sore ini.\n\nJika Kakak masih berminat, silakan konfirmasi sekarang agar langsung kami kirimkan. Namun jika berhalangan, slot ini akan kami alihkan ke antrean berikutnya ya Kak. Terima kasih! 🍯🐝`;
+    }
+
+    return tpl
+      .replace(/{nama}/g, lead?.customer_name || "Kak")
+      .replace(/{produk}/g, lead?.product_name || "Madu Araa Murni")
+      .replace(/{order_id}/g, lead?.scalev_order_id || "");
+  };
+
+  const getMediaForStep = (step: number) => {
+    if (step === 1) return currentConfig?.fu1MediaUrl || "";
+    if (step === 2) return currentConfig?.fu2MediaUrl || "";
+    return currentConfig?.fu3MediaUrl || "";
+  };
+
+  // Open Follow-up modal with auto-advancing step
+  const handleOpenFollowUp = (lead: any, forcedStep?: number) => {
     setSelectedLead(lead);
-    const template =
-      currentConfig?.followUpTemplate ||
-      `Halo Kak {nama}, salam hangat dari Araa Honey! 🍯🐝
-
-Kami mendapati Kakak baru saja mengisi data pemesanan untuk *{produk}* di website kami. 
-
-Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait pengiriman dan cara pembayarannya Kak? Boleh kami bantu yaa. 😊🙏`;
-
-    const compiled = template
-      .replace(/{nama}/g, lead.customer_name || "Kak")
-      .replace(/{produk}/g, lead.product_name || "Madu Araa Murni")
-      .replace(/{order_id}/g, lead.scalev_order_id || "");
-
-    setCustomMessage(compiled);
+    const currentStep = Number(lead.follow_up_step ?? lead.follow_up_count ?? 0);
+    // If not forced: 0 -> 1, 1 -> 2, 2 -> 3, >=3 -> 3
+    const targetStep = forcedStep ?? (currentStep === 0 ? 1 : currentStep === 1 ? 2 : 3);
+    setActiveStep(targetStep);
+    setCustomMessage(getTemplateForStep(targetStep, lead));
+    setMediaUrl(getMediaForStep(targetStep));
     setFollowUpModalOpen(true);
+  };
+
+  const handleSwitchStepInModal = (newStep: number) => {
+    if (!selectedLead) return;
+    setActiveStep(newStep);
+    setCustomMessage(getTemplateForStep(newStep, selectedLead));
+    setMediaUrl(getMediaForStep(newStep));
   };
 
   const handleCopyWebhookUrl = () => {
@@ -771,39 +817,86 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
 
                         {/* Status Follow Up */}
                         <TableCell className="text-center">
-                          {hasFollowedUp ? (
-                            <div className="flex flex-col items-center">
-                              <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border-blue-500/20 text-[10px] whitespace-nowrap">
-                                Ter-FU ({lead.follow_up_count || 1}x)
-                              </Badge>
-                              <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
-                                {formatDateIndo(lead.followed_up_at)}
-                              </span>
-                            </div>
-                          ) : (
-                            <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
-                              Belum FU
-                            </Badge>
-                          )}
+                          {(() => {
+                            const step = Number(lead.follow_up_step ?? lead.follow_up_count ?? 0);
+                            if (step === 0 || !lead.followed_up_at) {
+                              return (
+                                <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
+                                  Belum FU
+                                </Badge>
+                              );
+                            }
+                            if (step === 1) {
+                              return (
+                                <div className="flex flex-col items-center">
+                                  <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border-blue-500/20 text-[10px] font-semibold whitespace-nowrap">
+                                    FU 1 Terkirim
+                                  </Badge>
+                                  <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
+                                    {formatDateIndo(lead.fu1_at || lead.followed_up_at)}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            if (step === 2) {
+                              return (
+                                <div className="flex flex-col items-center">
+                                  <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 border-amber-500/20 text-[10px] font-semibold whitespace-nowrap">
+                                    FU 2 Terkirim
+                                  </Badge>
+                                  <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
+                                    {formatDateIndo(lead.fu2_at || lead.followed_up_at)}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="flex flex-col items-center">
+                                <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/20 text-[10px] font-semibold whitespace-nowrap">
+                                  FU 3 (Maks)
+                                </Badge>
+                                <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
+                                  {formatDateIndo(lead.fu3_at || lead.followed_up_at)}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* Aksi */}
                         <TableCell className="text-right pr-6">
                           <div className="flex items-center justify-end gap-1.5">
-                            {/* Follow Up Dialog Button */}
-                            <Button
-                              size="sm"
-                              variant={isClosed ? "outline" : "default"}
-                              onClick={() => handleOpenFollowUp(lead)}
-                              className={`h-7 text-xs px-2.5 gap-1.5 whitespace-nowrap font-medium ${
-                                !isClosed
-                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              <Send className="w-3 h-3" />
-                              <span>{hasFollowedUp ? "FU Ulang" : "Follow Up"}</span>
-                            </Button>
+                            {/* Dynamic Follow Up Dialog Button */}
+                            {(() => {
+                              const step = Number(lead.follow_up_step ?? lead.follow_up_count ?? 0);
+                              let btnLabel = "Follow Up 1";
+                              let btnClass = "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs";
+                              if (step === 1) {
+                                btnLabel = "Follow Up 2";
+                                btnClass = "bg-blue-600 hover:bg-blue-700 text-white shadow-xs";
+                              } else if (step === 2) {
+                                btnLabel = "Follow Up 3";
+                                btnClass = "bg-amber-600 hover:bg-amber-700 text-white shadow-xs";
+                              } else if (step >= 3) {
+                                btnLabel = "FU Selesai (Kirim Lagi)";
+                                btnClass = "border border-border text-foreground hover:bg-muted";
+                              }
+
+                              return (
+                                <Button
+                                  size="sm"
+                                  variant={step >= 3 || isClosed ? "outline" : "default"}
+                                  onClick={() => handleOpenFollowUp(lead)}
+                                  className={`h-7 text-xs px-2.5 gap-1.5 whitespace-nowrap font-medium ${
+                                    isClosed ? "text-muted-foreground" : btnClass
+                                  }`}
+                                  title={`Kirim ${btnLabel} ke ${lead.customer_name}`}
+                                >
+                                  <Send className="w-3 h-3" />
+                                  <span>{btnLabel}</span>
+                                </Button>
+                              );
+                            })()}
 
                             {/* Direct WhatsApp Web Link */}
                             <a
@@ -860,27 +953,119 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
         </CardContent>
       </Card>
 
-      {/* DIALOG 1: Follow-Up WhatsApp Modal */}
+      {/* DIALOG 1: Follow-Up WhatsApp Modal (3-Step Bertahap & Media Support) */}
       <Dialog open={followUpModalOpen} onOpenChange={setFollowUpModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
                 <Send className="w-5 h-5" />
               </div>
               <div>
-                <DialogTitle className="text-base font-bold">Follow-Up Pesanan Scalev</DialogTitle>
+                <DialogTitle className="text-base font-bold flex items-center gap-2">
+                  <span>Follow-Up Lead Scalev</span>
+                  <Badge variant="outline" className={`text-[10px] font-bold ${
+                    activeStep === 1
+                      ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                      : activeStep === 2
+                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                  }`}>
+                    Tahap {activeStep} of 3
+                  </Badge>
+                </DialogTitle>
                 <DialogDescription className="text-xs">
-                  Kirim pesan WhatsApp langsung melalui Slot 2 (ADMIN AYUMI).
+                  Pilih tahap follow-up terstruktur dengan pesan khusus, media pendukung, dan tombol interaktif.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
           {selectedLead && (
-            <div className="space-y-4 my-2">
+            <div className="space-y-3.5 my-1">
+              {/* Step Tab Switcher */}
+              <div className="flex rounded-xl bg-muted p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchStepInModal(1)}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    activeStep === 1
+                      ? "bg-background text-foreground shadow-xs border border-border/50"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span>1️⃣ FU 1: Sapaan</span>
+                  {selectedLead?.fu1_at && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" title="FU 1 sudah pernah dikirim" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchStepInModal(2)}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    activeStep === 2
+                      ? "bg-background text-foreground shadow-xs border border-border/50"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span>2️⃣ FU 2: Edukasi</span>
+                  {selectedLead?.fu2_at && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="FU 2 sudah pernah dikirim" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchStepInModal(3)}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    activeStep === 3
+                      ? "bg-background text-foreground shadow-xs border border-border/50"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span>3️⃣ FU 3: Final Call</span>
+                  {selectedLead?.fu3_at && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="FU 3 sudah pernah dikirim" />
+                  )}
+                </button>
+              </div>
+
+              {/* Status Riwayat FU Lead Ini */}
+              <div className="p-2.5 rounded-xl border bg-muted/40 text-[11px] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground font-medium">Riwayat Follow-Up Kontak Ini:</span>
+                  <span className="font-semibold text-foreground">
+                    {selectedLead.follow_up_step === 0 || !selectedLead.followed_up_at
+                      ? "Belum pernah di-FU"
+                      : `Tahap Terakhir: FU ${selectedLead.follow_up_step}`}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+                  <div className={`p-1.5 rounded border ${selectedLead.fu1_at ? "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-300 font-medium" : "bg-muted/30 border-muted text-muted-foreground"}`}>
+                    <div className="font-bold flex items-center justify-between">
+                      <span>FU 1 (Sapaan)</span>
+                      {selectedLead.fu1_at && <Check className="w-3 h-3 text-blue-500" />}
+                    </div>
+                    <div className="truncate mt-0.5">{selectedLead.fu1_at ? formatDateIndo(selectedLead.fu1_at) : "Belum"}</div>
+                  </div>
+                  <div className={`p-1.5 rounded border ${selectedLead.fu2_at ? "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300 font-medium" : "bg-muted/30 border-muted text-muted-foreground"}`}>
+                    <div className="font-bold flex items-center justify-between">
+                      <span>FU 2 (Edukasi)</span>
+                      {selectedLead.fu2_at && <Check className="w-3 h-3 text-amber-500" />}
+                    </div>
+                    <div className="truncate mt-0.5">{selectedLead.fu2_at ? formatDateIndo(selectedLead.fu2_at) : "Belum"}</div>
+                  </div>
+                  <div className={`p-1.5 rounded border ${selectedLead.fu3_at ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-medium" : "bg-muted/30 border-muted text-muted-foreground"}`}>
+                    <div className="font-bold flex items-center justify-between">
+                      <span>FU 3 (Final Call)</span>
+                      {selectedLead.fu3_at && <Check className="w-3 h-3 text-emerald-500" />}
+                    </div>
+                    <div className="truncate mt-0.5">{selectedLead.fu3_at ? formatDateIndo(selectedLead.fu3_at) : "Belum"}</div>
+                  </div>
+                </div>
+              </div>
+
               {/* Lead Info Box */}
-              <div className="bg-muted/50 p-3 rounded-xl border border-border/70 space-y-1.5 text-xs">
+              <div className="bg-muted/30 p-2.5 rounded-xl border border-border/70 space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Penerima:</span>
                   <span className="font-semibold text-foreground">{selectedLead.customer_name}</span>
@@ -891,7 +1076,7 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Produk:</span>
-                  <span className="text-foreground truncate max-w-[200px]">{selectedLead.product_name}</span>
+                  <span className="text-foreground truncate max-w-[260px]">{selectedLead.product_name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Nominal Pesanan:</span>
@@ -948,24 +1133,127 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                 )}
               </div>
 
+              {/* Media URL Input with Live Preview */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Image className="w-3.5 h-3.5 text-primary" />
+                    <span>Link Gambar / Video (Opsional):</span>
+                  </span>
+                  {mediaUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setMediaUrl("")}
+                      className="text-[10px] text-rose-500 hover:underline"
+                    >
+                      Hapus Media
+                    </button>
+                  )}
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://... (URL gambar flyer .jpg/.png atau video .mp4)"
+                  value={mediaUrl}
+                  onChange={(e) => setMediaUrl(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                />
+
+                {/* Media Live Preview */}
+                {mediaUrl && mediaUrl.startsWith("http") && (
+                  <div className="p-2 rounded-lg bg-muted/40 border border-border/60 flex items-center gap-3">
+                    {/\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(mediaUrl) ? (
+                      <div className="flex items-center gap-2 text-xs font-medium text-purple-600 dark:text-purple-400">
+                        <Video className="w-5 h-5 shrink-0" />
+                        <span className="truncate max-w-[320px]">Header Video: {mediaUrl}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2.5">
+                        <img
+                          src={mediaUrl}
+                          alt="Preview"
+                          className="w-12 h-12 object-cover rounded border border-border shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = "none";
+                          }}
+                        />
+                        <div className="text-[11px] text-muted-foreground truncate max-w-[280px]">
+                          Header Gambar aktif untuk pesan WhatsApp
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Message Textarea */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Pesan WhatsApp:</label>
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span>Pesan WhatsApp (FU {activeStep}):</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedLead) setCustomMessage(getTemplateForStep(activeStep, selectedLead));
+                    }}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Reset Template FU {activeStep}
+                  </button>
+                </label>
                 <Textarea
                   rows={5}
                   value={customMessage}
                   onChange={(e) => setCustomMessage(e.target.value)}
-                  className="text-xs resize-none"
+                  className="text-xs resize-none font-sans"
                   placeholder="Ketik pesan follow-up..."
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Pesan di atas sudah otomatis dipersonalisasi dengan nama dan produk pelanggan.
+                  Pesan otomatis dipersonalisasi dengan nama dan produk pelanggan.
                 </p>
               </div>
+
+              {/* Interactive Buttons Preview (Meta Cloud API) */}
+              {selectedFollowUpSession === "waba" && (
+                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-800 dark:text-emerald-300">
+                  <div className="font-semibold flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    Tombol Balasan Cepat Otomatis (Meta Cloud API):
+                  </div>
+                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                    {activeStep === 1 ? (
+                      <>
+                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                          ✅ Mau Bayar Sekarang
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                          💬 Tanya CS / Rekening
+                        </span>
+                      </>
+                    ) : activeStep === 2 ? (
+                      <>
+                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                          🍯 Amankan Pesanan
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                          💬 Tanya Stok / Promo
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                          🔥 Konfirmasi Kirim
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-background border text-[10px] font-semibold text-foreground shadow-2xs">
+                          ❌ Batalkan Pesanan
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border/50">
             <Button
               variant="outline"
               size="sm"
@@ -985,17 +1273,27 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                   productName: selectedLead.product_name,
                   customMessage,
                   senderSession: selectedFollowUpSession,
+                  step: activeStep,
+                  mediaUrl: mediaUrl.trim() || undefined,
                 });
               }}
               disabled={followUpMutation.isPending || !customMessage.trim()}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              className={`text-white gap-1.5 font-bold shadow-xs ${
+                activeStep === 1
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : activeStep === 2
+                  ? "bg-blue-600 hover:bg-blue-700"
+                  : "bg-amber-600 hover:bg-amber-700"
+              }`}
             >
               {followUpMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              <span>Kirim via {selectedFollowUpSession === "waba" ? "WABA Resmi Meta" : selectedFollowUpSession === "campaign" ? "Slot 2" : "Slot 1"}</span>
+              <span>
+                Kirim FU {activeStep} via {selectedFollowUpSession === "waba" ? "WABA Resmi Meta" : selectedFollowUpSession === "campaign" ? "Slot 2" : "Slot 1"}
+              </span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1185,18 +1483,137 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
               </p>
             </div>
 
-            {/* Follow-Up Message Template */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
-                Template Default Pesan Follow-Up:
+            {/* Follow-Up Templates & Media Configuration (Step 1, 2, 3) */}
+            <div className="space-y-2 pt-1 border-t border-border/60">
+              <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                <span>Template & Media Follow-Up Bertahap:</span>
+                <span className="text-[10px] text-muted-foreground">Pesan & flyer per tahap</span>
               </label>
-              <Textarea
-                rows={4}
-                value={configForm.followUpTemplate}
-                onChange={(e) => setConfigForm({ ...configForm, followUpTemplate: e.target.value })}
-                className="text-xs resize-none"
-                placeholder="Halo Kak {nama}..."
-              />
+
+              {/* Tabs FU 1 / FU 2 / FU 3 */}
+              <div className="flex rounded-lg bg-muted p-0.5 gap-1 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setConfigTemplateTab("fu1")}
+                  className={`flex-1 py-1 px-2 rounded-md transition-all ${
+                    configTemplateTab === "fu1"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  1️⃣ FU 1 (Sapaan)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfigTemplateTab("fu2")}
+                  className={`flex-1 py-1 px-2 rounded-md transition-all ${
+                    configTemplateTab === "fu2"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  2️⃣ FU 2 (Edukasi)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfigTemplateTab("fu3")}
+                  className={`flex-1 py-1 px-2 rounded-md transition-all ${
+                    configTemplateTab === "fu3"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  3️⃣ FU 3 (Final Call)
+                </button>
+              </div>
+
+              {/* Tab 1 Content: FU 1 */}
+              {configTemplateTab === "fu1" && (
+                <div className="space-y-2 p-2.5 rounded-xl border bg-muted/20">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                      <Image className="w-3.5 h-3.5 text-primary" />
+                      <span>Link Gambar / Video Default FU 1 (Opsional):</span>
+                    </label>
+                    <Input
+                      type="url"
+                      placeholder="https://.../flyer-sapaan.jpg"
+                      value={configForm.fu1MediaUrl}
+                      onChange={(e) => setConfigForm({ ...configForm, fu1MediaUrl: e.target.value })}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">Template Pesan FU 1:</label>
+                    <Textarea
+                      rows={4}
+                      value={configForm.fu1Template}
+                      onChange={(e) => setConfigForm({ ...configForm, fu1Template: e.target.value })}
+                      className="text-xs resize-none"
+                      placeholder="Halo Kak {nama}..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2 Content: FU 2 */}
+              {configTemplateTab === "fu2" && (
+                <div className="space-y-2 p-2.5 rounded-xl border bg-muted/20">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                      <Image className="w-3.5 h-3.5 text-primary" />
+                      <span>Link Gambar / Video Default FU 2 (Opsional):</span>
+                    </label>
+                    <Input
+                      type="url"
+                      placeholder="https://.../video-panen.mp4 atau /testimoni.jpg"
+                      value={configForm.fu2MediaUrl}
+                      onChange={(e) => setConfigForm({ ...configForm, fu2MediaUrl: e.target.value })}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">Template Pesan FU 2:</label>
+                    <Textarea
+                      rows={4}
+                      value={configForm.fu2Template}
+                      onChange={(e) => setConfigForm({ ...configForm, fu2Template: e.target.value })}
+                      className="text-xs resize-none"
+                      placeholder="Halo Kak {nama}, pesanan {produk} masih kami amankan..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3 Content: FU 3 */}
+              {configTemplateTab === "fu3" && (
+                <div className="space-y-2 p-2.5 rounded-xl border bg-muted/20">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                      <Image className="w-3.5 h-3.5 text-primary" />
+                      <span>Link Gambar / Video Default FU 3 (Opsional):</span>
+                    </label>
+                    <Input
+                      type="url"
+                      placeholder="https://.../urgency-flyer.jpg"
+                      value={configForm.fu3MediaUrl}
+                      onChange={(e) => setConfigForm({ ...configForm, fu3MediaUrl: e.target.value })}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">Template Pesan FU 3:</label>
+                    <Textarea
+                      rows={4}
+                      value={configForm.fu3Template}
+                      onChange={(e) => setConfigForm({ ...configForm, fu3Template: e.target.value })}
+                      className="text-xs resize-none"
+                      placeholder="Pemberitahuan Terakhir untuk Kak {nama}..."
+                    />
+                  </div>
+                </div>
+              )}
+
               <p className="text-[11px] text-muted-foreground">
                 Variabel yang didukung: <code>{'{nama}'}</code>, <code>{'{produk}'}</code>, <code>{'{order_id}'}</code>.
               </p>
