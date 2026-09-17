@@ -443,13 +443,15 @@ function ReaktivasiPage() {
           failedCount,
         }));
 
-        // Randomized safety delay ONLY IF message was actually sent to a live WhatsApp user!
-        // Uses Web Worker timer: 100% immune to background tab sleep / minimize!
+        // Jeda pengiriman:
+        // Jika WABA Resmi Meta: Kirim kilat dengan jeda 1 detik (100% aman & resmi anti-banned dari Meta Cloud API)
+        // Jika WAHA Slot 2: Gunakan jeda santai acak (bulkDelaySeconds, default 45-60s) agar tidak terblokir
         if (isSuccess && i < total - 1 && !bulkAbortRef.current) {
-          const baseDelay = Math.max(5, bulkDelaySeconds);
-          const jitterRange = Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
-          const jitter = Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
-          const delay = Math.max(5, baseDelay + jitter);
+          const isWaba = selectedSenderSession === "waba";
+          const baseDelay = isWaba ? 1 : Math.max(5, bulkDelaySeconds);
+          const jitterRange = isWaba ? 0 : Math.max(3, Math.min(12, Math.floor(baseDelay * 0.15)));
+          const jitter = isWaba ? 0 : Math.floor(Math.random() * (jitterRange * 2 + 1)) - jitterRange;
+          const delay = isWaba ? 1 : Math.max(5, baseDelay + jitter);
 
           try {
             if (workerTimerRef.current) {
@@ -1721,7 +1723,9 @@ function ReaktivasiPage() {
                   <div className="flex justify-between text-muted-foreground">
                     <span>Estimasi Waktu:</span>
                     <span className="font-semibold text-foreground">
-                      ~{Math.ceil((selectedPhones.length * bulkDelaySeconds) / 60)} menit ({((selectedPhones.length * bulkDelaySeconds) / 3600).toFixed(1)} jam)
+                      {selectedSenderSession === "waba"
+                        ? `~${Math.max(1, Math.ceil((selectedPhones.length * 1.2) / 60))} Menit (Kirim Kilat WABA ⚡)`
+                        : `~${Math.ceil((selectedPhones.length * bulkDelaySeconds) / 60)} menit (${((selectedPhones.length * bulkDelaySeconds) / 3600).toFixed(1)} jam)`}
                     </span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
@@ -1756,68 +1760,83 @@ function ReaktivasiPage() {
                   </div>
                 )}
 
-                {/* Custom Delay Selector (Anti-Banned Protection) */}
-                <div className="p-3 rounded-xl bg-muted/40 border border-muted/60 text-xs space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-amber-500" />
-                      Jeda Antar Pesan (Proteksi Anti-Banned):
-                    </span>
-                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-[11px] border-emerald-500/20">
-                      {bulkDelaySeconds >= 60
-                        ? `${(bulkDelaySeconds / 60).toFixed(1).replace(".0", "")} Menit (${bulkDelaySeconds}s)`
-                        : `${bulkDelaySeconds} Detik`}
-                    </Badge>
+                {/* Delay Controller: Mode Kilat 1s untuk WABA vs Mode Jeda Aman untuk WAHA */}
+                {selectedSenderSession === "waba" ? (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                        <Zap className="w-4 h-4 text-emerald-600" />
+                        Kecepatan Kirim: Mode Kilat WABA
+                      </span>
+                      <Badge className="bg-emerald-600 text-white text-[11px] font-bold">1 Detik / Pesan</Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      ⚡ Karena jalur ini terhubung langsung ke server resmi Meta Cloud API, pesan dikirim dengan kecepatan tinggi tanpa jeda panjang dan 100% bebas dari risiko banned!
+                    </p>
                   </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-muted/40 border border-muted/60 text-xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                        Jeda Antar Pesan (Proteksi Anti-Banned WAHA):
+                      </span>
+                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-[11px] border-emerald-500/20">
+                        {bulkDelaySeconds >= 60
+                          ? `${(bulkDelaySeconds / 60).toFixed(1).replace(".0", "")} Menit (${bulkDelaySeconds}s)`
+                          : `${bulkDelaySeconds} Detik`}
+                      </Badge>
+                    </div>
 
-                  <div className="grid grid-cols-4 gap-1.5 pt-0.5">
-                    {[
-                      { sec: 30, label: "30 Detik" },
-                      { sec: 60, label: "1 Menit (Aman)" },
-                      { sec: 90, label: "1.5 Menit" },
-                      { sec: 120, label: "2 Menit (Super)" },
-                    ].map((opt) => (
-                      <Button
-                        key={opt.sec}
-                        type="button"
-                        size="sm"
-                        variant={bulkDelaySeconds === opt.sec ? "default" : "outline"}
-                        onClick={() => handleSetBulkDelay(opt.sec)}
-                        className={`h-7 text-[11px] px-1 ${
-                          bulkDelaySeconds === opt.sec
-                            ? "bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                            : "border-muted/80 hover:bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </div>
+                    <div className="grid grid-cols-4 gap-1.5 pt-0.5">
+                      {[
+                        { sec: 30, label: "30 Detik" },
+                        { sec: 60, label: "1 Menit (Aman)" },
+                        { sec: 90, label: "1.5 Menit" },
+                        { sec: 120, label: "2 Menit (Super)" },
+                      ].map((opt) => (
+                        <Button
+                          key={opt.sec}
+                          type="button"
+                          size="sm"
+                          variant={bulkDelaySeconds === opt.sec ? "default" : "outline"}
+                          onClick={() => handleSetBulkDelay(opt.sec)}
+                          className={`h-7 text-[11px] px-1 ${
+                            bulkDelaySeconds === opt.sec
+                              ? "bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                              : "border-muted/80 hover:bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
 
-                  <div className="flex items-center gap-2 pt-0.5">
-                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">Atau kustom detik:</span>
-                    <Input
-                      type="number"
-                      min={5}
-                      max={600}
-                      value={customDelayInput}
-                      onChange={(e) => {
-                        setCustomDelayInput(e.target.value);
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val) && val >= 5) {
-                          handleSetBulkDelay(val);
-                        }
-                      }}
-                      className="h-7 text-xs w-20 text-center font-mono"
-                      placeholder="60"
-                    />
-                    <span className="text-[11px] text-muted-foreground">detik per kontak</span>
-                  </div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">Atau kustom detik:</span>
+                      <Input
+                        type="number"
+                        min={5}
+                        max={600}
+                        value={customDelayInput}
+                        onChange={(e) => {
+                          setCustomDelayInput(e.target.value);
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val) && val >= 5) {
+                            handleSetBulkDelay(val);
+                          }
+                        }}
+                        className="h-7 text-xs w-20 text-center font-mono"
+                        placeholder="60"
+                      />
+                      <span className="text-[11px] text-muted-foreground">detik per kontak</span>
+                    </div>
 
-                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
-                    🛡️ <strong>Sistem Anti-Banned:</strong> Variasi jeda acak alami (sekitar <strong>{Math.max(5, bulkDelaySeconds - 6)}–{bulkDelaySeconds + 6} detik</strong>) akan diterapkan otomatis agar WhatsApp mendeteksi pesan diketik oleh manusia secara manual, bukan bot.
+                    <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                      🛡️ <strong>Sistem Anti-Banned:</strong> Variasi jeda acak alami (sekitar <strong>{Math.max(5, bulkDelaySeconds - 6)}–{bulkDelaySeconds + 6} detik</strong>) akan diterapkan otomatis agar WhatsApp mendeteksi pesan diketik oleh manusia secara manual, bukan bot.
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4 py-2">
@@ -1841,12 +1860,12 @@ function ReaktivasiPage() {
                   {bulkProgress.countdown > 0 ? (
                     <p className="text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-amber-500" />
-                      Jeda aman berikutnya: <strong className="text-amber-600">{bulkProgress.countdown} detik</strong>
+                      Jeda berikutnya: <strong className="text-amber-600">{bulkProgress.countdown} detik</strong>
                     </p>
                   ) : (
                     <p className="text-emerald-600 font-medium flex items-center gap-1">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Mengirim via gateway WAHA...
+                      Mengirim via {selectedSenderSession === "waba" ? "Meta WABA Cloud API" : "Gateway WAHA"}...
                     </p>
                   )}
                 </div>

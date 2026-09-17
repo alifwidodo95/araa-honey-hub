@@ -304,6 +304,7 @@ function WhatsAppAiPage() {
   const [sendingReply, setSendingReply] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<"all" | "waba" | "waha_main" | "waha_campaign">("all");
+  const [responseFilter, setResponseFilter] = useState<"all" | "replied" | "waiting">("all");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Sync settings to state
@@ -373,7 +374,7 @@ function WhatsAppAiPage() {
     return `+${clean}`;
   };
 
-  // Grouped unique chats with enriched contact info & names
+  // Grouped unique chats with enriched contact info & response status
   const uniqueChats = useMemo(() => {
     const chatsMap = new Map<string, {
       chat_id: string;
@@ -382,11 +383,15 @@ function WhatsAppAiPage() {
       customer_phone: string;
       formatted_phone: string;
       messageCount: number;
+      hasIncoming: boolean;
+      isOrderAgain: boolean;
     }>();
 
     chatLogs.forEach(log => {
       const cleanPhone = (log.customer_phone || log.chat_id.replace(/[^0-9]/g, "")).trim();
       const existing = chatsMap.get(log.chat_id);
+      const isInc = log.direction === "incoming";
+      const isOrder = isInc && (log.message || "").toUpperCase().includes("ORDER");
 
       const isGoodName = (name?: string | null) => {
         if (!name) return false;
@@ -407,10 +412,16 @@ function WhatsAppAiPage() {
           customer_name: log.customer_name || "Pelanggan",
           customer_phone: cleanPhone,
           formatted_phone: formatDisplayPhone(cleanPhone),
-          messageCount: 1
+          messageCount: 1,
+          hasIncoming: isInc,
+          isOrderAgain: isOrder,
         });
       } else {
         existing.messageCount++;
+        if (isInc) {
+          existing.hasIncoming = true;
+          if (isOrder) existing.isOrderAgain = true;
+        }
         // If existing doesn't have a real name, but this log has a real customer name, adopt it!
         if (!isGoodName(existing.customer_name) && isGoodName(log.customer_name)) {
           existing.customer_name = log.customer_name!;
@@ -440,7 +451,27 @@ function WhatsAppAiPage() {
     };
   }, [uniqueChats]);
 
-  // Filtered by channelFilter and chatSearch query
+  // Response status statistics (replied vs waiting)
+  const responseCounts = useMemo(() => {
+    let replied = 0;
+    let waiting = 0;
+    uniqueChats.forEach(c => {
+      const ch = c.latestLog.channel;
+      const matchChannel =
+        channelFilter === "all" ||
+        (channelFilter === "waba" && ch === "waba") ||
+        (channelFilter === "waha_campaign" && ch === "waha_campaign") ||
+        (channelFilter === "waha_main" && ch !== "waba" && ch !== "waha_campaign");
+
+      if (matchChannel) {
+        if (c.hasIncoming) replied++;
+        else waiting++;
+      }
+    });
+    return { replied, waiting };
+  }, [uniqueChats, channelFilter]);
+
+  // Filtered by channelFilter, responseFilter, and chatSearch query
   const filteredChats = useMemo(() => {
     let list = uniqueChats;
 
@@ -453,6 +484,12 @@ function WhatsAppAiPage() {
       });
     }
 
+    if (responseFilter === "replied") {
+      list = list.filter(c => c.hasIncoming);
+    } else if (responseFilter === "waiting") {
+      list = list.filter(c => !c.hasIncoming);
+    }
+
     if (!chatSearch.trim()) return list;
     const q = chatSearch.trim().toLowerCase();
     const qDigits = q.replace(/[^0-9]/g, "");
@@ -462,7 +499,7 @@ function WhatsAppAiPage() {
       const matchMsg = c.latestLog.message.toLowerCase().includes(q);
       return matchName || matchPhone || matchMsg;
     });
-  }, [uniqueChats, channelFilter, chatSearch]);
+  }, [uniqueChats, channelFilter, responseFilter, chatSearch]);
 
   // Active chat bubbles
   const selectedChatMessages = useMemo(() => {
@@ -733,6 +770,44 @@ function WhatsAppAiPage() {
                 </button>
               </div>
 
+              {/* Response Status Filter Pills (Semua, Dibalas, Menunggu) */}
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setResponseFilter("all")}
+                  className={`flex-1 py-1 px-1 rounded-md text-[10px] font-medium transition-all text-center ${
+                    responseFilter === "all"
+                      ? "bg-slate-800 text-white font-bold shadow-2xs"
+                      : "bg-slate-200/80 text-slate-600 hover:bg-slate-300/80"
+                  }`}
+                >
+                  Semua ({channelFilter === "waba" ? channelCounts.waba : channelFilter === "waha_campaign" ? channelCounts.waha_campaign : channelFilter === "waha_main" ? channelCounts.waha_main : channelCounts.all})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResponseFilter("replied")}
+                  className={`flex-1 py-1 px-1 rounded-md text-[10px] font-medium flex items-center justify-center gap-1 transition-all ${
+                    responseFilter === "replied"
+                      ? "bg-emerald-600 text-white font-bold shadow-2xs"
+                      : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Dibalas ({responseCounts.replied})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResponseFilter("waiting")}
+                  className={`flex-1 py-1 px-1 rounded-md text-[10px] font-medium flex items-center justify-center gap-1 transition-all ${
+                    responseFilter === "waiting"
+                      ? "bg-slate-700 text-white font-bold shadow-2xs"
+                      : "bg-slate-200/80 text-slate-600 hover:bg-slate-300/80"
+                  }`}
+                >
+                  <span>Menunggu ({responseCounts.waiting})</span>
+                </button>
+              </div>
+
               {/* Search Bar for filtering contacts / numbers */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -758,10 +833,10 @@ function WhatsAppAiPage() {
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
                   <Phone className="h-8 w-8 mb-2 opacity-50 text-amber-500" />
                   <p className="text-sm font-medium">
-                    {chatSearch || channelFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat."}
+                    {chatSearch || channelFilter !== "all" || responseFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat."}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    {chatSearch || channelFilter !== "all" ? "Coba ganti filter channel atau kata kunci pencarian." : "Pesan masuk/keluar akan muncul di sini secara otomatis."}
+                    {chatSearch || channelFilter !== "all" || responseFilter !== "all" ? "Coba ganti filter saluran atau status respon." : "Pesan masuk/keluar akan muncul di sini secara otomatis."}
                   </p>
                 </div>
               ) : (
@@ -771,6 +846,7 @@ function WhatsAppAiPage() {
                     const cleanDate = new Date(chat.latestLog.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
                     const isGoodName = chat.customer_name && chat.customer_name !== "Pelanggan" && chat.customer_name !== "Meta Status";
                     const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
+                    const isLastIncoming = chat.latestLog.direction === "incoming";
 
                     return (
                       <button
@@ -781,19 +857,24 @@ function WhatsAppAiPage() {
                         }`}
                       >
                         <div className="space-y-1 min-w-0 flex-1">
-                          <p className="font-semibold text-sm truncate text-slate-900">
-                            {isGoodName ? chat.customer_name : chat.formatted_phone || `+${chat.customer_phone}`}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            {chat.hasIncoming && (
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Konsumen Merespon!" />
+                            )}
+                            <p className="font-semibold text-sm truncate text-slate-900">
+                              {isGoodName ? chat.customer_name : chat.formatted_phone || `+${chat.customer_phone}`}
+                            </p>
+                          </div>
                           <p className="text-[11px] font-mono font-medium text-emerald-700">
                             {chat.formatted_phone || `+${chat.customer_phone}`}
                           </p>
-                          <p className={`text-xs truncate ${isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
-                            {chat.latestLog.message}
+                          <p className={`text-xs truncate ${isLastIncoming ? "text-emerald-700 font-semibold" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
+                            {isLastIncoming ? `💬 ${chat.latestLog.message}` : chat.latestLog.message}
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                           <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
                             {chat.latestLog.channel === "waba" ? (
                               <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
                                 WABA
@@ -807,24 +888,27 @@ function WhatsAppAiPage() {
                                 WA 1
                               </Badge>
                             )}
-                            {chat.latestLog.direction === "outgoing" && (() => {
-                              const isTemplate = chat.latestLog.replied_by === "template" || chat.latestLog.message.startsWith("[Template") || chat.latestLog.channel === "waba";
-                              return (
-                                <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${
-                                  isError
-                                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                                    : chat.latestLog.replied_by === "ai"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : isTemplate
-                                    ? "bg-teal-50 text-teal-700 border-teal-200 font-semibold"
-                                    : chat.latestLog.replied_by === "manual"
-                                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                                    : "bg-slate-50 text-slate-700 border-slate-200"
-                                }`}>
-                                  {isError ? "Error" : chat.latestLog.replied_by === "ai" ? "AI" : isTemplate ? "Template" : chat.latestLog.replied_by === "manual" ? "Manual" : "Sistem"}
+
+                            {/* Response / Outgoing Status Badge */}
+                            {isLastIncoming ? (
+                              chat.isOrderAgain ? (
+                                <Badge className="bg-amber-500 text-white text-[9px] px-1.5 py-0 font-bold animate-pulse shadow-2xs">
+                                  🎯 Order!
                                 </Badge>
-                              );
-                            })()}
+                              ) : (
+                                <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 font-bold shadow-2xs">
+                                  🔥 Dibalas
+                                </Badge>
+                              )
+                            ) : chat.hasIncoming ? (
+                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-medium">
+                                💬 Aktif
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200 text-[9px] px-1.5 py-0">
+                                ⏳ Menunggu
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </button>
@@ -895,36 +979,76 @@ function WhatsAppAiPage() {
                             );
                           }
 
-                          return (
-                            <div
-                              key={msg.id}
-                              className={`flex ${isIncoming ? "justify-start" : "justify-end"}`}
-                            >
-                              <div className={`max-w-[75%] rounded-2xl p-3 shadow-xs ${
-                                isIncoming 
-                                  ? "bg-white border text-slate-800 rounded-tl-none" 
-                                  : msg.channel === "waba"
-                                  ? "bg-emerald-600 text-white rounded-tr-none shadow-sm"
-                                  : "bg-amber-500 text-white rounded-tr-none"
-                              }`}>
-                                {msg.channel === "waba" && !isIncoming && (
-                                  <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-emerald-500/40 text-[11px] font-semibold text-emerald-100">
-                                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                                    <span>Pesan Resmi WABA (Meta HSM)</span>
+                          const isOrderAgain = isIncoming && (msg.message || "").trim().toUpperCase().includes("ORDER");
+                          const isWabaTemplate = msg.channel === "waba" || msg.replied_by === "template" || msg.message.startsWith("[Template");
+                          const isAi = msg.replied_by === "ai";
+                          const isManual = msg.replied_by === "manual";
+
+                          if (isIncoming) {
+                            return (
+                              <div key={msg.id} className="flex justify-start my-1">
+                                <div className="max-w-[78%] rounded-2xl p-3.5 shadow-xs bg-white border-2 border-emerald-500/40 text-slate-800 rounded-tl-none ring-2 ring-emerald-500/10">
+                                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-100 text-[11px] font-bold text-emerald-800">
+                                    <div className="flex items-center gap-1.5">
+                                      <User className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>Balasan Konsumen</span>
+                                    </div>
+                                    {isOrderAgain ? (
+                                      <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs animate-pulse">
+                                        🎯 RESPON TOMBOL: ORDER LAGI
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-semibold">
+                                        Chat Masuk
+                                      </Badge>
+                                    )}
                                   </div>
-                                )}
-                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-                                <div className={`flex items-center gap-1.5 justify-end mt-1 ${isIncoming ? "text-slate-400" : msg.channel === "waba" ? "text-emerald-200" : "text-amber-100"}`}>
-                                  <span className="text-[9px]">{msgTime}</span>
-                                  {!isIncoming && (
-                                    <span className="text-[9px] font-bold uppercase tracking-wider">
-                                      {msg.replied_by === "ai"
-                                        ? "AI BOT"
-                                        : msg.channel === "waba" || msg.replied_by === "template"
-                                        ? "WABA TEMPLATE"
-                                        : msg.replied_by || "SISTEM"}
-                                    </span>
+                                  <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
+                                  <div className="flex items-center gap-1.5 justify-end mt-1.5 text-slate-400 text-[9px]">
+                                    <span>{msgTime}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={msg.id} className="flex justify-end my-1">
+                              <div className={`max-w-[78%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none ${
+                                isWabaTemplate
+                                  ? "bg-emerald-600 shadow-emerald-700/20"
+                                  : isAi
+                                  ? "bg-blue-600 shadow-blue-700/20"
+                                  : isManual
+                                  ? "bg-amber-600 shadow-amber-700/20"
+                                  : "bg-slate-700 shadow-slate-800/20"
+                              }`}>
+                                <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-white/20 text-[11px] font-semibold text-white/90">
+                                  {isWabaTemplate ? (
+                                    <>
+                                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                      <span>Pesan Resmi WABA (Meta HSM)</span>
+                                    </>
+                                  ) : isAi ? (
+                                    <>
+                                      <Bot className="w-3.5 h-3.5 text-cyan-300" />
+                                      <span>Asisten AI DeepSeek</span>
+                                    </>
+                                  ) : isManual ? (
+                                    <>
+                                      <User className="w-3.5 h-3.5 text-amber-200" />
+                                      <span>Balasan Manual CS</span>
+                                    </>
+                                  ) : (
+                                    <span>Sistem Otomatis</span>
                                   )}
+                                </div>
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
+                                <div className="flex items-center gap-1.5 justify-end mt-1.5 text-white/75">
+                                  <span className="text-[9px]">{msgTime}</span>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider">
+                                    {isWabaTemplate ? "WABA TEMPLATE" : isAi ? "AI DEEPSEEK" : isManual ? "CS MANUAL" : "SISTEM"}
+                                  </span>
                                 </div>
                               </div>
                             </div>
