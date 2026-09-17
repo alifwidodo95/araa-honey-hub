@@ -48,16 +48,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
               for (const change of changes) {
                 const val = change.value || {};
                 
-                // Ignore delivery receipts / statuses (sent, delivered, read)
-                if (val.statuses && (!val.messages || val.messages.length === 0)) {
-                  console.log('[Meta Webhook] Status update acknowledged (sent/delivered/read).');
-                  continue;
-                }
-
-                const messages = val.messages || [];
-                if (messages.length === 0) continue;
-
-                // Lookup AI settings & fallback user_id
+                // Lookup AI settings & fallback user_id early
                 const aiSettingsRes = await pool.query('SELECT * FROM public.whatsapp_ai_settings ORDER BY updated_at DESC LIMIT 1');
                 const aiSettings = aiSettingsRes.rows[0] || {};
                 let userId = aiSettings.user_id;
@@ -65,6 +56,26 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                 if (!userId) {
                   const fallbackUser = await pool.query('SELECT id FROM auth.users ORDER BY created_at ASC LIMIT 1');
                   userId = fallbackUser.rows[0]?.id;
+                }
+
+                // Handle delivery receipts / statuses (sent, delivered, read, failed)
+                if (val.statuses && (!val.messages || val.messages.length === 0)) {
+                  for (const st of val.statuses) {
+                    console.log(`[Meta Webhook] Status update: recipient=${st.recipient_id}, status=${st.status}, id=${st.id}`);
+                    if (st.status === 'failed' || (st.errors && st.errors.length > 0)) {
+                      const errDetails = (st.errors || []).map((e: any) => `[Error ${e.code}]: ${e.title || ''} - ${e.message || ''} (${e.error_data?.details || ''})`).join('; ') || `Status: ${st.status}`;
+                      console.error(`[Meta Webhook] Message DELIVERY FAILED: ${errDetails}`);
+                      try {
+                        await pool.query(`
+                          INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+                          VALUES ($1, $2, $3, 'Meta Status', $4, 'outgoing', 'meta_error', 'waba', now())
+                        `, [userId, `${st.recipient_id}@c.us`, st.recipient_id, `❌ Gagal Terkirim via Meta WABA: ${errDetails}`]);
+                      } catch (dbErr) {
+                        console.error('[Meta Webhook] Failed to write status error log:', dbErr);
+                      }
+                    }
+                  }
+                  continue;
                 }
 
                 const contacts = val.contacts || [];
