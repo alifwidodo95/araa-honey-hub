@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import pg from "pg";
+import { sendWhatsAppMessage } from "@/lib/whatsapp-service";
 
 const DB_URL =
   process.env.DATABASE_URL ||
@@ -413,6 +414,58 @@ Kami melihat Kakak baru saja mengisi data pemesanan untuk {produk}. Apakah ada y
           .replace(/{produk}/g, data.productName || "Madu Araa");
       }
 
+      // 1. DISPATCH VIA WABA (Official Meta Cloud API - 100% Anti-Banned with Interactive Buttons)
+      if (activeSession === "waba") {
+        const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
+        const wabaConfig = wabaConfigRes.rows[0]?.value || {};
+
+        const res = await sendWhatsAppMessage({
+          to: rawPhone,
+          message: messageText,
+          channel: "waba",
+          buttons: [
+            { id: "btn_pay_now", title: "✅ Mau Bayar Sekarang" },
+            { id: "btn_cs_help", title: "💬 Tanya CS / Rekening" },
+          ],
+          footerText: "Araa Honey • Official Order",
+          wabaConfig: {
+            phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+            permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+          },
+        });
+
+        if (!res.success) {
+          console.error("[sendScalevFollowUpWhatsApp WABA Error]:", res.error);
+          throw new Error(`Gagal mengirim via WABA Resmi Meta: ${res.error}`);
+        }
+
+        // Update lead follow up timestamp and count
+        await pool.query(
+          `UPDATE scalev_leads 
+           SET followed_up_at = now(), 
+               follow_up_count = follow_up_count + 1, 
+               follow_up_session = 'waba', 
+               updated_at = now() 
+           WHERE id = $1`,
+          [data.leadId]
+        );
+
+        // Record outgoing in whatsapp_chat_logs for Live Chat Monitor
+        try {
+          await pool.query(
+            `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+             VALUES ($1, $2, $3, $4, 'outgoing', 'waba', now())`,
+            [chatId, rawPhone, data.customerName, messageText]
+          );
+        } catch (e) {
+          console.warn("Could not insert chat log:", e);
+        }
+
+        await pool.end();
+        return { ok: true, recipient: chatId, channel: "waba", messageId: res.messageId, sentAt: new Date().toISOString() };
+      }
+
+      // 2. DISPATCH VIA WAHA (Slot 1 Default or Slot 2 Campaign)
       const payload = {
         session: activeSession,
         chatId,
@@ -455,8 +508,19 @@ Kami melihat Kakak baru saja mengisi data pemesanan untuk {produk}. Apakah ada y
         [activeSession, data.leadId]
       );
 
+      // Record outgoing in whatsapp_chat_logs for Live Chat Monitor
+      try {
+        await pool.query(
+          `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+           VALUES ($1, $2, $3, $4, 'outgoing', $5, now())`,
+          [chatId, rawPhone, data.customerName, messageText, activeSession === "default" ? "waha_main" : "waha_campaign"]
+        );
+      } catch (e) {
+        console.warn("Could not insert chat log:", e);
+      }
+
       await pool.end();
-      return { ok: true, recipient: chatId, sentAt: new Date().toISOString() };
+      return { ok: true, recipient: chatId, channel: activeSession === "default" ? "waha_main" : "waha_campaign", sentAt: new Date().toISOString() };
     } catch (err: any) {
       if (pool) try { await pool.end(); } catch (e) {}
       console.error("[sendScalevFollowUpWhatsApp Error]:", err);

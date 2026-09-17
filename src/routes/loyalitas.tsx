@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useRef } from "react";
 import { RequireAuth } from "@/components/require-auth";
@@ -10,13 +10,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { formatIDR } from "@/lib/theme";
 import { toast } from "sonner";
 import { 
   Repeat, Users, Crown, Clock, TrendingUp, Search, MessageSquare, 
   Sparkles, HeartHandshake, ShoppingBag, 
   ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
-  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, CheckSquare, Square, Filter, PackageCheck
+  Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, ShieldCheck, CheckSquare, Square, Filter, PackageCheck,
+  Smartphone
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { 
@@ -25,6 +27,7 @@ import {
   saveLoyaltyTemplates, 
   sendDirectLoyaltyWhatsApp 
 } from "@/lib/loyalty.functions";
+import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/loyalitas")({
@@ -104,6 +107,19 @@ function LoyaltyPage() {
   const [previewDialogCustomer, setPreviewDialogCustomer] = useState<any | null>(null);
   const [previewMessage, setPreviewMessage] = useState("");
   const [previewImageUrl, setPreviewImageUrl] = useState("");
+
+  // Sender WhatsApp Session State (waba, campaign, default)
+  const [selectedSenderSession, setSelectedSenderSession] = useState<string>("waba");
+
+  // Fetch WAHA & WABA Sessions Info
+  const { data: wahaSessionsData } = useQuery({
+    queryKey: ["crm-waha-sessions-info"],
+    queryFn: async () => {
+      return await getWahaSessionsInfo();
+    },
+    staleTime: 15 * 1000,
+    refetchInterval: 15 * 1000,
+  });
 
   // 1. Fetch Loyalty Statistics
   const { data: apiResponse, isLoading, isFetching, refetch } = useQuery({
@@ -278,7 +294,7 @@ function LoyaltyPage() {
     },
   });
 
-  // Mutation to send Direct WhatsApp via WAHA
+  // Mutation to send Direct WhatsApp via WABA or WAHA
   const sendWhatsAppMutation = useMutation({
     mutationFn: async ({
       phone,
@@ -286,17 +302,35 @@ function LoyaltyPage() {
       message,
       favoriteHoney,
       imageUrl,
+      senderSession,
     }: {
       phone: string;
       customerName: string;
       message: string;
       favoriteHoney?: string;
       imageUrl?: string;
+      senderSession?: string;
     }) => {
-      return await sendDirectLoyaltyWhatsApp({ data: { phone, customerName, message, favoriteHoney, imageUrl } });
+      return await sendDirectLoyaltyWhatsApp({
+        data: {
+          phone,
+          customerName,
+          message,
+          favoriteHoney,
+          imageUrl,
+          senderSession: senderSession || selectedSenderSession,
+        },
+      });
     },
     onSuccess: (_, variables) => {
-      toast.success(`✅ Pesan ${variables.imageUrl ? "bergambar " : ""}berhasil dikirim ke ${variables.customerName} (${variables.phone}) via WAHA!`);
+      const activeSess = variables.senderSession || selectedSenderSession;
+      const channelLabel =
+        activeSess === "waba"
+          ? "WABA Resmi Meta (+62 856-4540-6949)"
+          : activeSess === "default"
+          ? "Slot 1 (CS)"
+          : "Slot 2 (Kampanye)";
+      toast.success(`✅ Pesan ${variables.imageUrl ? "bergambar " : ""}berhasil dikirim ke ${variables.customerName} (${variables.phone}) via ${channelLabel}!`);
       setSentMap((prev) => ({ ...prev, [variables.phone]: true }));
       queryClient.invalidateQueries({ queryKey: ["customer-loyalty-serverfn-stats"] });
       setPreviewDialogCustomer(null);
@@ -516,7 +550,7 @@ function LoyaltyPage() {
     setPreviewDialogCustomer(c);
   };
 
-  // Execute Direct Send via WAHA
+  // Execute Direct Send via WABA or WAHA
   const handleExecuteSend = () => {
     if (!previewDialogCustomer) return;
     sendWhatsAppMutation.mutate({
@@ -525,6 +559,7 @@ function LoyaltyPage() {
       message: previewMessage,
       favoriteHoney: previewDialogCustomer.favoriteHoney,
       imageUrl: previewImageUrl,
+      senderSession: selectedSenderSession,
     });
   };
 
@@ -674,6 +709,7 @@ function LoyaltyPage() {
             message: formatted,
             favoriteHoney: c.favoriteHoney,
             imageUrl: imgUrl,
+            senderSession: selectedSenderSession,
           },
         });
         setSentMap((prev) => ({ ...prev, [c.phone]: true }));
@@ -754,6 +790,102 @@ function LoyaltyPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
             Perbarui
           </Button>
+        </div>
+      </div>
+
+      {/* WhatsApp Sender Session Controller */}
+      <div className="bg-card border border-muted/70 p-3.5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <Smartphone className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-foreground flex items-center gap-2">
+              <span>Nomor WhatsApp Pengirim CRM:</span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                (Pilih jalur pengirim pesan loyalitas & sapaan repeat)
+              </span>
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>
+                Status Sesi Pengirim:{" "}
+                <strong className={
+                  selectedSenderSession === "waba"
+                    ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                    : (selectedSenderSession === "campaign"
+                        ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                        : wahaSessionsData?.mainSession?.status === "WORKING")
+                        ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                        : "text-amber-600 dark:text-amber-400 font-bold"
+                }>
+                  {selectedSenderSession === "waba"
+                    ? "ONLINE (Resmi Meta Cloud API)"
+                    : selectedSenderSession === "campaign"
+                    ? (wahaSessionsData?.campaignSession?.status || "STOPPED")
+                    : (wahaSessionsData?.mainSession?.status || "STOPPED")}
+                </strong>
+              </span>
+
+              {selectedSenderSession === "waba" && (
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  WABA Resmi Meta (+62 856-4540-6949) • Anti-Banned & Tombol Interaktif
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <Select value={selectedSenderSession} onValueChange={setSelectedSenderSession}>
+            <SelectTrigger className="h-9 text-xs font-semibold min-w-[320px] bg-background border-muted/80 shadow-2xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="waba" className="text-xs">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="font-bold">WABA Resmi Meta (+62 856-4540-6949)</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-semibold ml-1 py-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                    Resmi Meta (Anti-Banned)
+                  </Badge>
+                </div>
+              </SelectItem>
+              <SelectItem value="campaign" className="text-xs">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${wahaSessionsData?.campaignSession?.status === "WORKING" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                    <span className="font-bold">Slot 2: Nomor Kampanye (WAHA Outreach)</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono ml-1 py-0 border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+                    {wahaSessionsData?.campaignSession?.status === "WORKING"
+                      ? (wahaSessionsData.campaignSession.me?.id?.split("@")[0] || "Online")
+                      : (wahaSessionsData?.campaignSession?.status || "Perlu QR")}
+                  </Badge>
+                </div>
+              </SelectItem>
+              <SelectItem value="default" className="text-xs">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${wahaSessionsData?.mainSession?.status === "WORKING" ? "bg-emerald-500" : "bg-rose-500"}`} />
+                    <span className="font-bold">Slot 1: CS Utama ({wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "081337324522"})</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono ml-1 py-0">
+                    CS Utama
+                  </Badge>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Link to="/pengaturan/whatsapp">
+            <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" title="Buka Pengaturan WhatsApp">
+              <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
+              Kelola Sesi & WABA
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -1760,10 +1892,12 @@ function LoyaltyPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Send className="w-5 h-5 text-emerald-500" />
-              Kirim Pesan WhatsApp Langsung (WAHA)
+              Kirim Pesan WhatsApp CRM ({selectedSenderSession === "waba" ? "WABA Resmi Meta" : selectedSenderSession === "campaign" ? "WAHA Slot 2" : "WAHA Slot 1"})
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Pesan akan langsung dikirim dari server WAHA Araa Honey ke nomor penerima.
+              {selectedSenderSession === "waba"
+                ? "Pesan sapaan loyalitas akan dikirim via WABA Resmi Meta Cloud API (+62 856-4540-6949) + Tombol Interaktif."
+                : "Pesan akan langsung dikirim dari server WAHA Araa Honey ke nomor penerima."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1781,6 +1915,27 @@ function LoyaltyPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Madu Favorit:</span>
                   <span className="font-medium text-amber-600 dark:text-amber-400">{previewDialogCustomer.favoriteHoney}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-muted/50 text-[11px]">
+                  <span className="text-muted-foreground">Nomor Pengirim:</span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span className={`w-2 h-2 rounded-full ${
+                      selectedSenderSession === "waba"
+                        ? "bg-emerald-500"
+                        : (selectedSenderSession === "campaign"
+                            ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                            : wahaSessionsData?.mainSession?.status === "WORKING")
+                            ? "bg-emerald-500"
+                            : "bg-amber-500"
+                    }`} />
+                    <span>
+                      {selectedSenderSession === "waba"
+                        ? "WABA Resmi Meta (+62 856-4540-6949)"
+                        : selectedSenderSession === "campaign"
+                        ? `Slot 2 (Kampanye - ${wahaSessionsData?.campaignSession?.me?.id?.split("@")[0] || "Outreach"})`
+                        : `Slot 1 (CS Utama - ${wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "081337324522"})`}
+                    </span>
+                  </div>
                 </div>
               </div>
 

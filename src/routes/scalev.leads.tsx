@@ -90,6 +90,7 @@ export function ScalevLeadsPage() {
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
   const [customMessage, setCustomMessage] = useState("");
+  const [selectedFollowUpSession, setSelectedFollowUpSession] = useState<string>("waba");
 
   // Manual Closing Modal State
   const [manualClosingLead, setManualClosingLead] = useState<any | null>(null);
@@ -102,7 +103,7 @@ export function ScalevLeadsPage() {
     clientId: "",
     signingSecret: "",
     followUpTemplate: "",
-    senderSession: "campaign",
+    senderSession: "waba",
   });
 
   // Calculate effective date bounds
@@ -167,13 +168,15 @@ export function ScalevLeadsPage() {
   // Keep form in sync when currentConfig loads
   useMemo(() => {
     if (currentConfig) {
+      const sess = currentConfig.senderSession || "waba";
       setConfigForm({
         apiKey: currentConfig.apiKey || "",
         clientId: currentConfig.clientId || "",
         signingSecret: currentConfig.signingSecret || "",
         followUpTemplate: currentConfig.followUpTemplate || "",
-        senderSession: currentConfig.senderSession || "campaign",
+        senderSession: sess,
       });
+      setSelectedFollowUpSession(sess);
     }
   }, [currentConfig]);
 
@@ -220,9 +223,16 @@ export function ScalevLeadsPage() {
       customerName: string;
       productName?: string;
       customMessage?: string;
+      senderSession?: string;
     }) => sendScalevFollowUpWhatsApp({ data: payload }),
-    onSuccess: () => {
-      toast.success(`Follow-up terkirim via Slot 2 (${wahaInfo?.campaignSession?.me?.id ? "0878-3703-5470" : "ADMIN AYUMI"})!`);
+    onSuccess: (_, variables) => {
+      const channelLabel =
+        variables.senderSession === "waba"
+          ? "WABA Resmi Meta (+62 856-4540-6949)"
+          : variables.senderSession === "default"
+          ? "Slot 1 (CS Utama)"
+          : `Slot 2 (${wahaInfo?.campaignSession?.me?.id ? "0878-3703-5470" : "ADMIN AYUMI"})`;
+      toast.success(`Follow-up terkirim via ${channelLabel}!`);
       setFollowUpModalOpen(false);
       setSelectedLead(null);
       refetchMetrics();
@@ -889,15 +899,53 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                 </div>
               </div>
 
-              {/* Sender Engine Info */}
-              <div className="flex items-center justify-between text-[11px] px-3 py-2 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
-                <span className="flex items-center gap-1 font-medium">
-                  <Smartphone className="w-3.5 h-3.5" />
-                  Pengirim: Slot 2 ({slot2Phone})
-                </span>
-                <Badge variant="outline" className="text-[10px] bg-background">
-                  {isSlot2Online ? "Terhubung" : "Offline"}
-                </Badge>
+              {/* Sender Engine Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span>Nomor WhatsApp Pengirim:</span>
+                  <span className="text-[10px] text-muted-foreground">Pilih jalur pengirim pesan</span>
+                </label>
+                <Select
+                  value={selectedFollowUpSession}
+                  onValueChange={setSelectedFollowUpSession}
+                >
+                  <SelectTrigger className="h-8 text-xs font-medium bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="waba" className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="font-semibold">WABA Resmi Meta (+62 856-4540-6949)</span>
+                        <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                          Resmi Meta • Anti-Banned
+                        </Badge>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="campaign" className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isSlot2Online ? "bg-emerald-500" : "bg-amber-500"}`} />
+                        <span>Slot 2: Nomor Kampanye ({slot2Phone})</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="default" className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span>Slot 1: CS Utama (WAHA)</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {selectedFollowUpSession === "waba" ? (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Pesan dikirim via WhatsApp Business API Resmi + Tombol Interaktif Otomatis!
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Status sesi: {selectedFollowUpSession === "campaign" ? (isSlot2Online ? "Online" : "Offline") : "Online"}
+                  </p>
+                )}
               </div>
 
               {/* Message Textarea */}
@@ -936,6 +984,7 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                   customerName: selectedLead.customer_name,
                   productName: selectedLead.product_name,
                   customMessage,
+                  senderSession: selectedFollowUpSession,
                 });
               }}
               disabled={followUpMutation.isPending || !customMessage.trim()}
@@ -946,7 +995,7 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              <span>Kirim via Slot 2</span>
+              <span>Kirim via {selectedFollowUpSession === "waba" ? "WABA Resmi Meta" : selectedFollowUpSession === "campaign" ? "Slot 2" : "Slot 1"}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1111,7 +1160,7 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
 
             {/* WhatsApp Sender Slot */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">WhatsApp Engine Pengirim:</label>
+              <label className="text-xs font-semibold text-foreground">WhatsApp Engine Default Pengirim:</label>
               <Select
                 value={configForm.senderSession}
                 onValueChange={(val) => setConfigForm({ ...configForm, senderSession: val })}
@@ -1120,16 +1169,19 @@ Apakah ada kendala saat proses konfirmasi atau ada yang ingin ditanyakan terkait
                   <SelectValue placeholder="Pilih Slot Pengirim" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="waba">
+                    🟢 WABA Resmi Meta (+62 856-4540-6949) - 100% Anti-Banned & Tombol Interaktif (Rekomendasi)
+                  </SelectItem>
                   <SelectItem value="campaign">
-                    Slot 2: campaign ({slot2Phone}) - Rekomendasi
+                    Slot 2: Nomor Kampanye ({slot2Phone}) - Outreach WAHA
                   </SelectItem>
                   <SelectItem value="default">
-                    Slot 1: default (Nomor Utama CS Araa Honey)
+                    Slot 1: CS Utama ({wahaInfo?.mainSession?.me?.id?.split("@")[0] || "081337324522"})
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-muted-foreground">
-                Direkomendasikan menggunakan Slot 2 agar nomor utama CS terlindungi dari risiko pemblokiran.
+                Gunakan WABA Resmi Meta agar pesan follow-up calon pembeli aman dari pemblokiran dan dilengkapi tombol interaktif otomatis.
               </p>
             </div>
 

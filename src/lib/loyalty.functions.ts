@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import pg from "pg";
+import { sendWhatsAppMessage } from "@/lib/whatsapp-service";
 
 const DB_URL =
   process.env.DATABASE_URL ||
@@ -250,7 +251,7 @@ export const saveLoyaltyTemplates = createServerFn({ method: "POST" })
     }
   });
 
-// 4. Server function to send 1-click WhatsApp message (Text OR Image + Caption) directly via WAHA Gateway
+// 4. Server function to send 1-click WhatsApp message (Text OR Image + Caption) directly via WABA or WAHA
 export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
   .validator((data) =>
     z
@@ -260,6 +261,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         message: z.string(),
         favoriteHoney: z.string().optional(),
         imageUrl: z.string().optional().default(""),
+        senderSession: z.string().optional(),
       })
       .parse(data)
   )
@@ -268,7 +270,76 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
     try {
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 
-      // Fetch WAHA configuration from app_settings
+      // Normalize phone number
+      let rawPhone = data.phone.replace(/[^0-9]/g, "");
+      if (rawPhone.startsWith("0")) rawPhone = "62" + rawPhone.slice(1);
+      else if (rawPhone.startsWith("8")) rawPhone = "62" + rawPhone;
+      if (rawPhone.length < 9) {
+        throw new Error("Nomor WhatsApp tidak valid (terlalu pendek)");
+      }
+
+      const chatId = `${rawPhone}@c.us`;
+
+      // 1. DISPATCH VIA WABA (Official Meta Cloud API - 100% Anti-Banned with Interactive Buttons)
+      if (data.senderSession === "waba") {
+        const wabaRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
+        const wabaConfig = wabaRes.rows[0]?.value || {};
+
+        const res = await sendWhatsAppMessage({
+          to: rawPhone,
+          message: data.message,
+          imageUrl: data.imageUrl,
+          channel: "waba",
+          buttons: [
+            { id: "btn_repeat_order", title: "🍯 Pesan Madu Lagi" },
+            { id: "btn_ask_cs", title: "💬 Tanya CS / Stok" },
+          ],
+          footerText: "Araa Honey • Loyal Customer",
+          wabaConfig: {
+            phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+            permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+          },
+        });
+
+        if (!res.success) {
+          console.error("[sendDirectLoyaltyWhatsApp WABA Error]:", res.error);
+          throw new Error(`Gagal mengirim via WABA Resmi Meta: ${res.error}`);
+        }
+
+        // Anti-double-chat sync
+        await pool.query(
+          `UPDATE crm_reminders 
+           SET status = 'sent', sent_at = now(), updated_at = now() 
+           WHERE (
+             customer_phone = $1 
+             OR customer_phone = $2 
+             OR REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') = $1
+           ) AND status = 'pending'`,
+          [rawPhone, "0" + rawPhone.slice(2)]
+        );
+
+        await pool.query(
+          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
+           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
+          [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
+        );
+
+        // Record in whatsapp_chat_logs for Live Chat Monitor
+        try {
+          await pool.query(
+            `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+             VALUES ($1, $2, $3, $4, 'outgoing', 'waba', now())`,
+            [chatId, rawPhone, data.customerName, data.message]
+          );
+        } catch (chatErr) {
+          console.warn("Could not insert chat log:", chatErr);
+        }
+
+        await pool.end();
+        return { ok: true, recipient: chatId, channel: "waba", messageId: res.messageId, sentAt: new Date().toISOString() };
+      }
+
+      // 2. DISPATCH VIA WAHA (Slot 1 Default or Slot 2 Campaign)
       let wahaUrl = "https://waha.araahoney.my.id";
       let sessionName = "default";
       let apiKey = "araahoney123";
@@ -281,15 +352,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         if (val.apiKey) apiKey = val.apiKey;
       }
 
-      // Normalize phone number
-      let rawPhone = data.phone.replace(/[^0-9]/g, "");
-      if (rawPhone.startsWith("0")) rawPhone = "62" + rawPhone.slice(1);
-      else if (rawPhone.startsWith("8")) rawPhone = "62" + rawPhone;
-      if (rawPhone.length < 9) {
-        throw new Error("Nomor WhatsApp tidak valid (terlalu pendek)");
-      }
-
-      const chatId = `${rawPhone}@c.us`;
+      const activeSession = data.senderSession || sessionName || "default";
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -299,7 +362,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       }
 
       const hasImage = !!(data.imageUrl && data.imageUrl.trim().startsWith("http"));
-      console.log(`[Direct WAHA Send] Sending ${hasImage ? "IMAGE + CAPTION" : "TEXT"} to ${chatId} via ${wahaUrl}...`);
+      console.log(`[Direct WAHA Send] Sending ${hasImage ? "IMAGE + CAPTION" : "TEXT"} to ${chatId} via ${wahaUrl} (${activeSession})...`);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -309,7 +372,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       if (hasImage) {
         // Send Image with Caption
         const imagePayload = {
-          session: sessionName,
+          session: activeSession,
           chatId,
           file: {
             url: data.imageUrl.trim(),
@@ -319,7 +382,6 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           caption: data.message,
         };
 
-        // Try /api/sendImage first
         response = await fetch(`${wahaUrl}/api/sendImage`, {
           method: "POST",
           headers,
@@ -331,7 +393,6 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         });
 
         if (!response || !response.ok) {
-          // Fallback to /api/sendFile
           response = await fetch(`${wahaUrl}/api/sendFile`, {
             method: "POST",
             headers,
@@ -341,7 +402,6 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         }
 
         if (!response || !response.ok) {
-          // Fallback to /api/messages/sendFile
           response = await fetch(`${wahaUrl}/api/messages/sendFile`, {
             method: "POST",
             headers,
@@ -351,14 +411,9 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         }
       }
 
-      // If no image or if image dispatch failed, send text message
       if (!response || !response.ok) {
-        if (hasImage) {
-          console.warn("[Image dispatch failed, falling back to text only message]");
-        }
-
         const textPayload = {
-          session: sessionName,
+          session: activeSession,
           chatId,
           text: data.message,
         };
@@ -390,7 +445,6 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       }
 
       // SINKRONISASI ANTI-DOUBLE-CHAT:
-      // 1. Mark any pending cron reminders for this phone as 'sent'
       await pool.query(
         `UPDATE crm_reminders 
          SET status = 'sent', sent_at = now(), updated_at = now() 
@@ -402,16 +456,26 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         [rawPhone, "0" + rawPhone.slice(2)]
       );
 
-      // 2. Insert or update the sent history
       await pool.query(
         `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
          VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
         [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
       );
 
+      // Record in whatsapp_chat_logs for Live Chat Monitor
+      try {
+        await pool.query(
+          `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+           VALUES ($1, $2, $3, $4, 'outgoing', $5, now())`,
+          [chatId, rawPhone, data.customerName, data.message, activeSession === "default" ? "waha_main" : "waha_campaign"]
+        );
+      } catch (chatErr) {
+        console.warn("Could not insert chat log:", chatErr);
+      }
+
       await pool.end();
 
-      return { ok: true, recipient: chatId, sentAt: new Date().toISOString() };
+      return { ok: true, recipient: chatId, channel: activeSession === "default" ? "waha_main" : "waha_campaign", sentAt: new Date().toISOString() };
     } catch (err: any) {
       if (pool) try { await pool.end(); } catch (e) {}
       console.error("[sendDirectLoyaltyWhatsApp Error]:", err);

@@ -6,11 +6,18 @@
 
 export type WhatsAppChannel = 'waba' | 'waha_main' | 'waha_campaign';
 
+export interface WhatsAppButton {
+  id: string;
+  title: string;
+}
+
 export interface SendWhatsAppOptions {
   to: string;
   message: string;
   imageUrl?: string;
   channel?: WhatsAppChannel;
+  buttons?: WhatsAppButton[]; // Quick reply buttons (up to 3 for WABA)
+  footerText?: string;
   wahaConfig?: {
     wahaUrl?: string;
     sessionName?: string;
@@ -77,7 +84,49 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
       const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
       
       let payload: any;
-      if (hasImage) {
+      if (opts.buttons && opts.buttons.length > 0) {
+        // Meta Cloud API supports up to 3 interactive reply buttons (max 20 chars per title)
+        const actionButtons = opts.buttons.slice(0, 3).map((b, idx) => ({
+          type: 'reply',
+          reply: {
+            id: b.id || `btn_${idx + 1}`,
+            title: b.title.slice(0, 20)
+          }
+        }));
+
+        const interactiveObj: any = {
+          type: 'button',
+          body: {
+            text: opts.message
+          },
+          action: {
+            buttons: actionButtons
+          }
+        };
+
+        if (hasImage) {
+          interactiveObj.header = {
+            type: 'image',
+            image: {
+              link: opts.imageUrl!.trim()
+            }
+          };
+        }
+
+        if (opts.footerText) {
+          interactiveObj.footer = {
+            text: opts.footerText.slice(0, 60)
+          };
+        }
+
+        payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhone,
+          type: 'interactive',
+          interactive: interactiveObj
+        };
+      } else if (hasImage) {
         payload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
@@ -156,6 +205,13 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
     headers['X-Api-Key'] = apiKey;
   }
 
+  // Format button choices nicely for text-based WAHA
+  let wahaMessage = opts.message;
+  if (opts.buttons && opts.buttons.length > 0) {
+    const btnLines = opts.buttons.slice(0, 3).map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
+    wahaMessage += `\n\n📌 *Pilihan Balasan Cepat:*\n${btnLines}`;
+  }
+
   try {
     if (hasImage) {
       const imagePayload = {
@@ -166,7 +222,7 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
           mimetype: 'image/jpeg',
           filename: 'promo-araa.jpg'
         },
-        caption: opts.message
+        caption: wahaMessage
       };
 
       console.log(`[WA Dispatch] Sending Image via WAHA (${session}) to ${wahaChatId}...`);
@@ -204,7 +260,7 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
       body: JSON.stringify({
         session,
         chatId: wahaChatId,
-        text: opts.message
+        text: wahaMessage
       })
     });
 
@@ -216,7 +272,7 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
         body: JSON.stringify({
           session,
           chatId: wahaChatId,
-          text: opts.message
+          text: wahaMessage
         })
       });
     }
