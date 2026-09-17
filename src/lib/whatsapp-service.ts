@@ -59,9 +59,11 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
       process.env.WHATSAPP_PHONE_NUMBER_ID || 
       '1289613457572802';
 
+    const fallbackToken = "EAAPbL3R0Y60BSWTiTBjrFuy9WJQEdZAc8HqCZCgdik8cq9ZB0wJ06glKZCEgy3fCUZBYZCwhW58V9rMzmXAFkqatSZA0pHPQ3tl3ZBQKQUMzOzUhvcx8ig7CpNZB4Kj0MWJJxZBH7BZCLyd8ZAWU2Lbol44ZAZAqi9XDniZAgQzmiEVIwmslqHBGcFjKwZCKX4zitM9VyPBuFQZDZD";
     const token = 
       opts.wabaConfig?.permanentToken || 
-      process.env.WHATSAPP_PERMANENT_TOKEN;
+      process.env.WHATSAPP_PERMANENT_TOKEN || 
+      fallbackToken;
 
     if (!token) {
       return {
