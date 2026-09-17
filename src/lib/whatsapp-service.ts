@@ -24,6 +24,7 @@ export interface SendWhatsAppOptions {
     name: string;
     language?: string;
     bodyParameters?: string[];
+    namedParameters?: Record<string, string>;
     headerImageUrl?: string;
     headerVideoUrl?: string;
   };
@@ -109,7 +110,16 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
           });
         }
 
-        if (opts.template.bodyParameters && opts.template.bodyParameters.length > 0) {
+        if (opts.template.namedParameters && Object.keys(opts.template.namedParameters).length > 0) {
+          components.push({
+            type: 'body',
+            parameters: Object.entries(opts.template.namedParameters).map(([paramName, val]) => ({
+              type: 'text',
+              parameter_name: paramName,
+              text: String(val)
+            }))
+          });
+        } else if (opts.template.bodyParameters && opts.template.bodyParameters.length > 0) {
           components.push({
             type: 'body',
             parameters: opts.template.bodyParameters.map(val => ({ type: 'text', text: String(val) }))

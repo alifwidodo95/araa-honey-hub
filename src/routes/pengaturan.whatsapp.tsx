@@ -108,16 +108,17 @@ function WhatsAppPage() {
 
   const handleOpenTestTemplate = (tpl: MetaTemplateItem) => {
     setSelectedTemplateForTest(tpl);
-    // detect variables like {{1}}, {{2}} from body text
-    const bodyComp = tpl.components.find(c => c.type === "BODY");
+    // detect variables like {{1}}, {{2}} or named variables like {{nama}}, {{tanggal_order}}
+    const bodyComp = tpl.components.find((c) => c.type === "BODY");
     const bodyText = bodyComp?.text || "";
-    const matches = bodyText.match(/\{\{(\d+)\}\}/g) || [];
+    const matches = Array.from(bodyText.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g));
     const initialParams: Record<string, string> = {};
     matches.forEach((m, idx) => {
-      const varNum = m.replace(/[\{\}]/g, "");
-      if (idx === 0) initialParams[varNum] = "Big Bos";
-      else if (idx === 1) initialParams[varNum] = "Madu Akasia Riau 1 KG";
-      else initialParams[varNum] = `Data ${varNum}`;
+      const varKey = m[1];
+      if (varKey === "nama" || varKey === "1") initialParams[varKey] = "Big Bos";
+      else if (varKey === "tanggal_order") initialParams[varKey] = "15 Juli 2026";
+      else if (varKey === "produk" || varKey === "2") initialParams[varKey] = "Madu Akasia Riau 1 KG";
+      else initialParams[varKey] = `Data ${varKey}`;
     });
     setTemplateParamValues(initialParams);
     setTestTemplateModalOpen(true);
@@ -2754,8 +2755,14 @@ function WhatsAppPage() {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                   Pratinjau Pesan:
                 </span>
-                <p className="text-[11px] whitespace-pre-line text-foreground">
-                  {selectedTemplateForTest.components.find(c => c.type === "BODY")?.text || ""}
+                <p className="text-[11px] whitespace-pre-line text-foreground leading-relaxed">
+                  {(() => {
+                    let txt = selectedTemplateForTest.components.find((c) => c.type === "BODY")?.text || "";
+                    Object.entries(templateParamValues).forEach(([k, v]) => {
+                      txt = txt.replaceAll(`{{${k}}}`, v || `{{${k}}}`);
+                    });
+                    return txt;
+                  })()}
                 </p>
               </div>
             </div>
@@ -2769,13 +2776,13 @@ function WhatsAppPage() {
               size="sm"
               onClick={() => {
                 if (!selectedTemplateForTest) return;
-                const sortedKeys = Object.keys(templateParamValues).sort((a, b) => Number(a) - Number(b));
-                const bodyParams = sortedKeys.map(k => templateParamValues[k]);
+                const isNamed = selectedTemplateForTest.parameter_format === "NAMED";
                 sendMetaTemplateMutation.mutate({
                   to: templateTestPhone,
                   templateName: selectedTemplateForTest.name,
                   languageCode: selectedTemplateForTest.language,
-                  bodyParameters: bodyParams.length > 0 ? bodyParams : undefined,
+                  namedParameters: isNamed ? templateParamValues : undefined,
+                  bodyParameters: !isNamed ? Object.values(templateParamValues) : undefined,
                 });
               }}
               disabled={sendMetaTemplateMutation.isPending || !templateTestPhone.trim()}

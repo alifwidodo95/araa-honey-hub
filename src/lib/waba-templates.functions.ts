@@ -127,6 +127,7 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
     templateName: string;
     languageCode?: string;
     bodyParameters?: string[];
+    namedParameters?: Record<string, string>;
     headerImageUrl?: string;
     headerVideoUrl?: string;
   }) => data)
@@ -136,15 +137,54 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
       const { phoneNumberId, permanentToken } = await getWabaCredentials(pool);
 
+      // Check cached template for parameter format and header handle
+      const cachedRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_cached_templates'");
+      const cachedTemplates: MetaTemplateItem[] = cachedRes.rows[0]?.value || [];
+      const currentTpl = cachedTemplates.find((t) => t.name === data.templateName);
+
+      let namedParameters: Record<string, string> | undefined = data.namedParameters;
+      let headerImageUrl = data.headerImageUrl;
+
+      if (currentTpl) {
+        const headerComp = currentTpl.components?.find((c) => c.type === "HEADER");
+        if (headerComp?.format === "IMAGE" && !headerImageUrl && (headerComp as any).example?.header_handle?.[0]) {
+          headerImageUrl = (headerComp as any).example.header_handle[0];
+        }
+
+        // If template uses NAMED parameter format but bodyParameters array was passed
+        if (currentTpl.parameter_format === "NAMED" && !namedParameters && data.bodyParameters) {
+          const bodyComp = currentTpl.components?.find((c) => c.type === "BODY");
+          const namedParamKeys: string[] = [];
+          if ((bodyComp as any)?.example?.body_text_named_params) {
+            for (const item of (bodyComp as any).example.body_text_named_params) {
+              if (item.param_name) namedParamKeys.push(item.param_name);
+            }
+          } else if (bodyComp?.text) {
+            const matches = bodyComp.text.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g);
+            for (const m of matches) {
+              if (!namedParamKeys.includes(m[1])) namedParamKeys.push(m[1]);
+            }
+          }
+
+          if (namedParamKeys.length > 0) {
+            namedParameters = {};
+            namedParamKeys.forEach((key, idx) => {
+              namedParameters![key] = data.bodyParameters![idx] || "";
+            });
+          }
+        }
+      }
+
       const res = await sendWhatsAppMessage({
         to: data.to,
         message: `[Template: ${data.templateName}]`,
         channel: "waba",
         template: {
           name: data.templateName,
-          language: data.languageCode || "id",
-          bodyParameters: data.bodyParameters,
-          headerImageUrl: data.headerImageUrl,
+          language: data.languageCode || currentTpl?.language || "id",
+          bodyParameters: namedParameters ? undefined : data.bodyParameters,
+          namedParameters,
+          headerImageUrl,
           headerVideoUrl: data.headerVideoUrl,
         },
         wabaConfig: {
