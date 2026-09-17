@@ -147,8 +147,11 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
 
       if (currentTpl) {
         const headerComp = currentTpl.components?.find((c) => c.type === "HEADER");
-        if (headerComp?.format === "IMAGE" && !headerImageUrl && (headerComp as any).example?.header_handle?.[0]) {
-          headerImageUrl = (headerComp as any).example.header_handle[0];
+        if (headerComp?.format === "IMAGE") {
+          if (!headerImageUrl || headerImageUrl.includes("scontent.whatsapp.net") || headerImageUrl.includes("fbcdn.net")) {
+            // Default to verified public Araa Honey product image (Meta crawler requires a public unauthenticated direct image link)
+            headerImageUrl = "https://waha.araahoney.my.id/media/1788407689250-chatgpt-image-sep-2-2026-09_39_43-pm.png";
+          }
         }
 
         // If template uses NAMED parameter format but bodyParameters array was passed

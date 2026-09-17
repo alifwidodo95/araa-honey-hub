@@ -102,6 +102,7 @@ function WhatsAppPage() {
       templateName: string;
       languageCode?: string;
       bodyParameters?: string[];
+      namedParameters?: Record<string, string>;
       headerImageUrl?: string;
     }) => sendMetaTemplateMessage({ data: payload }),
     onSuccess: () => {
