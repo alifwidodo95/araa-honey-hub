@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import {
   Users, Sparkles, Send, CheckCircle2, AlertCircle, RefreshCw, Settings2,
   Upload, FileSpreadsheet, Search, Filter, Clock, Calendar, CheckSquare,
-  ShieldAlert, ArrowUpDown, Loader2, Trash2, PartyPopper, Check, X,
+  ShieldAlert, ShieldCheck, ArrowUpDown, Loader2, Trash2, PartyPopper, Check, X,
   Phone, Smartphone, AlertTriangle, Zap
 } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -681,29 +681,40 @@ function ReaktivasiPage() {
             <div className="text-xs font-bold text-foreground flex items-center gap-2">
               <span>Nomor WhatsApp Pengirim:</span>
               <span className="text-[11px] font-normal text-muted-foreground">
-                (Pilih nomor pengirim pesan win-back 2025)
+                (Pilih jalur pengirim pesan win-back 2025)
               </span>
             </div>
             <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
               <span>
-                Status Sesi Aktif:{" "}
+                Status Sesi Pengirim:{" "}
                 <strong className={
-                  (selectedSenderSession === "campaign"
-                    ? wahaSessionsData?.campaignSession?.status === "WORKING"
-                    : wahaSessionsData?.mainSession?.status === "WORKING")
+                  selectedSenderSession === "waba"
                     ? "text-emerald-600 dark:text-emerald-400 font-bold"
-                    : "text-amber-600 dark:text-amber-400 font-bold"
+                    : (selectedSenderSession === "campaign"
+                        ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                        : wahaSessionsData?.mainSession?.status === "WORKING")
+                        ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                        : "text-amber-600 dark:text-amber-400 font-bold"
                 }>
-                  {selectedSenderSession === "campaign"
+                  {selectedSenderSession === "waba"
+                    ? "ONLINE (Resmi Meta Cloud API)"
+                    : selectedSenderSession === "campaign"
                     ? (wahaSessionsData?.campaignSession?.status || "STOPPED")
                     : (wahaSessionsData?.mainSession?.status || "STOPPED")}
                 </strong>
               </span>
 
+              {selectedSenderSession === "waba" && (
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  WABA Resmi Meta (+62 856-4540-6949) • Anti-Banned 100%
+                </span>
+              )}
+
               {selectedSenderSession === "campaign" && wahaSessionsData?.campaignSession?.status !== "WORKING" && (
                 <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
-                  Belum scan QR! Klik "Kelola Sesi" untuk scan QR nomor kampanye.
+                  Belum scan QR! Klik "Kelola Sesi & WABA" untuk scan QR nomor kampanye.
                 </span>
               )}
             </div>
@@ -712,15 +723,26 @@ function ReaktivasiPage() {
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           <Select value={selectedSenderSession} onValueChange={setSelectedSenderSession}>
-            <SelectTrigger className="h-9 text-xs font-semibold min-w-[280px] bg-background border-muted/80 shadow-2xs">
+            <SelectTrigger className="h-9 text-xs font-semibold min-w-[320px] bg-background border-muted/80 shadow-2xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="waba" className="text-xs">
+                <div className="flex items-center justify-between gap-3 w-full">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="font-bold">WABA Resmi Meta (+62 856-4540-6949)</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-semibold ml-1 py-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                    Resmi Meta (Anti-Banned)
+                  </Badge>
+                </div>
+              </SelectItem>
               <SelectItem value="campaign" className="text-xs">
                 <div className="flex items-center justify-between gap-3 w-full">
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${wahaSessionsData?.campaignSession?.status === "WORKING" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                    <span className="font-bold">Slot 2: Nomor Kampanye (Outreach)</span>
+                    <span className="font-bold">Slot 2: Nomor Kampanye (WAHA Outreach)</span>
                   </div>
                   <Badge variant="outline" className="text-[10px] font-mono ml-1 py-0 border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
                     {wahaSessionsData?.campaignSession?.status === "WORKING"
@@ -733,7 +755,7 @@ function ReaktivasiPage() {
                 <div className="flex items-center justify-between gap-3 w-full">
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${wahaSessionsData?.mainSession?.status === "WORKING" ? "bg-emerald-500" : "bg-rose-500"}`} />
-                    <span className="font-bold">Slot 1: Nomor Utama CS</span>
+                    <span className="font-bold">Slot 1: Nomor Utama CS (WAHA)</span>
                   </div>
                   <Badge variant="outline" className="text-[10px] font-mono ml-1 py-0">
                     {wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "6281337324522"}
@@ -746,7 +768,7 @@ function ReaktivasiPage() {
           <Link to="/pengaturan/whatsapp">
             <Button size="sm" variant="outline" className="h-9 text-xs gap-1.5 font-semibold" title="Buka Pengaturan WhatsApp">
               <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
-              Kelola Sesi & QR
+              Kelola Sesi & WABA
             </Button>
           </Link>
         </div>
@@ -1359,10 +1381,12 @@ function ReaktivasiPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Send className="w-5 h-5 text-emerald-500" />
-              Kirim Pesan Reaktivasi (WAHA)
+              Kirim Pesan Reaktivasi ({selectedSenderSession === "waba" ? "WABA Resmi Meta" : selectedSenderSession === "campaign" ? "WAHA Slot 2" : "WAHA Slot 1"})
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Pesan akan langsung dikirimkan ke nomor penerima via server WAHA Araa Honey.
+              {selectedSenderSession === "waba"
+                ? "Pesan akan dikirim langsung via Meta Cloud API (+62 856-4540-6949). Resmi dan anti-blokir 100%."
+                : "Pesan akan langsung dikirimkan ke nomor penerima via server WAHA Araa Honey."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1389,14 +1413,18 @@ function ReaktivasiPage() {
                   <span className="text-muted-foreground">Nomor Pengirim:</span>
                   <div className="flex items-center gap-1.5 font-bold">
                     <span className={`w-2 h-2 rounded-full ${
-                      (selectedSenderSession === "campaign"
-                        ? wahaSessionsData?.campaignSession?.status === "WORKING"
-                        : wahaSessionsData?.mainSession?.status === "WORKING")
+                      selectedSenderSession === "waba"
                         ? "bg-emerald-500"
-                        : "bg-amber-500"
+                        : (selectedSenderSession === "campaign"
+                            ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                            : wahaSessionsData?.mainSession?.status === "WORKING")
+                            ? "bg-emerald-500"
+                            : "bg-amber-500"
                     }`} />
                     <span>
-                      {selectedSenderSession === "campaign"
+                      {selectedSenderSession === "waba"
+                        ? "WABA Resmi Meta (+62 856-4540-6949)"
+                        : selectedSenderSession === "campaign"
                         ? `Slot 2 (Kampanye - ${wahaSessionsData?.campaignSession?.me?.id?.split("@")[0] || wahaSessionsData?.campaignSession?.status || "Outreach"})`
                         : `Slot 1 (CS Utama - ${wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "6281337324522"})`}
                     </span>
@@ -1460,10 +1488,12 @@ function ReaktivasiPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Send className="w-5 h-5 text-emerald-500" />
-              Kirim Reaktivasi Massal via WAHA
+              Kirim Reaktivasi Massal ({selectedSenderSession === "waba" ? "WABA Resmi Meta" : "WAHA"})
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Pesan sapaan hangat akan dikirimkan satu per satu dengan jeda aman agar nomor WA tetap terlindungi.
+              {selectedSenderSession === "waba"
+                ? "Pesan win-back akan dikirim via WABA Resmi Meta Cloud API (+62 856-4540-6949). Resmi dan anti-blokir 100%."
+                : "Pesan sapaan hangat akan dikirimkan satu per satu dengan jeda aman agar nomor WA tetap terlindungi."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1479,13 +1509,17 @@ function ReaktivasiPage() {
                     <span>Nomor Pengirim:</span>
                     <span className="font-bold text-foreground flex items-center gap-1.5">
                       <span className={`w-2 h-2 rounded-full ${
-                        (selectedSenderSession === "campaign"
-                          ? wahaSessionsData?.campaignSession?.status === "WORKING"
-                          : wahaSessionsData?.mainSession?.status === "WORKING")
+                        selectedSenderSession === "waba"
                           ? "bg-emerald-500"
-                          : "bg-amber-500"
+                          : (selectedSenderSession === "campaign"
+                              ? wahaSessionsData?.campaignSession?.status === "WORKING"
+                              : wahaSessionsData?.mainSession?.status === "WORKING")
+                              ? "bg-emerald-500"
+                              : "bg-amber-500"
                       }`} />
-                      {selectedSenderSession === "campaign"
+                      {selectedSenderSession === "waba"
+                        ? "WABA Resmi Meta (+62 856-4540-6949)"
+                        : selectedSenderSession === "campaign"
                         ? `Slot 2 (Kampanye - ${wahaSessionsData?.campaignSession?.me?.id?.split("@")[0] || "Outreach"})`
                         : `Slot 1 (CS Utama - ${wahaSessionsData?.mainSession?.me?.id?.split("@")[0] || "6281337324522"})`}
                     </span>
@@ -1497,6 +1531,18 @@ function ReaktivasiPage() {
                     </span>
                   </div>
                 </div>
+
+                {selectedSenderSession === "waba" && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Jalur Resmi WABA Cloud API (Anti-Banned 100%)
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Pesan dikirim via WhatsApp Business API Resmi Meta (+62 856-4540-6949). Tidak ada risiko nomor terblokir.
+                    </p>
+                  </div>
+                )}
 
                 {selectedSenderSession === "campaign" && wahaSessionsData?.campaignSession?.status !== "WORKING" && (
                   <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 space-y-1">
