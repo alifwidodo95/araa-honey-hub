@@ -50,6 +50,36 @@ export const Route = createFileRoute('/api/whatsapp/send')({
             });
           }
 
+          // Automatically record outgoing message in whatsapp_chat_logs for Live Chat Monitor
+          if (!body?.skipLog) {
+            try {
+              const dbUrl = process.env.DATABASE_URL || "postgres://postgres.saefgyiloalpiqfrglqo:Handayani01@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres";
+              const logPool = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+              const cleanPhone = String(to).replace(/[^0-9]/g, '');
+              const chatId = `${cleanPhone}@c.us`;
+              let custName = body.customerName;
+              if (!custName) {
+                const nameRes = await logPool.query(
+                  "SELECT customer_name FROM public.whatsapp_chat_logs WHERE customer_phone = $1 AND customer_name IS NOT NULL AND customer_name != 'Meta Status' ORDER BY created_at DESC LIMIT 1",
+                  [cleanPhone]
+                );
+                custName = nameRes.rows[0]?.customer_name;
+                if (!custName) {
+                  const custRes = await logPool.query("SELECT name FROM public.customers WHERE phone = $1 OR phone = $2 LIMIT 1", [cleanPhone, '+' + cleanPhone]);
+                  custName = custRes.rows[0]?.name || 'Pelanggan';
+                }
+              }
+              await logPool.query(
+                `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+                 VALUES ($1, $2, $3, $4, 'outgoing', $5, $6, now())`,
+                [chatId, cleanPhone, custName, message, body.replied_by || 'manual', (channel as WhatsAppChannel) || 'waba']
+              );
+              await logPool.end();
+            } catch (logErr) {
+              console.warn('[API Send WhatsApp] Could not record to whatsapp_chat_logs:', logErr);
+            }
+          }
+
           return new Response(JSON.stringify(result), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },

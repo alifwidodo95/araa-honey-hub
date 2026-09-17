@@ -186,6 +186,18 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
               await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now(), error_message = null WHERE id = $1", [reminder.id]);
               results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS', channel: crmChannel });
               successCount++;
+              try {
+                const cleanPhone = String(reminder.customer_phone || '').replace(/[^0-9]/g, '');
+                if (cleanPhone) {
+                  await pool.query(
+                    `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+                     VALUES ($1, $2, $3, $4, 'outgoing', 'cron_crm', $5, now())`,
+                    [`${cleanPhone}@c.us`, cleanPhone, reminder.customer_name || 'Pelanggan', formattedMessage, crmChannel]
+                  );
+                }
+              } catch (logErr) {
+                console.warn('[Cron CRM] Failed to log to whatsapp_chat_logs:', logErr);
+              }
             } else {
               const errMsg = sendResult.error || 'Gagal mengirim dari gateway WhatsApp';
               const isNumberError = errMsg.includes('No LID') || errMsg.includes('not registered') || errMsg.includes('invalid');

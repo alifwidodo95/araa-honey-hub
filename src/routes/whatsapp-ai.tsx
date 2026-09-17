@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
-  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin
+  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -302,6 +302,7 @@ function WhatsAppAiPage() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Sync settings to state
@@ -319,16 +320,15 @@ function WhatsAppAiPage() {
     }
   }, [rawSettings]);
 
-  // 3. Fetch Chat Logs
+  // 3. Fetch Chat Logs (Store-wide across WA 1, WA 2, and WABA Meta)
   const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs } = useQuery<ChatLog[]>({
-    queryKey: ["whatsapp-chat-logs", userId],
+    queryKey: ["whatsapp-chat-logs"],
     queryFn: async () => {
-      if (!userId) return [];
       const { data, error } = await supabase
         .from("whatsapp_chat_logs")
         .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(300);
 
       if (error) {
         console.error("Gagal mengambil log chat:", error);
@@ -336,23 +336,102 @@ function WhatsAppAiPage() {
       }
       return data as ChatLog[];
     },
-    enabled: !!userId,
-    refetchInterval: 5000 // Auto refresh every 5 seconds for real-time chat feeling!
+    refetchInterval: 5000 // Polling backup every 5 seconds
   });
 
+  // Realtime Supabase Subscription for instant live chat updates
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-whatsapp-chat-logs")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "whatsapp_chat_logs" },
+        () => {
+          refetchLogs();
+        }
+      )
+      .subscribe();
 
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchLogs]);
 
-  // Unique chats list derived from chatLogs
+  // Helper to format clean Indonesian phone numbers nicely (+62 819-0194-2233)
+  const formatDisplayPhone = (phone?: string) => {
+    if (!phone) return "";
+    let clean = phone.replace(/[^0-9]/g, "");
+    if (clean.startsWith("0")) clean = "62" + clean.substring(1);
+    if (clean.startsWith("62")) {
+      const rest = clean.substring(2);
+      if (rest.length >= 9) {
+        return `+62 ${rest.substring(0, 3)}-${rest.substring(3, 7)}-${rest.substring(7)}`;
+      }
+      return `+62 ${rest}`;
+    }
+    return `+${clean}`;
+  };
+
+  // Grouped unique chats with enriched contact info & names
   const uniqueChats = useMemo(() => {
-    const chatsMap = new Map<string, ChatLog>();
-    // Since logs are ordered descending, the first one we see is the newest message
+    const chatsMap = new Map<string, {
+      chat_id: string;
+      latestLog: ChatLog;
+      customer_name: string;
+      customer_phone: string;
+      formatted_phone: string;
+      messageCount: number;
+    }>();
+
     chatLogs.forEach(log => {
-      if (!chatsMap.has(log.chat_id)) {
-        chatsMap.set(log.chat_id, log);
+      const cleanPhone = (log.customer_phone || log.chat_id.replace(/[^0-9]/g, "")).trim();
+      const existing = chatsMap.get(log.chat_id);
+
+      const isGoodName = (name?: string | null) => {
+        if (!name) return false;
+        const lower = name.trim().toLowerCase();
+        return (
+          lower !== "meta status" &&
+          lower !== "pelanggan" &&
+          lower !== "pelanggan wa" &&
+          !lower.startsWith("+") &&
+          !/^\d+$/.test(lower)
+        );
+      };
+
+      if (!existing) {
+        chatsMap.set(log.chat_id, {
+          chat_id: log.chat_id,
+          latestLog: log,
+          customer_name: log.customer_name || "Pelanggan",
+          customer_phone: cleanPhone,
+          formatted_phone: formatDisplayPhone(cleanPhone),
+          messageCount: 1
+        });
+      } else {
+        existing.messageCount++;
+        // If existing doesn't have a real name, but this log has a real customer name, adopt it!
+        if (!isGoodName(existing.customer_name) && isGoodName(log.customer_name)) {
+          existing.customer_name = log.customer_name!;
+        }
       }
     });
+
     return Array.from(chatsMap.values());
   }, [chatLogs]);
+
+  // Filtered by chatSearch query
+  const filteredChats = useMemo(() => {
+    if (!chatSearch.trim()) return uniqueChats;
+    const q = chatSearch.trim().toLowerCase();
+    const qDigits = q.replace(/[^0-9]/g, "");
+    return uniqueChats.filter(c => {
+      const matchName = c.customer_name.toLowerCase().includes(q);
+      const matchPhone = (qDigits && c.customer_phone.includes(qDigits)) || c.formatted_phone.toLowerCase().includes(q);
+      const matchMsg = c.latestLog.message.toLowerCase().includes(q);
+      return matchName || matchPhone || matchMsg;
+    });
+  }, [uniqueChats, chatSearch]);
 
   // Active chat bubbles
   const selectedChatMessages = useMemo(() => {
@@ -444,51 +523,34 @@ function WhatsAppAiPage() {
     toast.success(`Gudang keberangkatan dipilih: ${fullName}`);
   };
 
-  // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send) and log to DB
+  // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send)
   const handleSendManualReply = async () => {
     const text = manualReplyText.trim();
-    if (!text || !selectedChatId || !userId) return;
+    if (!text || !selectedChatId) return;
 
     setSendingReply(true);
     try {
       const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
-      const targetChannel = (activeChatInfo?.channel as any) || (selectedChatId.includes("waba") ? "waba" : "waha_main");
-      const customerPhone = selectedChatId.split("@")[0].replace("waba:", "");
+      const targetChannel = (activeChatInfo?.latestLog?.channel as any) || (selectedChatId.includes("waba") ? "waba" : "waha_main");
+      const customerPhone = activeChatInfo?.customer_phone || selectedChatId.split("@")[0].replace("waba:", "").replace(/[^0-9]/g, "");
       const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
 
-      // 1. Call Unified WhatsApp Send API
+      // 1. Call Unified WhatsApp Send API (which automatically logs to whatsapp_chat_logs)
       const sendRes = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: customerPhone,
           message: text,
-          channel: targetChannel
+          channel: targetChannel,
+          customerName: customerName,
+          replied_by: "manual"
         })
       });
 
       const sendData = await sendRes.json().catch(() => ({}));
       if (!sendRes.ok || !sendData.success) {
         throw new Error(sendData.error || `Gagal mengirim via gateway ${targetChannel}`);
-      }
-
-      // 2. Log manual message to database
-      const { error: logErr } = await supabase
-        .from("whatsapp_chat_logs")
-        .insert({
-          user_id: userId,
-          chat_id: selectedChatId,
-          customer_phone: customerPhone,
-          customer_name: customerName,
-          message: text,
-          direction: "outgoing",
-          replied_by: "manual",
-          channel: targetChannel,
-          created_at: new Date().toISOString()
-        });
-
-      if (logErr) {
-        console.error("Gagal mencatat log manual:", logErr.message);
       }
 
       const channelLabel = targetChannel === "waba" ? "WABA Resmi Meta" : targetChannel === "waha_campaign" ? "WA 2 Kampanye" : "WA 1 CS Utama";
@@ -560,62 +622,115 @@ function WhatsAppAiPage() {
 
       {/* Tab CONTENT 1: CHATS MONITOR */}
       {activeTab === "chats" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[650px]">
           {/* Chat List (Left Panel) */}
           <Card className="lg:col-span-1 flex flex-col h-full overflow-hidden">
-            <CardHeader className="py-4 border-b">
-              <CardTitle className="text-base">Daftar Obrolan</CardTitle>
-              <CardDescription>Pilih kontak untuk memantau detail chat.</CardDescription>
+            <CardHeader className="py-3 px-4 border-b space-y-2.5 shrink-0 bg-slate-50/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <span>Daftar Obrolan</span>
+                    <Badge variant="outline" className="text-[11px] bg-amber-50 text-amber-800 border-amber-200 font-semibold">
+                      {uniqueChats.length} Kontak
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-xs">Real-time live monitor multi-channel</CardDescription>
+                </div>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-8 w-8 text-slate-500 hover:text-amber-600"
+                  onClick={() => {
+                    refetchLogs();
+                    toast.success("Log chat disegarkan!");
+                  }}
+                  title="Segarkan Chat"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin text-amber-500" : ""}`} />
+                </Button>
+              </div>
+
+              {/* Search Bar for filtering contacts / numbers */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Cari nomor HP (cth: 0819...) atau nama..."
+                  value={chatSearch}
+                  onChange={(e) => setChatSearch(e.target.value)}
+                  className="h-8 pl-8 pr-7 text-xs bg-white rounded-lg border-slate-200"
+                />
+                {chatSearch && (
+                  <button 
+                    onClick={() => setChatSearch("")} 
+                    className="absolute right-2 top-2 h-4 w-4 text-xs flex items-center justify-center text-muted-foreground hover:text-slate-800 rounded-full bg-slate-100"
+                    title="Hapus pencarian"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0 overflow-y-auto flex-1">
-              {uniqueChats.length === 0 ? (
+              {filteredChats.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
-                  <Phone className="h-8 w-8 mb-2 opacity-50" />
-                  <p className="text-sm font-medium">Belum ada riwayat chat.</p>
-                  <p className="text-xs">Chat pelanggan masuk akan muncul di sini secara otomatis.</p>
+                  <Phone className="h-8 w-8 mb-2 opacity-50 text-amber-500" />
+                  <p className="text-sm font-medium">{chatSearch ? "Tidak ada kontak yang cocok" : "Belum ada riwayat chat."}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {chatSearch ? "Coba nomor atau kata kunci lainnya." : "Pesan masuk/keluar akan muncul di sini secara otomatis."}
+                  </p>
                 </div>
               ) : (
-                <div className="divide-y">
-                  {uniqueChats.map((chat) => {
+                <div className="divide-y divide-slate-100">
+                  {filteredChats.map((chat) => {
                     const isSelected = selectedChatId === chat.chat_id;
-                    const cleanDate = new Date(chat.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                    const cleanDate = new Date(chat.latestLog.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                    const isGoodName = chat.customer_name && chat.customer_name !== "Pelanggan" && chat.customer_name !== "Meta Status";
+                    const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
+
                     return (
                       <button
-                        key={chat.id}
+                        key={chat.chat_id}
                         onClick={() => setSelectedChatId(chat.chat_id)}
-                        className={`w-full p-4 text-left flex items-start justify-between gap-2 hover:bg-slate-50 transition-colors ${
-                          isSelected ? "bg-amber-50/70 border-r-4 border-r-amber-500" : ""
+                        className={`w-full p-3.5 text-left flex items-start justify-between gap-2.5 hover:bg-slate-50/80 transition-colors ${
+                          isSelected ? "bg-amber-50/80 border-r-4 border-r-amber-500 shadow-xs" : ""
                         }`}
                       >
-                        <div className="space-y-1 min-w-0">
-                          <p className="font-semibold text-sm truncate text-slate-800">
-                            {chat.customer_name || `+${chat.customer_phone}`}
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <p className="font-semibold text-sm truncate text-slate-900">
+                            {isGoodName ? chat.customer_name : chat.formatted_phone || `+${chat.customer_phone}`}
                           </p>
-                          <p className="text-xs text-slate-500 truncate">
-                            {chat.message}
+                          <p className="text-[11px] font-mono font-medium text-emerald-700">
+                            {chat.formatted_phone || `+${chat.customer_phone}`}
+                          </p>
+                          <p className={`text-xs truncate ${isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
+                            {chat.latestLog.message}
                           </p>
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                           <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
                           <div className="flex items-center gap-1">
-                            {chat.channel === "waba" ? (
-                              <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
+                            {chat.latestLog.channel === "waba" ? (
+                              <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
                                 WABA
                               </Badge>
-                            ) : chat.channel === "waha_campaign" ? (
-                              <Badge className="bg-purple-600/15 text-purple-700 dark:text-purple-400 border-purple-300 text-[9px] px-1.5 py-0 font-bold">
+                            ) : chat.latestLog.channel === "waha_campaign" ? (
+                              <Badge className="bg-purple-600/15 text-purple-700 border-purple-300 text-[9px] px-1.5 py-0 font-bold">
                                 WA 2
                               </Badge>
                             ) : (
-                              <Badge className="bg-blue-600/15 text-blue-700 dark:text-blue-400 border-blue-300 text-[9px] px-1.5 py-0 font-bold">
+                              <Badge className="bg-blue-600/15 text-blue-700 border-blue-300 text-[9px] px-1.5 py-0 font-bold">
                                 WA 1
                               </Badge>
                             )}
-                            {chat.direction === "outgoing" && (
+                            {chat.latestLog.direction === "outgoing" && (
                               <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${
-                                chat.replied_by === "ai" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-blue-50 text-blue-700 border-blue-200"
+                                isError
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : chat.latestLog.replied_by === "ai"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-blue-50 text-blue-700 border-blue-200"
                               }`}>
-                                {chat.replied_by === "ai" ? "AI" : "Manual"}
+                                {isError ? "Error" : chat.latestLog.replied_by === "ai" ? "AI" : "Manual"}
                               </Badge>
                             )}
                           </div>
@@ -632,81 +747,115 @@ function WhatsAppAiPage() {
           <Card className="lg:col-span-2 flex flex-col h-full overflow-hidden">
             {selectedChatId ? (
               <>
-                <CardHeader className="py-3 border-b flex flex-row items-center justify-between shrink-0">
-                  <div>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <span>{uniqueChats.find(c => c.chat_id === selectedChatId)?.customer_name || `+${selectedChatId.split("@")[0].replace("waba:", "")}`}</span>
-                      {uniqueChats.find(c => c.chat_id === selectedChatId)?.channel === "waba" ? (
-                        <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
-                      ) : uniqueChats.find(c => c.chat_id === selectedChatId)?.channel === "waha_campaign" ? (
-                        <Badge className="bg-purple-600 text-white text-[10px]">WA 2 Kampanye</Badge>
-                      ) : (
-                        <Badge className="bg-blue-600 text-white text-[10px]">WA 1 CS Utama</Badge>
-                      )}
-                    </CardTitle>
-                    <p className="text-[11px] text-muted-foreground">
-                      {uniqueChats.find(c => c.chat_id === selectedChatId)?.channel === "waba"
-                        ? "Jalur: Meta Cloud API (+62 856-4540-6949)"
-                        : `Sesi WAHA: ${wahaSession}`}
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
-                    Aktif
-                  </Badge>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/50 space-y-4">
-                  {selectedChatMessages.map((msg) => {
-                    const isIncoming = msg.direction === "incoming";
-                    const msgTime = new Date(msg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex ${isIncoming ? "justify-start" : "justify-end"}`}
-                      >
-                        <div className={`max-w-[75%] rounded-2xl p-3 shadow-sm ${
-                          isIncoming 
-                            ? "bg-white border text-slate-800 rounded-tl-none" 
-                            : "bg-amber-500 text-white rounded-tr-none"
-                        }`}>
-                          <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-                          <div className={`flex items-center gap-1.5 justify-end mt-1 ${isIncoming ? "text-slate-400" : "text-amber-100"}`}>
-                            <span className="text-[9px]">{msgTime}</span>
-                            {!isIncoming && (
-                              <span className="text-[9px] font-bold uppercase">
-                                {msg.replied_by || "system"}
-                              </span>
+                {(() => {
+                  const activeChat = uniqueChats.find(c => c.chat_id === selectedChatId);
+                  const isGoodName = activeChat?.customer_name && activeChat.customer_name !== "Pelanggan" && activeChat.customer_name !== "Meta Status";
+                  const displayName = isGoodName ? activeChat.customer_name : "Pelanggan";
+                  const displayPhone = activeChat?.formatted_phone || formatDisplayPhone(selectedChatId.replace(/[^0-9]/g, ""));
+                  const currentChannel = activeChat?.latestLog?.channel || "waba";
+
+                  return (
+                    <>
+                      <CardHeader className="py-3 px-4 border-b flex flex-row items-center justify-between shrink-0 bg-slate-50/50">
+                        <div>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <span>{displayName}</span>
+                            <span className="text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              {displayPhone}
+                            </span>
+                            {currentChannel === "waba" ? (
+                              <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
+                            ) : currentChannel === "waha_campaign" ? (
+                              <Badge className="bg-purple-600 text-white text-[10px]">WA 2 Kampanye</Badge>
+                            ) : (
+                              <Badge className="bg-blue-600 text-white text-[10px]">WA 1 CS Utama</Badge>
                             )}
-                          </div>
+                          </CardTitle>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {currentChannel === "waba"
+                              ? "Jalur: Meta Cloud API (+62 856-4540-6949)"
+                              : `Sesi WAHA: ${wahaSession}`}
+                          </p>
                         </div>
+                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
+                          Aktif
+                        </Badge>
+                      </CardHeader>
+
+                      <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/40 space-y-3.5">
+                        {selectedChatMessages.map((msg) => {
+                          const isIncoming = msg.direction === "incoming";
+                          const isError = msg.replied_by === "meta_error" || msg.message.startsWith("❌");
+                          const msgTime = new Date(msg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+                          if (isError) {
+                            return (
+                              <div key={msg.id} className="flex justify-center my-2">
+                                <div className="max-w-[90%] bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 shadow-2xs flex items-start gap-2.5">
+                                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-semibold text-rose-900">Notifikasi Sistem Meta WABA</p>
+                                    <p className="text-xs whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                                    <span className="text-[9px] text-rose-500 block">{msgTime}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={msg.id}
+                              className={`flex ${isIncoming ? "justify-start" : "justify-end"}`}
+                            >
+                              <div className={`max-w-[75%] rounded-2xl p-3 shadow-xs ${
+                                isIncoming 
+                                  ? "bg-white border text-slate-800 rounded-tl-none" 
+                                  : "bg-amber-500 text-white rounded-tr-none"
+                              }`}>
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                                <div className={`flex items-center gap-1.5 justify-end mt-1 ${isIncoming ? "text-slate-400" : "text-amber-100"}`}>
+                                  <span className="text-[9px]">{msgTime}</span>
+                                  {!isIncoming && (
+                                    <span className="text-[9px] font-bold uppercase">
+                                      {msg.replied_by || "system"}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div ref={chatEndRef} />
+                      </CardContent>
+
+                      <div className="p-3 border-t shrink-0 flex gap-2 bg-white">
+                        <Input
+                          placeholder={`Tulis balasan manual ke ${displayPhone}...`}
+                          value={manualReplyText}
+                          onChange={(e) => setManualReplyText(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSendManualReply()}
+                          disabled={sendingReply}
+                          className="flex-1 rounded-xl"
+                        />
+                        <Button 
+                          onClick={handleSendManualReply} 
+                          disabled={sendingReply || !manualReplyText.trim()}
+                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl"
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
                       </div>
-                    );
-                  })}
-                  <div ref={chatEndRef} />
-                </CardContent>
-                <div className="p-3 border-t shrink-0 flex gap-2 bg-white">
-                  <Input
-                    placeholder="Tulis balasan manual di sini..."
-                    value={manualReplyText}
-                    onChange={(e) => setManualReplyText(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendManualReply()}
-                    disabled={sendingReply}
-                    className="flex-1 rounded-xl"
-                  />
-                  <Button 
-                    onClick={handleSendManualReply} 
-                    disabled={sendingReply || !manualReplyText.trim()}
-                    className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8 text-center bg-slate-50/10">
                 <Bot className="h-12 w-12 mb-3 text-slate-300 animate-pulse" />
                 <h3 className="font-semibold text-lg">Pilih Kontak</h3>
                 <p className="text-sm max-w-sm mt-1">
-                  Pilih salah satu nomor obrolan di sebelah kiri untuk melihat pesan masuk, transkripsi suara, analisis bukti transfer, dan melakukan takeover chat secara manual.
+                  Pilih salah satu nomor obrolan di sebelah kiri untuk melihat pesan masuk, status pengiriman WABA/WAHA, dan melakukan takeover chat secara manual.
                 </p>
               </div>
             )}

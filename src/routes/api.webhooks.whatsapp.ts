@@ -66,10 +66,24 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                       const errDetails = (st.errors || []).map((e: any) => `[Error ${e.code}]: ${e.title || ''} - ${e.message || ''} (${e.error_data?.details || ''})`).join('; ') || `Status: ${st.status}`;
                       console.error(`[Meta Webhook] Message DELIVERY FAILED: ${errDetails}`);
                       try {
+                        let recipientName = `+${st.recipient_id}`;
+                        const nameRes = await pool.query(
+                          "SELECT customer_name FROM public.whatsapp_chat_logs WHERE customer_phone = $1 AND customer_name IS NOT NULL AND customer_name != 'Meta Status' ORDER BY created_at DESC LIMIT 1",
+                          [st.recipient_id]
+                        );
+                        if (nameRes.rows[0]?.customer_name) {
+                          recipientName = nameRes.rows[0].customer_name;
+                        } else {
+                          const custRes = await pool.query("SELECT name FROM public.customers WHERE phone = $1 OR phone = $2 LIMIT 1", [st.recipient_id, '+' + st.recipient_id]);
+                          if (custRes.rows[0]?.name) {
+                            recipientName = custRes.rows[0].name;
+                          }
+                        }
+
                         await pool.query(`
                           INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
-                          VALUES ($1, $2, $3, 'Meta Status', $4, 'outgoing', 'meta_error', 'waba', now())
-                        `, [userId, `${st.recipient_id}@c.us`, st.recipient_id, `❌ Gagal Terkirim via Meta WABA: ${errDetails}`]);
+                          VALUES ($1, $2, $3, $4, $5, 'outgoing', 'meta_error', 'waba', now())
+                        `, [userId, `${st.recipient_id}@c.us`, st.recipient_id, recipientName, `❌ Gagal Terkirim via Meta WABA: ${errDetails}`]);
                       } catch (dbErr) {
                         console.error('[Meta Webhook] Failed to write status error log:', dbErr);
                       }

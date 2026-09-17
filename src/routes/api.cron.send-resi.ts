@@ -94,6 +94,18 @@ export const Route = createFileRoute('/api/cron/send-resi')({
             if (sendResult.success) {
               await pool.query('UPDATE orders SET resi_shared_via_wa = true, wa_share_error = null WHERE id = $1', [order.id]);
               results.push({ id: order.id, customer: order.customer_name, status: 'SUCCESS', channel: resiChannel });
+              try {
+                const cleanPhone = String(order.customer_phone || '').replace(/[^0-9]/g, '');
+                if (cleanPhone) {
+                  await pool.query(
+                    `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
+                     VALUES ($1, $2, $3, $4, 'outgoing', 'cron_resi', $5, now())`,
+                    [`${cleanPhone}@c.us`, cleanPhone, order.customer_name || 'Pelanggan', formattedMessage, resiChannel]
+                  );
+                }
+              } catch (logErr) {
+                console.warn('[Cron Resi] Failed to log to whatsapp_chat_logs:', logErr);
+              }
             } else {
               await pool.query('UPDATE orders SET wa_share_error = $1 WHERE id = $2', [sendResult.error || 'Gagal mengirim dari gateway WhatsApp', order.id]);
               results.push({ id: order.id, customer: order.customer_name, status: 'FAILED', error: sendResult.error });
