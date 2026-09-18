@@ -16,12 +16,19 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription
+} from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
-  ChevronDown, ShoppingCart
+  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -314,6 +321,16 @@ function WhatsAppAiPage() {
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Quick Reply States
+  const [showQuickReplyMenu, setShowQuickReplyMenu] = useState(false);
+  const [isQuickReplySheetOpen, setIsQuickReplySheetOpen] = useState(false);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [formShortcut, setFormShortcut] = useState("");
+  const [formTitle, setFormTitle] = useState("");
+  const [formMessage, setFormMessage] = useState("");
+  const [isSavingReply, setIsSavingReply] = useState(false);
+  const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
+
   // Sync settings to state
   useEffect(() => {
     if (rawSettings) {
@@ -438,6 +455,170 @@ function WhatsAppAiPage() {
       setUpdatingTagPhone(null);
     }
   };
+
+  // 5. Fetch Quick Replies (Balas Cepat)
+  const { data: quickReplies = [], refetch: refetchQuickReplies } = useQuery<{
+    id: string;
+    shortcut: string;
+    title: string;
+    message: string;
+    created_at: string;
+    updated_at: string;
+  }[]>({
+    queryKey: ["whatsapp-quick-replies"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_quick_replies" as any)
+        .select("*")
+        .order("shortcut", { ascending: true });
+      if (error) {
+        console.error("Gagal mengambil balas cepat:", error);
+        return [];
+      }
+      return (data || []) as any[];
+    },
+    refetchInterval: 10000,
+  });
+
+  // Realtime Supabase Subscription for quick replies
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-whatsapp-quick-replies")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "whatsapp_quick_replies" },
+        () => {
+          refetchQuickReplies();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchQuickReplies]);
+
+  // Handle Save / Update Quick Reply
+  const handleSaveQuickReply = async () => {
+    const shortcut = formShortcut.trim().replace(/^\//, "").toLowerCase();
+    const title = formTitle.trim();
+    const message = formMessage.trim();
+
+    if (!shortcut) {
+      toast.error("Pintasan / Shortcut wajib diisi (contoh: rekening).");
+      return;
+    }
+    if (!title) {
+      toast.error("Judul singkat wajib diisi.");
+      return;
+    }
+    if (!message) {
+      toast.error("Isi pesan balas cepat wajib diisi.");
+      return;
+    }
+
+    setIsSavingReply(true);
+    try {
+      if (editingReplyId) {
+        const { error } = await supabase
+          .from("whatsapp_quick_replies" as any)
+          .update({
+            shortcut,
+            title,
+            message,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", editingReplyId);
+        if (error) throw error;
+        toast.success(`Balas cepat /${shortcut} berhasil diperbarui!`);
+      } else {
+        const { error } = await supabase
+          .from("whatsapp_quick_replies" as any)
+          .insert({
+            shortcut,
+            title,
+            message,
+          });
+        if (error) throw error;
+        toast.success(`Balas cepat /${shortcut} berhasil ditambahkan!`);
+      }
+
+      // Reset form
+      setEditingReplyId(null);
+      setFormShortcut("");
+      setFormTitle("");
+      setFormMessage("");
+      refetchQuickReplies();
+    } catch (err: any) {
+      toast.error("Gagal menyimpan balas cepat: " + (err.message || "Error"));
+    } finally {
+      setIsSavingReply(false);
+    }
+  };
+
+  // Handle Delete Quick Reply
+  const handleDeleteQuickReply = async (id: string, shortcut: string) => {
+    setDeletingReplyId(id);
+    try {
+      const { error } = await supabase
+        .from("whatsapp_quick_replies" as any)
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      toast.success(`Balas cepat /${shortcut} berhasil dihapus.`);
+      if (editingReplyId === id) {
+        setEditingReplyId(null);
+        setFormShortcut("");
+        setFormTitle("");
+        setFormMessage("");
+      }
+      refetchQuickReplies();
+    } catch (err: any) {
+      toast.error("Gagal menghapus balas cepat: " + (err.message || "Error"));
+    } finally {
+      setDeletingReplyId(null);
+    }
+  };
+
+  // Populate form for editing
+  const handleStartEditQuickReply = (qr: { id: string; shortcut: string; title: string; message: string }) => {
+    setEditingReplyId(qr.id);
+    setFormShortcut(qr.shortcut);
+    setFormTitle(qr.title);
+    setFormMessage(qr.message);
+  };
+
+  // Reset edit form
+  const handleCancelEdit = () => {
+    setEditingReplyId(null);
+    setFormShortcut("");
+    setFormTitle("");
+    setFormMessage("");
+  };
+
+  // Select Quick Reply into manual reply input
+  const handleSelectQuickReply = (qr: { shortcut: string; title: string; message: string }, customerName?: string) => {
+    let msg = qr.message;
+    const nameToUse = (customerName && customerName !== "Pelanggan" && customerName !== "Meta Status") ? customerName : "Kak";
+    msg = msg.replace(/\{nama\}/gi, nameToUse);
+    setManualReplyText(msg);
+    setShowQuickReplyMenu(false);
+  };
+
+  // Quick reply search query derived from manualReplyText
+  const isTriggeredBySlash = manualReplyText.startsWith("/") && !manualReplyText.includes("\n");
+  const quickReplySearch = isTriggeredBySlash ? manualReplyText.slice(1).trim().toLowerCase() : "";
+  const isQuickReplyMenuOpen = showQuickReplyMenu || isTriggeredBySlash;
+
+  // Filtered quick replies based on search query
+  const matchingQuickReplies = useMemo(() => {
+    if (!quickReplySearch) return quickReplies;
+    return quickReplies.filter(qr => 
+      qr.shortcut.toLowerCase().includes(quickReplySearch) ||
+      qr.title.toLowerCase().includes(quickReplySearch) ||
+      qr.message.toLowerCase().includes(quickReplySearch)
+    );
+  }, [quickReplies, quickReplySearch]);
 
   // Helper to format clean Indonesian phone numbers nicely (+62 819-0194-2233)
   const formatDisplayPhone = (phone?: string) => {
@@ -1137,19 +1318,130 @@ function WhatsAppAiPage() {
                         <div ref={chatEndRef} />
                       </CardContent>
 
-                      <div className="p-3 border-t shrink-0 flex gap-2 bg-white">
+                      <div className="p-3 border-t shrink-0 flex gap-2 bg-white relative">
+                        {/* Floating Quick Reply Menu */}
+                        {isQuickReplyMenuOpen && (
+                          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-40 animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-72 flex flex-col">
+                            {/* Floating Menu Header */}
+                            <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200 shrink-0">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                <span>Balas Cepat (/)</span>
+                                {quickReplySearch && (
+                                  <span className="text-[11px] font-normal text-slate-500">
+                                    Cari: <code className="bg-amber-100 text-amber-800 px-1 rounded font-mono">/{quickReplySearch}</code>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowQuickReplyMenu(false);
+                                    setIsQuickReplySheetOpen(true);
+                                  }}
+                                  className="h-6 px-2 rounded flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-amber-800 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-all cursor-pointer"
+                                  title="Kelola & Tambah Balas Cepat"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-amber-600" />
+                                  <span>Kelola</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowQuickReplyMenu(false)}
+                                  className="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 transition-all cursor-pointer text-sm font-bold"
+                                  title="Tutup"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Quick Reply Items List */}
+                            <div className="overflow-y-auto max-h-56 divide-y divide-slate-100 p-1">
+                              {matchingQuickReplies.length === 0 ? (
+                                <div className="p-4 text-center text-xs text-slate-500 space-y-2">
+                                  <p className="font-medium">
+                                    {quickReplies.length === 0 
+                                      ? "Belum ada template balas cepat." 
+                                      : `Tidak ditemukan balas cepat dengan kata kunci "/${quickReplySearch}"`}
+                                  </p>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    type="button"
+                                    onClick={() => {
+                                      setShowQuickReplyMenu(false);
+                                      setIsQuickReplySheetOpen(true);
+                                      if (quickReplySearch) {
+                                        setFormShortcut(quickReplySearch);
+                                      }
+                                    }}
+                                    className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-50 cursor-pointer"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>Tambah Balas Cepat {quickReplySearch ? `/${quickReplySearch}` : ""}</span>
+                                  </Button>
+                                </div>
+                              ) : (
+                                matchingQuickReplies.map((qr) => (
+                                  <button
+                                    key={qr.id}
+                                    type="button"
+                                    onClick={() => handleSelectQuickReply(qr, displayName)}
+                                    className="w-full text-left p-2.5 rounded-lg hover:bg-amber-50/80 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                                  >
+                                    <Badge variant="outline" className="bg-amber-100/70 text-amber-800 border-amber-300 font-mono text-[11px] font-bold shrink-0 mt-0.5 group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                                      /{qr.shortcut}
+                                    </Badge>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold text-slate-800 truncate group-hover:text-amber-900">{qr.title}</p>
+                                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 whitespace-pre-wrap">{qr.message}</p>
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Zap Toggle Button */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setShowQuickReplyMenu(prev => !prev)}
+                          className={`h-9 w-9 shrink-0 rounded-xl transition-all cursor-pointer ${
+                            isQuickReplyMenuOpen ? "bg-amber-100 text-amber-700 font-bold" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                          }`}
+                          title="Buka Balas Cepat (atau ketik /)"
+                        >
+                          <Zap className="h-4 w-4" />
+                        </Button>
+
                         <Input
-                          placeholder={`Tulis balasan manual ke ${displayPhone}...`}
+                          placeholder={`Tulis balasan manual (ketik / untuk balas cepat)...`}
                           value={manualReplyText}
                           onChange={(e) => setManualReplyText(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleSendManualReply()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              if (isQuickReplyMenuOpen && matchingQuickReplies.length > 0 && isTriggeredBySlash) {
+                                handleSelectQuickReply(matchingQuickReplies[0], displayName);
+                                e.preventDefault();
+                              } else {
+                                handleSendManualReply();
+                              }
+                            } else if (e.key === "Escape") {
+                              setShowQuickReplyMenu(false);
+                            }
+                          }}
                           disabled={sendingReply}
                           className="flex-1 rounded-xl"
                         />
                         <Button 
                           onClick={handleSendManualReply} 
                           disabled={sendingReply || !manualReplyText.trim()}
-                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl"
+                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer"
                         >
                           <Send className="h-4 w-4" />
                         </Button>
@@ -1500,6 +1792,162 @@ function WhatsAppAiPage() {
         </Card>
       )}
 
+      {/* Slide-over Sheet Kelola Balas Cepat (Pop-up dari Samping Kanan) */}
+      <Sheet open={isQuickReplySheetOpen} onOpenChange={setIsQuickReplySheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto flex flex-col p-6 z-50">
+          <SheetHeader className="space-y-1 pb-3 border-b">
+            <SheetTitle className="text-lg flex items-center gap-2">
+              <Zap className="h-5 w-5 text-amber-500 fill-amber-500" />
+              <span>Kelola Balas Cepat</span>
+            </SheetTitle>
+            <SheetDescription className="text-xs">
+              Buat pintasan cepat (shortcut) untuk mempercepat CS dalam membalas chat konsumen.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-6 pt-4 flex-1">
+            {/* Form Tambah / Edit */}
+            <Card className="border-amber-200 bg-amber-50/30 shadow-xs">
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="font-bold text-slate-800">{editingReplyId ? "Edit Balas Cepat" : "Tambah Balas Cepat Baru"}</span>
+                  {editingReplyId && (
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={handleCancelEdit}
+                      className="h-6 text-xs text-slate-500 hover:text-slate-800"
+                    >
+                      Batal
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 pt-0 space-y-3">
+                <div>
+                  <Label className="text-xs font-medium text-slate-700">Pintasan / Shortcut</Label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-2.5 top-2 text-xs font-mono font-bold text-slate-400">/</span>
+                    <Input
+                      placeholder="rekening, ongkir, salam..."
+                      value={formShortcut}
+                      onChange={(e) => setFormShortcut(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                      className="h-8 pl-6 text-xs bg-white rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-medium text-slate-700">Judul Singkat</Label>
+                  <Input
+                    placeholder="cth: Rekening BCA Resmi Araa Honey"
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                    className="h-8 text-xs bg-white rounded-lg mt-1"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-slate-700">Isi Pesan Balasan</Label>
+                    <span className="text-[10px] text-muted-foreground font-mono">Gunakan {'{nama}'}</span>
+                  </div>
+                  <Textarea
+                    placeholder="Halo Kak {nama}, terima kasih sudah menghubungi Araa Honey..."
+                    value={formMessage}
+                    onChange={(e) => setFormMessage(e.target.value)}
+                    className="text-xs bg-white rounded-lg min-h-[90px] mt-1 font-sans"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    💡 <b>Tips:</b> Gunakan <code className="bg-slate-200 px-1 py-0.5 rounded font-mono">{'{nama}'}</code> untuk otomatis menyapa nama pelanggan aktif.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  {editingReplyId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelEdit}
+                      className="h-8 text-xs cursor-pointer"
+                    >
+                      Batal
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingReply}
+                    onClick={handleSaveQuickReply}
+                    className="h-8 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    <span>{isSavingReply ? "Menyimpan..." : editingReplyId ? "Perbarui" : "Simpan Balas Cepat"}</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* List of Existing Quick Replies */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Daftar Template ({quickReplies.length})
+                </h4>
+              </div>
+
+              {quickReplies.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400 border border-dashed rounded-xl">
+                  Belum ada balas cepat yang dibuat. Silakan tambahkan template pertama Anda pada formulir di atas.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {quickReplies.map((qr) => (
+                    <div
+                      key={qr.id}
+                      className={`p-3 rounded-xl border bg-white shadow-2xs space-y-1.5 transition-all ${
+                        editingReplyId === qr.id ? "ring-2 ring-amber-500 border-amber-300 bg-amber-50/20" : "border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-300 font-mono text-[11px] font-bold">
+                            /{qr.shortcut}
+                          </Badge>
+                          <span className="text-xs font-semibold text-slate-900 truncate max-w-[160px]">{qr.title}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditQuickReply(qr)}
+                            className="h-7 w-7 rounded-md flex items-center justify-center text-slate-500 hover:text-amber-700 hover:bg-amber-50 transition-colors cursor-pointer"
+                            title="Edit Template"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingReplyId === qr.id}
+                            onClick={() => handleDeleteQuickReply(qr.id, qr.shortcut)}
+                            className="h-7 w-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Hapus Template"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 whitespace-pre-wrap line-clamp-3 bg-slate-50 p-2 rounded-md font-sans">
+                        {qr.message}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
     </div>
   );
