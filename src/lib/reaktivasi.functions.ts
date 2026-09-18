@@ -358,9 +358,42 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
         try {
           const custName = data.customerName || "Pelanggan";
           const orderDate = data.namedParameters?.tanggal_order || "Tahun 2025";
-          const logMessage = data.templateName
-            ? `[Template Resmi Meta: ${data.templateName}]\n\nHalo Bapak/Ibu ${custName}, salam hangat dari Araa Honey 🍯✨\n\nMengingat pesanan terakhir Bapak/Ibu pada tanggal ${orderDate}, sudah cukup lama belum stok Madu Araa-nya lagi nih 😊\n\n_Kebetulan kami baru saja selesai panen dan minggu ini ada promo khusus pelanggan setia:_\n\n🚚 *Subsidi ongkir*\n🎁 *1 Kg Madu Araa + BONUS 100 gr*\n\nKalau stok madu di rumah sudah habis, tinggal klik “*Order Lagi*” di bawah ya Kak. Kami bantu proses pengirimannya 😊\n\nAraa Honey • Solusi Madu yang Terjamin Murni\n[Tombol Respon: ORDER LAGI]`
-            : data.message;
+          
+          let logMessage = data.message;
+          if (data.templateName) {
+            try {
+              const tplRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_cached_templates'");
+              if (tplRes.rowCount && tplRes.rows[0].value) {
+                const tpls = tplRes.rows[0].value;
+                const matched = tpls.find((t: any) => t.name === data.templateName);
+                if (matched) {
+                  const bodyComp = matched.components?.find((c: any) => c.type === "BODY");
+                  const footerComp = matched.components?.find((c: any) => c.type === "FOOTER");
+                  const btnComp = matched.components?.find((c: any) => c.type === "BUTTONS");
+
+                  let bodyText = bodyComp?.text || "";
+                  bodyText = bodyText
+                    .replace(/{{nama}}|{{1}}/g, custName)
+                    .replace(/{{tanggal_order}}|{{2}}/g, orderDate);
+
+                  let fullMsg = `[Template Resmi Meta: ${data.templateName}]\n\n${bodyText}`;
+                  if (footerComp?.text) {
+                    fullMsg += `\n\n${footerComp.text}`;
+                  }
+                  if (btnComp?.buttons && btnComp.buttons.length > 0) {
+                    const btnLabels = btnComp.buttons.map((b: any) => b.text).join(" | ");
+                    fullMsg += `\n[Tombol Respon: ${btnLabels}]`;
+                  }
+                  logMessage = fullMsg;
+                }
+              }
+            } catch (e) {}
+
+            if (!logMessage || logMessage === data.message) {
+              logMessage = `[Template Resmi Meta: ${data.templateName}]\n\nHalo Bapak/Ibu ${custName}, salam hangat dari Araa Honey 🍯✨\n\nMengingat pesanan terakhir Bapak/Ibu pada tanggal ${orderDate}, sudah cukup lama belum stok Madu Araa-nya lagi nih 😊\n\n_Kebetulan kami baru saja selesai panen dan minggu ini ada promo khusus pelanggan setia:_\n\n🚚 *Subsidi ongkir*\n🎁 *1 Kg Madu Araa + BONUS 100 gr*\n\nKalau stok madu di rumah sudah habis, tinggal klik “*Order Lagi*” di bawah ya Kak. Kami bantu proses pengirimannya 😊\n\nAraa Honey • Solusi Madu yang Terjamin Murni\n[Tombol Respon: ORDER LAGI]`;
+            }
+          }
+
           await pool.query(
             `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, replied_by, created_at)
              VALUES ($1, $2, $3, $4, 'outgoing', 'waba', $5, now())`,
