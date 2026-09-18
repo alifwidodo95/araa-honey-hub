@@ -23,12 +23,17 @@ import {
   SheetTitle,
   SheetDescription
 } from "@/components/ui/sheet";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from "@/components/ui/popover";
 import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
-  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check
+  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, Smile
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -63,6 +68,93 @@ interface ChatLog {
   is_read?: boolean | null;
   created_at: string;
 }
+
+interface EmojiItem {
+  emoji: string;
+  name: string;
+  keywords: string[];
+}
+
+const EMOJI_LIST: { category: string; label: string; items: EmojiItem[] }[] = [
+  {
+    category: "salam",
+    label: "🙏 CS",
+    items: [
+      { emoji: "🙏", name: "terima kasih", keywords: ["makasih", "thanks", "tq", "doa", "maaf", "salam"] },
+      { emoji: "😊", name: "senyum", keywords: ["smile", "ramah", "senang", "happy"] },
+      { emoji: "👍", name: "jempol", keywords: ["ok", "siap", "mantap", "bagus", "baik", "setuju"] },
+      { emoji: "😇", name: "senyum malaikat", keywords: ["baik", "tulus", "ikhlas"] },
+      { emoji: "🤝", name: "jabat tangan", keywords: ["deal", "kerjasama", "sepakat"] },
+      { emoji: "🤗", name: "peluk ramah", keywords: ["hangat", "ramah", "welcome"] },
+      { emoji: "❤️", name: "hati merah", keywords: ["love", "cinta", "suka"] },
+      { emoji: "👏", name: "tepuk tangan", keywords: ["selamat", "hebat", "mantul"] },
+      { emoji: "👌", name: "tangan oke", keywords: ["ok", "siap", "beres"] },
+      { emoji: "🥰", name: "penuh cinta", keywords: ["senang", "gemas", "suka"] },
+      { emoji: "😍", name: "mata hati", keywords: ["kagum", "suka", "love"] },
+      { emoji: "😁", name: "senyum lebar", keywords: ["gembira", "tertawa"] },
+      { emoji: "🙌", name: "angkat tangan", keywords: ["hore", "syukur", "alhamdulillah"] },
+      { emoji: "👋", name: "lambaian tangan", keywords: ["halo", "hai", "selamat tinggal"] },
+      { emoji: "🎉", name: "pesta terompet", keywords: ["selamat", "promo", "kejutan"] },
+      { emoji: "✨", name: "kilau bintang", keywords: ["spesial", "berkilau", "baru"] },
+    ]
+  },
+  {
+    category: "toko",
+    label: "🛒 Toko",
+    items: [
+      { emoji: "🛒", name: "keranjang belanja", keywords: ["troli", "order", "beli", "checkout"] },
+      { emoji: "📦", name: "paket kardus", keywords: ["box", "packing", "pesanan", "barang"] },
+      { emoji: "🚚", name: "truk kirim", keywords: ["kurir", "ekspedisi", "ongkir", "jalan", "antar"] },
+      { emoji: "🛵", name: "motor kurir", keywords: ["ojol", "instan", "sameday"] },
+      { emoji: "💰", name: "kantong uang", keywords: ["duit", "bayar", "transfer", "lunas", "harga"] },
+      { emoji: "💳", name: "kartu atm", keywords: ["bank", "rekening", "transfer", "qris"] },
+      { emoji: "🏷️", name: "label diskon", keywords: ["promo", "potongan", "voucher"] },
+      { emoji: "🎁", name: "hadiah kado", keywords: ["free", "gratis", "bonus"] },
+      { emoji: "🧾", name: "struk kwitansi", keywords: ["nota", "invoice", "resi"] },
+      { emoji: "🛍️", name: "tas belanja", keywords: ["shopping", "toko"] },
+      { emoji: "⏰", name: "jam weker", keywords: ["waktu", "segera", "deadline"] },
+      { emoji: "📍", name: "pin lokasi", keywords: ["alamat", "lokasi", "tujuan"] },
+      { emoji: "📱", name: "handphone", keywords: ["wa", "hp", "chat", "kontak"] },
+      { emoji: "📞", name: "gagang telepon", keywords: ["hubungi", "telepon", "call"] },
+    ]
+  },
+  {
+    category: "madu",
+    label: "🍯 Madu",
+    items: [
+      { emoji: "🍯", name: "pot madu", keywords: ["madu", "honey", "araa", "manis", "murni"] },
+      { emoji: "🐝", name: "lebah madu", keywords: ["bee", "tawon", "ternak"] },
+      { emoji: "🌸", name: "bunga sakura", keywords: ["nektar", "bunga", "cantik"] },
+      { emoji: "🌿", name: "daun herbal", keywords: ["herbal", "alami", "sehat"] },
+      { emoji: "🍃", name: "daun hijau", keywords: ["organik", "fresh", "segar"] },
+      { emoji: "🍶", name: "botol madu", keywords: ["kemasan", "jerigen", "botol"] },
+      { emoji: "🥄", name: "sendok", keywords: ["minum", "dosis", "aturan"] },
+      { emoji: "💛", name: "hati kuning", keywords: ["kuning", "madu", "emas"] },
+      { emoji: "🍋", name: "lemon", keywords: ["jeruk", "campuran", "wedang"] },
+      { emoji: "💧", name: "tetes air", keywords: ["tetes", "kental", "cair"] },
+      { emoji: "🌱", name: "tunas benih", keywords: ["tumbuh", "alam"] },
+      { emoji: "☀️", name: "matahari cerah", keywords: ["pagi", "sehat", "daya tahan"] },
+    ]
+  },
+  {
+    category: "simbol",
+    label: "✅ Simbol",
+    items: [
+      { emoji: "✅", name: "centang hijau", keywords: ["sukses", "benar", "lunas", "ready", "ada"] },
+      { emoji: "❌", name: "silang merah", keywords: ["batal", "habis", "kosong", "salah"] },
+      { emoji: "⚠️", name: "peringatan", keywords: ["penting", "perhatian", "awas"] },
+      { emoji: "ℹ️", name: "informasi", keywords: ["info", "keterangan", "catatan"] },
+      { emoji: "📌", name: "pin tusuk", keywords: ["catatan", "simpan", "ingat"] },
+      { emoji: "⭐", name: "bintang", keywords: ["review", "testimoni", "favorit", "rating"] },
+      { emoji: "💯", name: "seratus persen", keywords: ["asli", "murni", "dijamin", "pasti"] },
+      { emoji: "🔥", name: "api membara", keywords: ["laris", "hot", "terbaru"] },
+      { emoji: "💬", name: "balon obrolan", keywords: ["pesan", "tanya", "jawab"] },
+      { emoji: "💡", name: "lampu ide", keywords: ["tips", "saran", "rekomendasi"] },
+      { emoji: "🎯", name: "sasaran target", keywords: ["fokus", "tepat"] },
+      { emoji: "➡️", name: "panah kanan", keywords: ["lanjut", "berikut"] },
+    ]
+  }
+];
 
 function WhatsAppAiPage() {
   const qc = useQueryClient();
@@ -386,6 +478,42 @@ function WhatsAppAiPage() {
   const [formMessage, setFormMessage] = useState("");
   const [isSavingReply, setIsSavingReply] = useState(false);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
+
+  // Emoji Picker States
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [activeEmojiTab, setActiveEmojiTab] = useState("salam");
+  const [emojiFilterText, setEmojiFilterText] = useState("");
+  const manualInputRef = useRef<HTMLInputElement>(null);
+
+  const handleInsertEmoji = (emoji: string) => {
+    const input = manualInputRef.current;
+    if (input) {
+      const start = input.selectionStart ?? manualReplyText.length;
+      const end = input.selectionEnd ?? manualReplyText.length;
+      const nextText = manualReplyText.substring(0, start) + emoji + manualReplyText.substring(end);
+      setManualReplyText(nextText);
+      setTimeout(() => {
+        input.focus();
+        const nextPos = start + emoji.length;
+        input.setSelectionRange(nextPos, nextPos);
+      }, 10);
+    } else {
+      setManualReplyText(prev => prev + emoji);
+    }
+  };
+
+  const filteredEmojiItems = useMemo(() => {
+    const q = emojiFilterText.trim().toLowerCase();
+    if (!q) {
+      const activeCat = EMOJI_LIST.find(c => c.category === activeEmojiTab);
+      return activeCat?.items || [];
+    }
+    const allItems = EMOJI_LIST.flatMap(c => c.items);
+    return allItems.filter(item => 
+      item.name.toLowerCase().includes(q) || 
+      item.keywords.some(k => k.toLowerCase().includes(q))
+    );
+  }, [emojiFilterText, activeEmojiTab]);
 
   // Sync settings to state
   useEffect(() => {
@@ -1488,7 +1616,110 @@ function WhatsAppAiPage() {
                           <Zap className="h-4 w-4" />
                         </Button>
 
+                        {/* Emoji Picker Popover */}
+                        <Popover open={isEmojiPickerOpen} onOpenChange={setIsEmojiPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={`h-9 w-9 shrink-0 rounded-xl transition-all cursor-pointer ${
+                                isEmojiPickerOpen ? "bg-amber-100 text-amber-700 font-bold" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                              }`}
+                              title="Pilih Emoji (😊)"
+                            >
+                              <Smile className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            side="top"
+                            align="start"
+                            sideOffset={8}
+                            className="w-80 p-2.5 rounded-2xl shadow-xl border border-slate-200 bg-white z-50 animate-in fade-in zoom-in-95 duration-150"
+                          >
+                            <div className="space-y-2">
+                              {/* Header & Category Pills */}
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 px-0.5">
+                                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                  <span>😊</span>
+                                  <span>Pilih Emoji</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsEmojiPickerOpen(false)}
+                                  className="h-5 w-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs font-bold cursor-pointer"
+                                  title="Tutup"
+                                >
+                                  ×
+                                </button>
+                              </div>
+
+                              {/* Search bar inside emoji picker */}
+                              <div className="relative">
+                                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                                <Input
+                                  placeholder="Cari emoji (cth: madu, makasih, jempol)..."
+                                  value={emojiFilterText}
+                                  onChange={(e) => setEmojiFilterText(e.target.value)}
+                                  className="h-7 pl-8 pr-6 text-xs bg-slate-50 rounded-lg border-slate-200"
+                                />
+                                {emojiFilterText && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEmojiFilterText("")}
+                                    className="absolute right-2 top-1.5 h-4 w-4 rounded-full text-[10px] text-slate-400 hover:text-slate-700 flex items-center justify-center bg-slate-200 cursor-pointer"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Category Tabs (tampil jika tidak sedang mencari) */}
+                              {!emojiFilterText && (
+                                <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-100 rounded-lg text-[10px]">
+                                  {EMOJI_LIST.map(cat => (
+                                    <button
+                                      key={cat.category}
+                                      type="button"
+                                      onClick={() => setActiveEmojiTab(cat.category)}
+                                      className={`py-1 px-1 rounded font-medium truncate text-center transition-all cursor-pointer ${
+                                        activeEmojiTab === cat.category
+                                          ? "bg-white text-amber-700 shadow-2xs font-bold"
+                                          : "text-slate-600 hover:text-slate-900"
+                                      }`}
+                                    >
+                                      {cat.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Emoji Grid */}
+                              <div className="max-h-48 overflow-y-auto p-1 grid grid-cols-6 gap-1">
+                                {filteredEmojiItems.length === 0 ? (
+                                  <div className="col-span-6 py-6 text-center text-xs text-slate-400">
+                                    Emoji tidak ditemukan
+                                  </div>
+                                ) : (
+                                  filteredEmojiItems.map((item, idx) => (
+                                    <button
+                                      key={`${item.emoji}-${idx}`}
+                                      type="button"
+                                      onClick={() => handleInsertEmoji(item.emoji)}
+                                      className="h-9 w-9 rounded-lg flex items-center justify-center text-xl hover:bg-amber-100/70 hover:scale-125 transition-transform active:scale-95 cursor-pointer select-none"
+                                      title={`${item.name} (${item.emoji})`}
+                                    >
+                                      {item.emoji}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+
                         <Input
+                          ref={manualInputRef}
                           placeholder={`Tulis balasan manual (ketik / untuk balas cepat)...`}
                           value={manualReplyText}
                           onChange={(e) => setManualReplyText(e.target.value)}
