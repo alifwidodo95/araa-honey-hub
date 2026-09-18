@@ -10,11 +10,18 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
-  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles
+  Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
+  ChevronDown, ShoppingCart
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -303,7 +310,8 @@ function WhatsAppAiPage() {
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
-  const [responseFilter, setResponseFilter] = useState<"all" | "replied" | "waiting">("all");
+  const [responseFilter, setResponseFilter] = useState<"all" | "replied" | "order" | "waiting">("all");
+  const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Sync settings to state
@@ -357,6 +365,79 @@ function WhatsAppAiPage() {
       supabase.removeChannel(channel);
     };
   }, [refetchLogs]);
+
+  // 4. Fetch Manual Chat Tags from whatsapp_chat_tags
+  const { data: chatTags = [], refetch: refetchTags } = useQuery<{ phone: string; tag: string; updated_at: string }[]>({
+    queryKey: ["whatsapp-chat-tags"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_chat_tags" as any)
+        .select("*");
+      if (error) {
+        console.error("Gagal mengambil tag chat:", error);
+        return [];
+      }
+      return (data || []) as { phone: string; tag: string; updated_at: string }[];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Realtime Supabase Subscription for chat tags
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-whatsapp-chat-tags")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "whatsapp_chat_tags" },
+        () => {
+          refetchTags();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchTags]);
+
+  // Fast lookup Map: phone digits -> tag
+  const chatTagsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    chatTags.forEach(t => {
+      const clean = (t.phone || "").replace(/[^0-9]/g, "");
+      if (clean) map.set(clean, t.tag);
+    });
+    return map;
+  }, [chatTags]);
+
+  // Toggle Order Tag Handler
+  const handleToggleOrderTag = async (phone: string, shouldTag: boolean) => {
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    if (!cleanPhone) return;
+
+    setUpdatingTagPhone(cleanPhone);
+    try {
+      if (shouldTag) {
+        const { error } = await supabase
+          .from("whatsapp_chat_tags" as any)
+          .upsert({ phone: cleanPhone, tag: "order", updated_at: new Date().toISOString() });
+        if (error) throw error;
+        toast.success("Kontak berhasil diberi label Order! 🛒");
+      } else {
+        const { error } = await supabase
+          .from("whatsapp_chat_tags" as any)
+          .delete()
+          .eq("phone", cleanPhone);
+        if (error) throw error;
+        toast.success("Label Order berhasil dilepas.");
+      }
+      refetchTags();
+    } catch (err: any) {
+      toast.error("Gagal memperbarui label: " + (err.message || "Error"));
+    } finally {
+      setUpdatingTagPhone(null);
+    }
+  };
 
   // Helper to format clean Indonesian phone numbers nicely (+62 819-0194-2233)
   const formatDisplayPhone = (phone?: string) => {
@@ -434,20 +515,24 @@ function WhatsAppAiPage() {
     return Array.from(chatsMap.values());
   }, [chatLogs]);
 
-  // Response status statistics for WABA (all, replied, waiting)
+  // Response status statistics for WABA (all, replied, order, waiting)
   const responseCounts = useMemo(() => {
     let replied = 0;
+    let order = 0;
     let waiting = 0;
     uniqueChats.forEach(c => {
+      const isTaggedOrder = chatTagsMap.get(c.customer_phone) === "order";
+      if (isTaggedOrder) order++;
       if (c.hasIncoming) replied++;
       else waiting++;
     });
     return {
       all: uniqueChats.length,
       replied,
+      order,
       waiting
     };
-  }, [uniqueChats]);
+  }, [uniqueChats, chatTagsMap]);
 
   // Filtered by responseFilter and chatSearch query
   const filteredChats = useMemo(() => {
@@ -455,6 +540,8 @@ function WhatsAppAiPage() {
 
     if (responseFilter === "replied") {
       list = list.filter(c => c.hasIncoming);
+    } else if (responseFilter === "order") {
+      list = list.filter(c => chatTagsMap.get(c.customer_phone) === "order");
     } else if (responseFilter === "waiting") {
       list = list.filter(c => !c.hasIncoming);
     }
@@ -468,7 +555,7 @@ function WhatsAppAiPage() {
       const matchMsg = c.latestLog.message.toLowerCase().includes(q);
       return matchName || matchPhone || matchMsg;
     });
-  }, [uniqueChats, responseFilter, chatSearch]);
+  }, [uniqueChats, responseFilter, chatSearch, chatTagsMap]);
 
   // Active chat bubbles (WABA only)
   const selectedChatMessages = useMemo(() => {
@@ -712,12 +799,12 @@ function WhatsAppAiPage() {
                 </Button>
               </div>
 
-              {/* Response Status Filter Pills (Semua, Dibalas, Menunggu) */}
-              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
+              {/* Response Status Filter Pills (Semua, Dibalas, Order, Menunggu) */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
                 <button
                   type="button"
                   onClick={() => setResponseFilter("all")}
-                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "all"
                       ? "bg-white text-slate-900 shadow-xs font-bold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
@@ -729,7 +816,7 @@ function WhatsAppAiPage() {
                 <button
                   type="button"
                   onClick={() => setResponseFilter("replied")}
-                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "replied"
                       ? "bg-emerald-600 text-white shadow-xs font-bold"
                       : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
@@ -741,8 +828,20 @@ function WhatsAppAiPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setResponseFilter("order")}
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                    responseFilter === "order"
+                      ? "bg-amber-500 text-white shadow-xs font-bold"
+                      : "text-amber-800 hover:bg-amber-100/70 font-semibold"
+                  }`}
+                >
+                  <span>🛒 Order</span>
+                  <span className="text-[10px] opacity-90 font-bold">({responseCounts.order})</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setResponseFilter("waiting")}
-                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "waiting"
                       ? "bg-slate-700 text-white shadow-xs font-bold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
@@ -792,12 +891,13 @@ function WhatsAppAiPage() {
                     const isGoodName = chat.customer_name && chat.customer_name !== "Pelanggan" && chat.customer_name !== "Meta Status";
                     const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
                     const isLastIncoming = chat.latestLog.direction === "incoming";
+                    const isOrdered = chatTagsMap.get(chat.customer_phone) === "order";
 
                     return (
-                      <button
+                      <div
                         key={chat.chat_id}
                         onClick={() => setSelectedChatId(chat.chat_id)}
-                        className={`w-full p-3.5 text-left flex items-start justify-between gap-2.5 hover:bg-slate-50/80 transition-colors ${
+                        className={`w-full p-3.5 text-left flex items-start justify-between gap-2.5 hover:bg-slate-50/80 transition-colors cursor-pointer group ${
                           isSelected ? "bg-amber-50/80 border-r-4 border-r-amber-500 shadow-xs" : ""
                         }`}
                       >
@@ -806,7 +906,7 @@ function WhatsAppAiPage() {
                             {chat.hasIncoming && (
                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Konsumen Merespon!" />
                             )}
-                            <p className="font-semibold text-sm truncate text-slate-900">
+                            <p className="font-semibold text-sm truncate text-slate-900 group-hover:text-amber-700 transition-colors">
                               {isGoodName ? chat.customer_name : chat.formatted_phone || `+${chat.customer_phone}`}
                             </p>
                           </div>
@@ -817,36 +917,54 @@ function WhatsAppAiPage() {
                             {isLastIncoming ? `💬 ${chat.latestLog.message}` : chat.latestLog.message}
                           </p>
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
-                          <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
-                          <div className="flex items-center gap-1 flex-wrap justify-end">
-                            <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
-                              WABA
-                            </Badge>
 
-                            {/* Response / Outgoing Status Badge */}
-                            {isLastIncoming ? (
-                              chat.isOrderAgain ? (
-                                <Badge className="bg-amber-500 text-white text-[9px] px-1.5 py-0 font-bold animate-pulse shadow-2xs">
-                                  🎯 Order!
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 font-bold shadow-2xs">
-                                  🔥 Dibalas
-                                </Badge>
-                              )
-                            ) : chat.hasIncoming ? (
-                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-medium">
-                                💬 Aktif
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200 text-[9px] px-1.5 py-0">
-                                ⏳ Menunggu
-                              </Badge>
-                            )}
+                        <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
+                          {/* Top Row: Time & Minimalist Chevron Action */}
+                          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="h-6 w-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-200/90 hover:scale-110 active:scale-95 transition-all shadow-2xs hover:shadow-xs border border-transparent hover:border-slate-300 cursor-pointer"
+                                  title="Menu Label Chat"
+                                >
+                                  <ChevronDown className="h-3.5 w-3.5 stroke-[2.5]" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44 p-1 shadow-lg bg-white border border-slate-200 z-50">
+                                {isOrdered ? (
+                                  <DropdownMenuItem
+                                    onClick={() => handleToggleOrderTag(chat.customer_phone, false)}
+                                    className="text-xs text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer font-medium gap-2 py-2"
+                                  >
+                                    <XCircle className="h-4 w-4 text-rose-500" />
+                                    <span>Lepas Label Order</span>
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={() => handleToggleOrderTag(chat.customer_phone, true)}
+                                    className="text-xs text-amber-700 focus:text-amber-800 focus:bg-amber-50 cursor-pointer font-semibold gap-2 py-2"
+                                  >
+                                    <ShoppingCart className="h-4 w-4 text-amber-500" />
+                                    <span>Beri Label Order</span>
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
+
+                          {/* Bottom Row: Minimalist Order Badge (Only visible when tagged Order) */}
+                          {isOrdered && (
+                            <div className="flex items-center gap-1 justify-end">
+                              <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs flex items-center gap-1">
+                                <ShoppingCart className="h-2.5 w-2.5" />
+                                <span>Order</span>
+                              </Badge>
+                            </div>
+                          )}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -863,6 +981,7 @@ function WhatsAppAiPage() {
                   const isGoodName = activeChat?.customer_name && activeChat.customer_name !== "Pelanggan" && activeChat.customer_name !== "Meta Status";
                   const displayName = isGoodName ? activeChat.customer_name : "Pelanggan";
                   const displayPhone = activeChat?.formatted_phone || formatDisplayPhone(selectedChatId.replace(/[^0-9]/g, ""));
+                  const isCurrentOrdered = activeChat ? chatTagsMap.get(activeChat.customer_phone) === "order" : false;
 
                   return (
                     <>
@@ -874,12 +993,35 @@ function WhatsAppAiPage() {
                               {displayPhone}
                             </span>
                             <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
+                            {isCurrentOrdered && (
+                              <Badge className="bg-amber-500 text-white text-[10px] flex items-center gap-1">
+                                <ShoppingCart className="h-3 w-3" />
+                                <span>Order</span>
+                              </Badge>
+                            )}
                           </CardTitle>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             Jalur: Meta Cloud API (+62 856-4540-6949)
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* Order Toggle Button in Header */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={updatingTagPhone === activeChat?.customer_phone}
+                            onClick={() => activeChat && handleToggleOrderTag(activeChat.customer_phone, !isCurrentOrdered)}
+                            className={`h-7 px-2.5 text-[11px] gap-1.5 font-semibold shadow-2xs transition-all cursor-pointer ${
+                              isCurrentOrdered
+                                ? "bg-amber-50 hover:bg-rose-50 text-amber-800 hover:text-rose-700 border-amber-300 hover:border-rose-300"
+                                : "text-slate-600 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200"
+                            }`}
+                            title={isCurrentOrdered ? "Klik untuk melepas label order" : "Klik untuk menandai order"}
+                          >
+                            <ShoppingCart className={`h-3.5 w-3.5 ${isCurrentOrdered ? "text-amber-600" : "text-slate-400"}`} />
+                            <span>{isCurrentOrdered ? "🛒 Order (Lepas)" : "Tandai Order"}</span>
+                          </Button>
+
                           {activeChat?.latestLog?.direction === "incoming" && (
                             <Button
                               size="sm"
@@ -893,9 +1035,6 @@ function WhatsAppAiPage() {
                               <span>{markingHandled ? "Menandai..." : "Tandai Selesai"}</span>
                             </Button>
                           )}
-                          <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
-                            Aktif
-                          </Badge>
                         </div>
                       </CardHeader>
 
