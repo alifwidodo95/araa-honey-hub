@@ -165,7 +165,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_chat_logs")
-        .select("customer_phone, chat_id, direction, created_at")
+        .select("customer_phone, chat_id, direction, channel, created_at")
         .order("created_at", { ascending: false })
         .limit(300);
 
@@ -174,6 +174,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       const seen = new Set<string>();
       let unreplied = 0;
       for (const log of data) {
+        if (log.channel !== "waba") continue;
         const phone = (log.customer_phone || log.chat_id || "").replace(/[^0-9]/g, "");
         if (!phone || seen.has(phone)) continue;
         seen.add(phone);

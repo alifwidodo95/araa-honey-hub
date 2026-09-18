@@ -303,7 +303,6 @@ function WhatsAppAiPage() {
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
-  const [channelFilter, setChannelFilter] = useState<"all" | "waba" | "waha_main" | "waha_campaign">("all");
   const [responseFilter, setResponseFilter] = useState<"all" | "replied" | "waiting">("all");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -388,6 +387,9 @@ function WhatsAppAiPage() {
     }>();
 
     chatLogs.forEach(log => {
+      // Exclusively monitor WABA Meta Cloud API chats
+      if (log.channel !== "waba") return;
+
       const cleanPhone = (log.customer_phone || log.chat_id.replace(/[^0-9]/g, "")).trim();
       const existing = chatsMap.get(log.chat_id);
       const isInc = log.direction === "incoming";
@@ -432,57 +434,24 @@ function WhatsAppAiPage() {
     return Array.from(chatsMap.values());
   }, [chatLogs]);
 
-  // Channel statistics for filter pills
-  const channelCounts = useMemo(() => {
-    let waba = 0;
-    let waha_main = 0;
-    let waha_campaign = 0;
-    uniqueChats.forEach(c => {
-      const ch = c.latestLog.channel;
-      if (ch === "waba") waba++;
-      else if (ch === "waha_campaign") waha_campaign++;
-      else waha_main++;
-    });
-    return {
-      all: uniqueChats.length,
-      waba,
-      waha_main,
-      waha_campaign
-    };
-  }, [uniqueChats]);
-
-  // Response status statistics (replied vs waiting)
+  // Response status statistics for WABA (all, replied, waiting)
   const responseCounts = useMemo(() => {
     let replied = 0;
     let waiting = 0;
     uniqueChats.forEach(c => {
-      const ch = c.latestLog.channel;
-      const matchChannel =
-        channelFilter === "all" ||
-        (channelFilter === "waba" && ch === "waba") ||
-        (channelFilter === "waha_campaign" && ch === "waha_campaign") ||
-        (channelFilter === "waha_main" && ch !== "waba" && ch !== "waha_campaign");
-
-      if (matchChannel) {
-        if (c.hasIncoming) replied++;
-        else waiting++;
-      }
+      if (c.hasIncoming) replied++;
+      else waiting++;
     });
-    return { replied, waiting };
-  }, [uniqueChats, channelFilter]);
+    return {
+      all: uniqueChats.length,
+      replied,
+      waiting
+    };
+  }, [uniqueChats]);
 
-  // Filtered by channelFilter, responseFilter, and chatSearch query
+  // Filtered by responseFilter and chatSearch query
   const filteredChats = useMemo(() => {
     let list = uniqueChats;
-
-    if (channelFilter !== "all") {
-      list = list.filter(c => {
-        const ch = c.latestLog.channel;
-        if (channelFilter === "waba") return ch === "waba";
-        if (channelFilter === "waha_campaign") return ch === "waha_campaign";
-        return ch !== "waba" && ch !== "waha_campaign";
-      });
-    }
 
     if (responseFilter === "replied") {
       list = list.filter(c => c.hasIncoming);
@@ -499,13 +468,13 @@ function WhatsAppAiPage() {
       const matchMsg = c.latestLog.message.toLowerCase().includes(q);
       return matchName || matchPhone || matchMsg;
     });
-  }, [uniqueChats, channelFilter, responseFilter, chatSearch]);
+  }, [uniqueChats, responseFilter, chatSearch]);
 
-  // Active chat bubbles
+  // Active chat bubbles (WABA only)
   const selectedChatMessages = useMemo(() => {
     if (!selectedChatId) return [];
     return chatLogs
-      .filter(log => log.chat_id === selectedChatId)
+      .filter(log => log.chat_id === selectedChatId && log.channel === "waba")
       .reverse(); // Order chronological (oldest to newest)
   }, [chatLogs, selectedChatId]);
 
@@ -599,7 +568,7 @@ function WhatsAppAiPage() {
     setSendingReply(true);
     try {
       const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
-      const targetChannel = (activeChatInfo?.latestLog?.channel as any) || (selectedChatId.includes("waba") ? "waba" : "waha_main");
+      const targetChannel = "waba";
       const customerPhone = activeChatInfo?.customer_phone || selectedChatId.split("@")[0].replace("waba:", "").replace(/[^0-9]/g, "");
       const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
 
@@ -610,7 +579,7 @@ function WhatsAppAiPage() {
         body: JSON.stringify({
           to: customerPhone,
           message: text,
-          channel: targetChannel,
+          channel: "waba",
           customerName: customerName,
           replied_by: "manual"
         })
@@ -618,11 +587,10 @@ function WhatsAppAiPage() {
 
       const sendData = await sendRes.json().catch(() => ({}));
       if (!sendRes.ok || !sendData.success) {
-        throw new Error(sendData.error || `Gagal mengirim via gateway ${targetChannel}`);
+        throw new Error(sendData.error || "Gagal mengirim via WABA Meta");
       }
 
-      const channelLabel = targetChannel === "waba" ? "WABA Resmi Meta" : targetChannel === "waha_campaign" ? "WA 2 Kampanye" : "WA 1 CS Utama";
-      toast.success(`Balasan manual berhasil dikirim via ${channelLabel}!`);
+      toast.success("Balasan manual berhasil dikirim via WABA Resmi Meta!");
       setManualReplyText("");
       refetchLogs();
     } catch (err: any) {
@@ -723,12 +691,12 @@ function WhatsAppAiPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-base flex items-center gap-2">
-                    <span>Daftar Obrolan</span>
-                    <Badge variant="outline" className="text-[11px] bg-amber-50 text-amber-800 border-amber-200 font-semibold">
+                    <span>Daftar Obrolan WABA</span>
+                    <Badge variant="outline" className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold">
                       {filteredChats.length} Kontak
                     </Badge>
                   </CardTitle>
-                  <CardDescription className="text-xs">Filter dan pantau obrolan per channel</CardDescription>
+                  <CardDescription className="text-xs">Pantau pesan masuk & respon resmi Meta WABA</CardDescription>
                 </div>
                 <Button 
                   size="icon" 
@@ -736,7 +704,7 @@ function WhatsAppAiPage() {
                   className="h-8 w-8 text-slate-500 hover:text-amber-600"
                   onClick={() => {
                     refetchLogs();
-                    toast.success("Log chat disegarkan!");
+                    toast.success("Log chat WABA disegarkan!");
                   }}
                   title="Segarkan Chat"
                 >
@@ -744,93 +712,44 @@ function WhatsAppAiPage() {
                 </Button>
               </div>
 
-              {/* Channel Filter Pills (Semua, WABA, WA 1, WA 2) */}
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
+              {/* Response Status Filter Pills (Semua, Dibalas, Menunggu) */}
+              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
                 <button
                   type="button"
-                  onClick={() => setChannelFilter("all")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
-                    channelFilter === "all"
+                  onClick={() => setResponseFilter("all")}
+                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                    responseFilter === "all"
                       ? "bg-white text-slate-900 shadow-xs font-bold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                   }`}
                 >
                   <span>Semua</span>
-                  <span className="text-[10px] opacity-75">({channelCounts.all})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChannelFilter("waba")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
-                    channelFilter === "waba"
-                      ? "bg-emerald-600 text-white shadow-xs font-bold"
-                      : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
-                  }`}
-                >
-                  <span>WABA</span>
-                  <span className="text-[10px] opacity-90">({channelCounts.waba})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChannelFilter("waha_main")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
-                    channelFilter === "waha_main"
-                      ? "bg-blue-600 text-white shadow-xs font-bold"
-                      : "text-blue-800 hover:bg-blue-100/70 font-semibold"
-                  }`}
-                >
-                  <span>WA 1</span>
-                  <span className="text-[10px] opacity-90">({channelCounts.waha_main})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChannelFilter("waha_campaign")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
-                    channelFilter === "waha_campaign"
-                      ? "bg-purple-600 text-white shadow-xs font-bold"
-                      : "text-purple-800 hover:bg-purple-100/70 font-semibold"
-                  }`}
-                >
-                  <span>WA 2</span>
-                  <span className="text-[10px] opacity-90">({channelCounts.waha_campaign})</span>
-                </button>
-              </div>
-
-              {/* Response Status Filter Pills (Semua, Dibalas, Menunggu) */}
-              <div className="flex items-center gap-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setResponseFilter("all")}
-                  className={`flex-1 py-1 px-1 rounded-md text-[10px] font-medium transition-all text-center ${
-                    responseFilter === "all"
-                      ? "bg-slate-800 text-white font-bold shadow-2xs"
-                      : "bg-slate-200/80 text-slate-600 hover:bg-slate-300/80"
-                  }`}
-                >
-                  Semua ({channelFilter === "waba" ? channelCounts.waba : channelFilter === "waha_campaign" ? channelCounts.waha_campaign : channelFilter === "waha_main" ? channelCounts.waha_main : channelCounts.all})
+                  <span className="text-[10px] opacity-75">({responseCounts.all})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setResponseFilter("replied")}
-                  className={`flex-1 py-1 px-1 rounded-md text-[10px] font-medium flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "replied"
-                      ? "bg-emerald-600 text-white font-bold shadow-2xs"
-                      : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60"
+                      ? "bg-emerald-600 text-white shadow-xs font-bold"
+                      : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
                   }`}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Dibalas ({responseCounts.replied})</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                  <span>Dibalas</span>
+                  <span className="text-[10px] opacity-90">({responseCounts.replied})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setResponseFilter("waiting")}
-                  className={`flex-1 py-1 px-1 rounded-md text-[10px] font-medium flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "waiting"
-                      ? "bg-slate-700 text-white font-bold shadow-2xs"
-                      : "bg-slate-200/80 text-slate-600 hover:bg-slate-300/80"
+                      ? "bg-slate-700 text-white shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                   }`}
                 >
-                  <span>Menunggu ({responseCounts.waiting})</span>
+                  <span>Menunggu</span>
+                  <span className="text-[10px] opacity-75">({responseCounts.waiting})</span>
                 </button>
               </div>
 
@@ -859,10 +778,10 @@ function WhatsAppAiPage() {
                 <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
                   <Phone className="h-8 w-8 mb-2 opacity-50 text-amber-500" />
                   <p className="text-sm font-medium">
-                    {chatSearch || channelFilter !== "all" || responseFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat."}
+                    {chatSearch || responseFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat WABA."}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    {chatSearch || channelFilter !== "all" || responseFilter !== "all" ? "Coba ganti filter saluran atau status respon." : "Pesan masuk/keluar akan muncul di sini secara otomatis."}
+                    {chatSearch || responseFilter !== "all" ? "Coba ganti kata kunci pencarian atau status respon." : "Pesan masuk/keluar WABA akan muncul di sini secara otomatis."}
                   </p>
                 </div>
               ) : (
@@ -901,19 +820,9 @@ function WhatsAppAiPage() {
                         <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                           <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
                           <div className="flex items-center gap-1 flex-wrap justify-end">
-                            {chat.latestLog.channel === "waba" ? (
-                              <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
-                                WABA
-                              </Badge>
-                            ) : chat.latestLog.channel === "waha_campaign" ? (
-                              <Badge className="bg-purple-600/15 text-purple-700 border-purple-300 text-[9px] px-1.5 py-0 font-bold">
-                                WA 2
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-blue-600/15 text-blue-700 border-blue-300 text-[9px] px-1.5 py-0 font-bold">
-                                WA 1
-                              </Badge>
-                            )}
+                            <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-bold">
+                              WABA
+                            </Badge>
 
                             {/* Response / Outgoing Status Badge */}
                             {isLastIncoming ? (
@@ -954,7 +863,6 @@ function WhatsAppAiPage() {
                   const isGoodName = activeChat?.customer_name && activeChat.customer_name !== "Pelanggan" && activeChat.customer_name !== "Meta Status";
                   const displayName = isGoodName ? activeChat.customer_name : "Pelanggan";
                   const displayPhone = activeChat?.formatted_phone || formatDisplayPhone(selectedChatId.replace(/[^0-9]/g, ""));
-                  const currentChannel = activeChat?.latestLog?.channel || "waba";
 
                   return (
                     <>
@@ -965,18 +873,10 @@ function WhatsAppAiPage() {
                             <span className="text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                               {displayPhone}
                             </span>
-                            {currentChannel === "waba" ? (
-                              <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
-                            ) : currentChannel === "waha_campaign" ? (
-                              <Badge className="bg-purple-600 text-white text-[10px]">WA 2 Kampanye</Badge>
-                            ) : (
-                              <Badge className="bg-blue-600 text-white text-[10px]">WA 1 CS Utama</Badge>
-                            )}
+                            <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
                           </CardTitle>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {currentChannel === "waba"
-                              ? "Jalur: Meta Cloud API (+62 856-4540-6949)"
-                              : `Sesi WAHA: ${wahaSession}`}
+                            Jalur: Meta Cloud API (+62 856-4540-6949)
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
