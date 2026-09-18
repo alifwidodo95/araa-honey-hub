@@ -318,7 +318,7 @@ function WhatsAppAiPage() {
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
-  const [responseFilter, setResponseFilter] = useState<"all" | "replied" | "order" | "waiting">("all");
+  const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order">("all");
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -759,22 +759,19 @@ function WhatsAppAiPage() {
     return Array.from(chatsMap.values());
   }, [chatLogs]);
 
-  // Response status statistics for WABA (all, replied, order, waiting)
+  // Response status statistics for WABA (all, unread, order)
   const responseCounts = useMemo(() => {
-    let replied = 0;
+    let unread = 0;
     let order = 0;
-    let waiting = 0;
     uniqueChats.forEach(c => {
       const isTaggedOrder = chatTagsMap.get(c.customer_phone) === "order";
       if (isTaggedOrder) order++;
-      if (c.hasIncoming) replied++;
-      else waiting++;
+      if (c.isUnread) unread++;
     });
     return {
       all: uniqueChats.length,
-      replied,
+      unread,
       order,
-      waiting
     };
   }, [uniqueChats, chatTagsMap]);
 
@@ -782,12 +779,11 @@ function WhatsAppAiPage() {
   const filteredChats = useMemo(() => {
     let list = uniqueChats;
 
-    if (responseFilter === "replied") {
-      list = list.filter(c => c.hasIncoming);
+    if (responseFilter === "unread") {
+      // Pilihan 3: Tetap munculkan chat yang sedang dibuka (selectedChatId) agar tidak lenyap mendadak saat admin membaca/membalas
+      list = list.filter(c => c.isUnread || c.chat_id === selectedChatId);
     } else if (responseFilter === "order") {
       list = list.filter(c => chatTagsMap.get(c.customer_phone) === "order");
-    } else if (responseFilter === "waiting") {
-      list = list.filter(c => !c.hasIncoming);
     }
 
     if (!chatSearch.trim()) return list;
@@ -799,7 +795,7 @@ function WhatsAppAiPage() {
       const matchMsg = c.latestLog.message.toLowerCase().includes(q);
       return matchName || matchPhone || matchMsg;
     });
-  }, [uniqueChats, responseFilter, chatSearch, chatTagsMap]);
+  }, [uniqueChats, responseFilter, selectedChatId, chatSearch, chatTagsMap]);
 
   // Active chat bubbles (WABA only)
   const selectedChatMessages = useMemo(() => {
@@ -1058,12 +1054,12 @@ function WhatsAppAiPage() {
                 </Button>
               </div>
 
-              {/* Response Status Filter Pills (Semua, Dibalas, Order, Menunggu) */}
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
+              {/* Response Status Filter Pills (Semua, Belum Dibaca, Order) */}
+              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
                 <button
                   type="button"
                   onClick={() => setResponseFilter("all")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all ${
                     responseFilter === "all"
                       ? "bg-white text-slate-900 shadow-xs font-bold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
@@ -1074,21 +1070,25 @@ function WhatsAppAiPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setResponseFilter("replied")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
-                    responseFilter === "replied"
+                  onClick={() => setResponseFilter("unread")}
+                  className={`py-1.5 px-1.5 rounded-md font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all ${
+                    responseFilter === "unread"
                       ? "bg-emerald-600 text-white shadow-xs font-bold"
                       : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
                   }`}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                  <span>Dibalas</span>
-                  <span className="text-[10px] opacity-90">({responseCounts.replied})</span>
+                  {responseCounts.unread > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+                  )}
+                  <span>Belum Dibaca</span>
+                  <span className={`text-[10px] ${responseCounts.unread > 0 ? "font-bold bg-white/20 px-1 py-0.2 rounded-full" : "opacity-80"}`}>
+                    ({responseCounts.unread})
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setResponseFilter("order")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all ${
                     responseFilter === "order"
                       ? "bg-amber-500 text-white shadow-xs font-bold"
                       : "text-amber-800 hover:bg-amber-100/70 font-semibold"
@@ -1096,18 +1096,6 @@ function WhatsAppAiPage() {
                 >
                   <span>🛒 Order</span>
                   <span className="text-[10px] opacity-90 font-bold">({responseCounts.order})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResponseFilter("waiting")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
-                    responseFilter === "waiting"
-                      ? "bg-slate-700 text-white shadow-xs font-bold"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
-                  }`}
-                >
-                  <span>Menunggu</span>
-                  <span className="text-[10px] opacity-75">({responseCounts.waiting})</span>
                 </button>
               </div>
 
