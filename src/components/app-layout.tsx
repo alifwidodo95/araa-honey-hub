@@ -165,24 +165,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_chat_logs")
-        .select("customer_phone, chat_id, direction, channel, created_at")
+        .select("customer_phone, chat_id, direction, channel, is_read, created_at")
         .order("created_at", { ascending: false })
         .limit(300);
 
       if (error || !data) return 0;
 
       const seen = new Set<string>();
-      let unreplied = 0;
+      let unread = 0;
       for (const log of data) {
         if (log.channel !== "waba") continue;
         const phone = (log.customer_phone || log.chat_id || "").replace(/[^0-9]/g, "");
         if (!phone || seen.has(phone)) continue;
         seen.add(phone);
-        if (log.direction === "incoming") {
-          unreplied++;
+        // An unread incoming chat is when the latest message is incoming AND not yet marked as read!
+        if (log.direction === "incoming" && !log.is_read) {
+          unread++;
         }
       }
-      return unreplied;
+      return unread;
     },
     refetchInterval: 10000,
     enabled: !!user?.id,
@@ -347,7 +348,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 isWhatsApp ? (
                   <div 
                     className="relative flex items-center shrink-0" 
-                    title={`${badgeCount} Pelanggan membalas pesan (Belum direspon balik oleh CS)`}
+                    title={`${badgeCount} Pesan respon baru belum dibaca`}
                   >
                     <span className="animate-ping absolute -inset-0.5 rounded-full bg-emerald-400 opacity-60"></span>
                     <span className="relative bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1 border border-emerald-400/40 transition-transform active:scale-95">

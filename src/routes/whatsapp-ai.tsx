@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -60,6 +60,7 @@ interface ChatLog {
   direction: 'incoming' | 'outgoing';
   replied_by: 'ai' | 'manual' | null;
   channel?: 'waba' | 'waha_main' | 'waha_campaign' | string | null;
+  is_read?: boolean | null;
   created_at: string;
 }
 
@@ -320,6 +321,61 @@ function WhatsAppAiPage() {
   const [responseFilter, setResponseFilter] = useState<"all" | "replied" | "order" | "waiting">("all");
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Mark all unread incoming messages for a customer/chat as read
+  const markingReadRef = useRef<Set<string>>(new Set());
+
+  const markChatAsRead = useCallback(async (chatId: string, phone?: string) => {
+    const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
+    const lockKey = cleanPhone || chatId;
+    if (!lockKey || markingReadRef.current.has(lockKey)) return;
+    markingReadRef.current.add(lockKey);
+
+    try {
+      const promises = [];
+      if (chatId) {
+        promises.push(
+          supabase
+            .from("whatsapp_chat_logs")
+            .update({ is_read: true })
+            .eq("channel", "waba")
+            .eq("direction", "incoming")
+            .eq("chat_id", chatId)
+            .eq("is_read", false)
+        );
+      }
+      if (cleanPhone) {
+        promises.push(
+          supabase
+            .from("whatsapp_chat_logs")
+            .update({ is_read: true })
+            .eq("channel", "waba")
+            .eq("direction", "incoming")
+            .eq("customer_phone", cleanPhone)
+            .eq("is_read", false)
+        );
+      }
+      await Promise.all(promises);
+
+      // Invalidate both chat logs & sidebar unreplied badge
+      qc.invalidateQueries({ queryKey: ["whatsapp-chat-logs"] });
+      qc.invalidateQueries({ queryKey: ["unreplied-whatsapp-chats"] });
+    } catch (err) {
+      console.error("Gagal menandai pesan telah dibaca:", err);
+    } finally {
+      setTimeout(() => {
+        markingReadRef.current.delete(lockKey);
+      }, 500);
+    }
+  }, [qc]);
+
+  // Handle clicking chat balloon in left panel
+  const handleSelectChat = (chat: { chat_id: string; customer_phone: string; isUnread?: boolean }) => {
+    setSelectedChatId(chat.chat_id);
+    if (chat.isUnread) {
+      markChatAsRead(chat.chat_id, chat.customer_phone);
+    }
+  };
 
   // Quick Reply States
   const [showQuickReplyMenu, setShowQuickReplyMenu] = useState(false);
@@ -645,6 +701,7 @@ function WhatsAppAiPage() {
       formatted_phone: string;
       messageCount: number;
       hasIncoming: boolean;
+      isUnread: boolean;
       isOrderAgain: boolean;
     }>();
 
@@ -656,6 +713,7 @@ function WhatsAppAiPage() {
       const existing = chatsMap.get(log.chat_id);
       const isInc = log.direction === "incoming";
       const isOrder = isInc && (log.message || "").toUpperCase().includes("ORDER");
+      const isUnreadMsg = isInc && !log.is_read;
 
       const isGoodName = (name?: string | null) => {
         if (!name) return false;
@@ -678,6 +736,7 @@ function WhatsAppAiPage() {
           formatted_phone: formatDisplayPhone(cleanPhone),
           messageCount: 1,
           hasIncoming: isInc,
+          isUnread: isUnreadMsg,
           isOrderAgain: isOrder,
         });
       } else {
@@ -685,6 +744,10 @@ function WhatsAppAiPage() {
         if (isInc) {
           existing.hasIncoming = true;
           if (isOrder) existing.isOrderAgain = true;
+        }
+        // If this log is an unread incoming message, keep chat marked unread
+        if (isUnreadMsg) {
+          existing.isUnread = true;
         }
         // If existing doesn't have a real name, but this log has a real customer name, adopt it!
         if (!isGoodName(existing.customer_name) && isGoodName(log.customer_name)) {
@@ -750,6 +813,15 @@ function WhatsAppAiPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selectedChatMessages]);
+
+  // Auto-mark active chat as read if new incoming messages arrive while chat is open
+  useEffect(() => {
+    if (!selectedChatId) return;
+    const active = uniqueChats.find(c => c.chat_id === selectedChatId);
+    if (active && active.isUnread) {
+      markChatAsRead(active.chat_id, active.customer_phone);
+    }
+  }, [selectedChatId, uniqueChats, markChatAsRead]);
 
   // Mutation to Save Settings
   const saveSettingsMutation = useMutation({
@@ -860,6 +932,9 @@ function WhatsAppAiPage() {
 
       toast.success("Balasan manual berhasil dikirim via WABA Resmi Meta!");
       setManualReplyText("");
+      if (selectedChatId) {
+        markChatAsRead(selectedChatId, customerPhone);
+      }
       refetchLogs();
     } catch (err: any) {
       toast.error(err.message || "Gagal mengirim balasan.");
@@ -875,6 +950,8 @@ function WhatsAppAiPage() {
     setMarkingHandled(true);
     try {
       const cleanPhone = (chat.customer_phone || chat.chat_id.replace(/[^0-9]/g, "")).trim();
+      await markChatAsRead(chat.chat_id, cleanPhone);
+
       const { error } = await supabase.from("whatsapp_chat_logs").insert({
         chat_id: chat.chat_id,
         customer_phone: cleanPhone,
@@ -883,6 +960,7 @@ function WhatsAppAiPage() {
         direction: "outgoing",
         channel: chat.latestLog?.channel || "waba",
         replied_by: "manual",
+        is_read: true,
       });
       if (error) throw error;
       toast.success(`Obrolan dengan ${chat.customer_name || cleanPhone} berhasil ditandai selesai!`);
@@ -1077,15 +1155,18 @@ function WhatsAppAiPage() {
                     return (
                       <div
                         key={chat.chat_id}
-                        onClick={() => setSelectedChatId(chat.chat_id)}
+                        onClick={() => handleSelectChat(chat)}
                         className={`w-full p-3.5 text-left flex items-start justify-between gap-2.5 hover:bg-slate-50/80 transition-colors cursor-pointer group ${
                           isSelected ? "bg-amber-50/80 border-r-4 border-r-amber-500 shadow-xs" : ""
                         }`}
                       >
                         <div className="space-y-1 min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            {chat.hasIncoming && (
-                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Konsumen Merespon!" />
+                            {chat.isUnread && (
+                              <span
+                                className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0 ring-2 ring-emerald-200"
+                                title="Pesan baru belum dibaca! Klik untuk membuka dan menandai dibaca."
+                              />
                             )}
                             <p className="font-semibold text-sm truncate text-slate-900 group-hover:text-amber-700 transition-colors">
                               {isGoodName ? chat.customer_name : chat.formatted_phone || `+${chat.customer_phone}`}
@@ -1094,7 +1175,7 @@ function WhatsAppAiPage() {
                           <p className="text-[11px] font-mono font-medium text-emerald-700">
                             {chat.formatted_phone || `+${chat.customer_phone}`}
                           </p>
-                          <p className={`text-xs truncate ${isLastIncoming ? "text-emerald-700 font-semibold" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
+                          <p className={`text-xs truncate ${chat.isUnread ? "text-emerald-700 font-semibold" : isLastIncoming ? "text-slate-700 font-medium" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
                             {isLastIncoming ? `💬 ${chat.latestLog.message}` : chat.latestLog.message}
                           </p>
                         </div>
