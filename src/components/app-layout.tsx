@@ -159,6 +159,52 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const dandangAlerts = alerts?.filter((a: any) => a.item_type === "dandang").length || 0;
   const packagingAlerts = alerts?.filter((a: any) => a.item_type === "packaging").length || 0;
 
+  // Fetch unreplied customer responses for WhatsApp Monitor notification badge (Option B)
+  const { data: unrepliedChatCount = 0, refetch: refetchUnrepliedChats } = useQuery({
+    queryKey: ["unreplied-whatsapp-chats"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_chat_logs")
+        .select("customer_phone, chat_id, direction, created_at")
+        .order("created_at", { ascending: false })
+        .limit(300);
+
+      if (error || !data) return 0;
+
+      const seen = new Set<string>();
+      let unreplied = 0;
+      for (const log of data) {
+        const phone = (log.customer_phone || log.chat_id || "").replace(/[^0-9]/g, "");
+        if (!phone || seen.has(phone)) continue;
+        seen.add(phone);
+        if (log.direction === "incoming") {
+          unreplied++;
+        }
+      }
+      return unreplied;
+    },
+    refetchInterval: 10000,
+    enabled: !!user?.id,
+  });
+
+  // Supabase Realtime subscription for instant badge updates
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-app-whatsapp-badge")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "whatsapp_chat_logs" },
+        () => {
+          refetchUnrepliedChats();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchUnrepliedChats]);
+
   // Telegram Alert Trigger Hook
   useEffect(() => {
     if (!alerts || alerts.length === 0) return;
@@ -259,6 +305,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   };
 
   const getItemBadge = (to: string) => {
+    if (to === "/whatsapp-ai") return unrepliedChatCount;
     if (to === "/stok/bahan-baku") return dandangAlerts;
     if (to === "/stok/kemasan") return packagingAlerts;
     return 0;
@@ -281,6 +328,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           const Icon = it.icon;
           const active = pathname === it.to || pathname.startsWith(it.to + "/");
           const badgeCount = getItemBadge(it.to);
+          const isWhatsApp = it.to === "/whatsapp-ai";
           return (
             <Link
               key={it.to}
@@ -292,12 +340,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className={`h-4 w-4 shrink-0 transition-colors ${isWhatsApp && badgeCount > 0 ? "text-emerald-400" : ""}`} />
               <span className="flex-1 truncate">{it.label}</span>
               {badgeCount > 0 && (
-                <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                  {badgeCount}
-                </span>
+                isWhatsApp ? (
+                  <div 
+                    className="relative flex items-center shrink-0" 
+                    title={`${badgeCount} Pelanggan membalas pesan (Belum direspon balik oleh CS)`}
+                  >
+                    <span className="animate-ping absolute -inset-0.5 rounded-full bg-emerald-400 opacity-60"></span>
+                    <span className="relative bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1 border border-emerald-400/40 transition-transform active:scale-95">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
+                      <span>{badgeCount}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                    {badgeCount}
+                  </span>
+                )
               )}
             </Link>
           );

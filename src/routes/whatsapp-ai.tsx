@@ -632,6 +632,32 @@ function WhatsAppAiPage() {
     }
   };
 
+  const [markingHandled, setMarkingHandled] = useState(false);
+
+  const handleMarkAsHandled = async (chat: any) => {
+    if (!chat) return;
+    setMarkingHandled(true);
+    try {
+      const cleanPhone = (chat.customer_phone || chat.chat_id.replace(/[^0-9]/g, "")).trim();
+      const { error } = await supabase.from("whatsapp_chat_logs").insert({
+        chat_id: chat.chat_id,
+        customer_phone: cleanPhone,
+        customer_name: chat.customer_name,
+        message: "✅ [Obrolan Ditandai Selesai oleh CS]",
+        direction: "outgoing",
+        channel: chat.latestLog?.channel || "waba",
+        replied_by: "manual",
+      });
+      if (error) throw error;
+      toast.success(`Obrolan dengan ${chat.customer_name || cleanPhone} berhasil ditandai selesai!`);
+      refetchLogs();
+    } catch (err: any) {
+      toast.error("Gagal menandai obrolan: " + (err.message || "Error"));
+    } finally {
+      setMarkingHandled(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto pb-20">
       {/* Header */}
@@ -953,9 +979,24 @@ function WhatsAppAiPage() {
                               : `Sesi WAHA: ${wahaSession}`}
                           </p>
                         </div>
-                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
-                          Aktif
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {activeChat?.latestLog?.direction === "incoming" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={markingHandled}
+                              onClick={() => handleMarkAsHandled(activeChat)}
+                              className="h-7 px-2.5 text-[11px] gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                              title="Tandai chat ini sudah dibaca/ditangani agar notifikasi di sidebar berkurang"
+                            >
+                              <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                              <span>{markingHandled ? "Menandai..." : "Tandai Selesai"}</span>
+                            </Button>
+                          )}
+                          <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
+                            Aktif
+                          </Badge>
+                        </div>
                       </CardHeader>
 
                       <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/40 space-y-3.5">
