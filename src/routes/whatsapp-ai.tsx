@@ -638,11 +638,11 @@ function WhatsAppAiPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Bot className="h-6 w-6 text-amber-500" />
-            Asisten WhatsApp AI (DeepSeek)
+            <MessageSquare className="h-6 w-6 text-emerald-500" />
+            WhatsApp Monitor
           </h1>
           <p className="text-muted-foreground text-sm">
-            Otomatisasi balasan chat WhatsApp pelanggan menggunakan kecerdasan buatan DeepSeek-V3 yang super murah dan pintar.
+            Pusat pemantauan obrolan pelanggan, status respon pesan, dan asisten pintar secara real-time.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -650,7 +650,7 @@ function WhatsAppAiPage() {
             onClick={() => {
               refetchLogs();
               refetchSettings();
-              toast.success("Data WhatsApp AI diperbarui!");
+              toast.success("Data WhatsApp Monitor diperbarui!");
             }} 
             variant="outline" 
             size="sm"

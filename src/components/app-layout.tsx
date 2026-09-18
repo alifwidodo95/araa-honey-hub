@@ -33,6 +33,10 @@ const navStructure: NavEntry[] = [
   // Standalone Items (Sering dibuka)
   {
     type: "item",
+    item: { to: "/whatsapp-ai", label: "WhatsApp Monitor", icon: MessageSquare },
+  },
+  {
+    type: "item",
     item: { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   },
   {
@@ -93,7 +97,6 @@ const navStructure: NavEntry[] = [
         { to: "/media", label: "Media & Testimoni", icon: ImageIcon },
         { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone },
         { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
-        { to: "/whatsapp-ai", label: "Asisten WA AI", icon: Bot },
       ],
     },
   },
