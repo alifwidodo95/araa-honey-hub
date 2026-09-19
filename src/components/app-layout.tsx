@@ -166,8 +166,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from("whatsapp_chat_logs")
         .select("customer_phone, chat_id, direction, channel, is_read, created_at")
+        .eq("channel", "waba")
         .order("created_at", { ascending: false })
-        .limit(300);
+        .limit(2000);
 
       if (error || !data) return 0;
 

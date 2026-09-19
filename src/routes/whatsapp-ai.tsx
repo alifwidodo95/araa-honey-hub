@@ -530,15 +530,16 @@ function WhatsAppAiPage() {
     }
   }, [rawSettings]);
 
-  // 3. Fetch Chat Logs (Store-wide across WA 1, WA 2, and WABA Meta)
+  // 3. Fetch Chat Logs (Exclusively WABA Meta with expanded 2,000 history limit)
   const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs } = useQuery<ChatLog[]>({
     queryKey: ["whatsapp-chat-logs"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_chat_logs")
         .select("*")
+        .eq("channel", "waba")
         .order("created_at", { ascending: false })
-        .limit(300);
+        .limit(2000);
 
       if (error) {
         console.error("Gagal mengambil log chat:", error);
