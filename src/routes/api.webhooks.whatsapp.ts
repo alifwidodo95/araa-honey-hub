@@ -122,13 +122,22 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
 
                   const messageType = msg.type || 'text';
                   let incomingText = '';
+                  let mediaId: string | null = null;
 
                   if (messageType === 'text') {
                     incomingText = msg.text?.body || '';
                   } else if (messageType === 'image') {
+                    mediaId = msg.image?.id || null;
                     incomingText = msg.image?.caption || '[Pelanggan Mengirim Gambar]';
+                  } else if (messageType === 'document') {
+                    mediaId = msg.document?.id || null;
+                    incomingText = msg.document?.caption || `[Dokumen: ${msg.document?.filename || 'File'}]`;
                   } else if (messageType === 'audio' || messageType === 'voice') {
+                    mediaId = msg.audio?.id || msg.voice?.id || null;
                     incomingText = '[Pesan Suara]';
+                  } else if (messageType === 'video') {
+                    mediaId = msg.video?.id || null;
+                    incomingText = msg.video?.caption || '[Video]';
                   } else if (messageType === 'interactive') {
                     incomingText = msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.title || '';
                   } else if (messageType === 'button') {
@@ -139,7 +148,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
 
                   if (!incomingText) continue;
 
-                  console.log(`[Meta Webhook] Inbound WABA message from ${customerPhone} (${customerName}): "${incomingText}"`);
+                  console.log(`[Meta Webhook] Inbound WABA message from ${customerPhone} (${customerName}): "${incomingText}" (mediaId: ${mediaId || '-'})`);
 
                   // Fetch last 5 messages for history context
                   const historyRes = await pool.query(`
@@ -156,9 +165,9 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
 
                   // Save incoming message to database with channel='waba'
                   await pool.query(`
-                    INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, created_at)
-                    VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', now())
-                  `, [userId, chatId, customerPhone, customerName, incomingText]);
+                    INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, media_id, created_at)
+                    VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', $6, now())
+                  `, [userId, chatId, customerPhone, customerName, incomingText, mediaId]);
 
                   // Check if AI auto-reply is active
                   const {

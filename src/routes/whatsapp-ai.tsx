@@ -48,7 +48,8 @@ import {
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
   ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, Smile,
-  Pin, PinOff, Calendar, Clock, Copy
+  Pin, PinOff, Calendar, Clock, Copy,
+  Image as ImageIcon, Download, ZoomIn, ExternalLink
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -81,6 +82,8 @@ interface ChatLog {
   replied_by: 'ai' | 'manual' | null;
   channel?: 'waba' | 'waha_main' | 'waha_campaign' | string | null;
   is_read?: boolean | null;
+  media_id?: string | null;
+  media_url?: string | null;
   created_at: string;
 }
 
@@ -449,7 +452,14 @@ function WhatsAppAiPage() {
   const [pinNote, setPinNote] = useState<string>("");
   const [savingPin, setSavingPin] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewImageCaption, setPreviewImageCaption] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const handlePreviewImage = useCallback((url: string, caption?: string) => {
+    setPreviewImageUrl(url);
+    setPreviewImageCaption(caption || null);
+  }, []);
 
   // Helper to extract clean digit-only phone (no +, -, or spaces; e.g. 6281284629656) for Agregator CRM search
   const getCleanCopyPhone = useCallback((phone?: string) => {
@@ -1634,7 +1644,11 @@ function WhatsAppAiPage() {
                           </div>
 
                           <p className={`text-xs truncate ${chat.isUnread ? "text-emerald-700 font-semibold" : isLastIncoming ? "text-slate-700 font-medium" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
-                            {isLastIncoming ? `💬 ${chat.latestLog.message}` : chat.latestLog.message}
+                            {chat.latestLog.media_id || chat.latestLog.message.includes('[Pelanggan Mengirim Gambar]')
+                              ? `📷 [Foto/Bukti Transfer] ${chat.latestLog.message !== '[Pelanggan Mengirim Gambar]' ? chat.latestLog.message : ''}`
+                              : isLastIncoming
+                              ? `💬 ${chat.latestLog.message}`
+                              : chat.latestLog.message}
                           </p>
                         </div>
 
@@ -1920,7 +1934,44 @@ function WhatsAppAiPage() {
                                       </Badge>
                                     )}
                                   </div>
-                                  <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
+                                  {/* Render Media Image if available */}
+                                  {(msg.media_id || msg.media_url) && (
+                                    <div className="mb-2">
+                                      <div
+                                        onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message !== '[Pelanggan Mengirim Gambar]' ? msg.message : undefined)}
+                                        className="relative group/media overflow-hidden rounded-xl border border-slate-200 bg-slate-100 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
+                                      >
+                                        <img
+                                          src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                          alt="Foto / Bukti Transfer"
+                                          className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
+                                          loading="lazy"
+                                          onError={(e) => {
+                                            const target = e.currentTarget;
+                                            target.style.display = 'none';
+                                            const parent = target.parentElement;
+                                            if (parent) {
+                                              parent.innerHTML = `
+                                                <div class="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200">
+                                                  <span>🖼️</span>
+                                                  <span>Gambar bukti transfer telah kedaluwarsa dari server WhatsApp.</span>
+                                                </div>
+                                              `;
+                                            }
+                                          }}
+                                        />
+                                        <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
+                                          <ZoomIn className="h-4 w-4" />
+                                          <span>Klik untuk Perbesar</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {(!msg.media_id && !msg.media_url) || msg.message !== '[Pelanggan Mengirim Gambar]' ? (
+                                    <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
+                                  ) : null}
+
                                   <div className="flex items-center gap-1.5 justify-end mt-1.5 text-slate-400 text-[9px]">
                                     <span>{msgTime}</span>
                                   </div>
@@ -1960,6 +2011,28 @@ function WhatsAppAiPage() {
                                     <span>Sistem Otomatis</span>
                                   )}
                                 </div>
+
+                                {/* Render Media Image for Outgoing if available */}
+                                {(msg.media_id || msg.media_url) && (
+                                  <div className="mb-2">
+                                    <div
+                                      onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message)}
+                                      className="relative group/media overflow-hidden rounded-xl border border-white/20 bg-black/10 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
+                                    >
+                                      <img
+                                        src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                        alt="Media Outgoing"
+                                        className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
+                                        loading="lazy"
+                                      />
+                                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
+                                        <ZoomIn className="h-4 w-4" />
+                                        <span>Klik untuk Perbesar</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
                                 <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
                                 <div className="flex items-center gap-1.5 justify-end mt-1.5 text-white/75">
                                   <span className="text-[9px]">{msgTime}</span>
@@ -2903,6 +2976,47 @@ function WhatsAppAiPage() {
                   </Button>
                 </div>
               </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Media Lightbox / Image Zoom Modal */}
+      <Dialog open={!!previewImageUrl} onOpenChange={(open) => !open && setPreviewImageUrl(null)}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] p-4 bg-slate-950 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-between border border-slate-800 overflow-hidden">
+          <DialogHeader className="w-full flex flex-row items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+            <DialogTitle className="text-sm font-semibold flex items-center gap-2 text-slate-200">
+              <ImageIcon className="h-4 w-4 text-amber-400" />
+              <span>Pratinjau Foto Bukti Transfer / Media WhatsApp</span>
+            </DialogTitle>
+            {previewImageUrl && (
+              <a
+                href={previewImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download="bukti-transfer-whatsapp.jpg"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors shadow-xs cursor-pointer mr-6"
+                title="Buka atau unduh gambar asli"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Unduh Gambar</span>
+              </a>
+            )}
+          </DialogHeader>
+
+          <div className="w-full flex-1 overflow-auto flex items-center justify-center p-2 min-h-[300px]">
+            {previewImageUrl && (
+              <img
+                src={previewImageUrl}
+                alt="Pratinjau Gambar"
+                className="max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-xl"
+              />
+            )}
+          </div>
+
+          {previewImageCaption && (
+            <div className="w-full pt-2 border-t border-slate-800 text-xs text-slate-300 text-center font-medium shrink-0">
+              "{previewImageCaption}"
             </div>
           )}
         </DialogContent>

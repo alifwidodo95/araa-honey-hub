@@ -34,6 +34,7 @@ import { Route as PengaturanStafRouteImport } from './routes/pengaturan.staf'
 import { Route as PengaturanProfilRouteImport } from './routes/pengaturan.profil'
 import { Route as PengaturanLumpsumRouteImport } from './routes/pengaturan.lumpsum'
 import { Route as PengaturanHargaRouteImport } from './routes/pengaturan.harga'
+import { Route as ApiWhatsappMediaRouteImport } from './routes/api.whatsapp-media'
 import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
 import { Route as ApiScalevWebhookRouteImport } from './routes/api.scalev-webhook'
@@ -180,6 +181,11 @@ const PengaturanHargaRoute = PengaturanHargaRouteImport.update({
   path: '/pengaturan/harga',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWhatsappMediaRoute = ApiWhatsappMediaRouteImport.update({
+  id: '/api/whatsapp-media',
+  path: '/api/whatsapp-media',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWahaProxyRoute = ApiWahaProxyRouteImport.update({
   id: '/api/waha-proxy',
   path: '/api/waha-proxy',
@@ -303,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
+  '/api/whatsapp-media': typeof ApiWhatsappMediaRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
   '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
   '/pengaturan/profil': typeof PengaturanProfilRoute
@@ -350,6 +357,7 @@ export interface FileRoutesByTo {
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
+  '/api/whatsapp-media': typeof ApiWhatsappMediaRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
   '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
   '/pengaturan/profil': typeof PengaturanProfilRoute
@@ -398,6 +406,7 @@ export interface FileRoutesById {
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
   '/api/waha-proxy': typeof ApiWahaProxyRoute
+  '/api/whatsapp-media': typeof ApiWhatsappMediaRoute
   '/pengaturan/harga': typeof PengaturanHargaRoute
   '/pengaturan/lumpsum': typeof PengaturanLumpsumRoute
   '/pengaturan/profil': typeof PengaturanProfilRoute
@@ -447,6 +456,7 @@ export interface FileRouteTypes {
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
+    | '/api/whatsapp-media'
     | '/pengaturan/harga'
     | '/pengaturan/lumpsum'
     | '/pengaturan/profil'
@@ -494,6 +504,7 @@ export interface FileRouteTypes {
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
+    | '/api/whatsapp-media'
     | '/pengaturan/harga'
     | '/pengaturan/lumpsum'
     | '/pengaturan/profil'
@@ -541,6 +552,7 @@ export interface FileRouteTypes {
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
     | '/api/waha-proxy'
+    | '/api/whatsapp-media'
     | '/pengaturan/harga'
     | '/pengaturan/lumpsum'
     | '/pengaturan/profil'
@@ -589,6 +601,7 @@ export interface RootRouteChildren {
   ApiScalevWebhookRoute: typeof ApiScalevWebhookRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
   ApiWahaProxyRoute: typeof ApiWahaProxyRoute
+  ApiWhatsappMediaRoute: typeof ApiWhatsappMediaRoute
   PengaturanHargaRoute: typeof PengaturanHargaRoute
   PengaturanLumpsumRoute: typeof PengaturanLumpsumRoute
   PengaturanProfilRoute: typeof PengaturanProfilRoute
@@ -793,6 +806,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PengaturanHargaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/whatsapp-media': {
+      id: '/api/whatsapp-media'
+      path: '/api/whatsapp-media'
+      fullPath: '/api/whatsapp-media'
+      preLoaderRoute: typeof ApiWhatsappMediaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/waha-proxy': {
       id: '/api/waha-proxy'
       path: '/api/waha-proxy'
@@ -957,6 +977,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiScalevWebhookRoute: ApiScalevWebhookRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
   ApiWahaProxyRoute: ApiWahaProxyRoute,
+  ApiWhatsappMediaRoute: ApiWhatsappMediaRoute,
   PengaturanHargaRoute: PengaturanHargaRoute,
   PengaturanLumpsumRoute: PengaturanLumpsumRoute,
   PengaturanProfilRoute: PengaturanProfilRoute,
