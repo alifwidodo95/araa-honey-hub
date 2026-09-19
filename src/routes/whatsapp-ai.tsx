@@ -1645,7 +1645,7 @@ function WhatsAppAiPage() {
 
                           <p className={`text-xs truncate ${chat.isUnread ? "text-emerald-700 font-semibold" : isLastIncoming ? "text-slate-700 font-medium" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
                             {chat.latestLog.media_id || chat.latestLog.message.includes('[Pelanggan Mengirim Gambar]')
-                              ? `📷 [Foto/Bukti Transfer] ${chat.latestLog.message !== '[Pelanggan Mengirim Gambar]' ? chat.latestLog.message : ''}`
+                              ? `📷 Foto ${chat.latestLog.message !== '[Pelanggan Mengirim Gambar]' ? chat.latestLog.message : ''}`.trim()
                               : isLastIncoming
                               ? `💬 ${chat.latestLog.message}`
                               : chat.latestLog.message}
@@ -1943,7 +1943,7 @@ function WhatsAppAiPage() {
                                       >
                                         <img
                                           src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                          alt="Foto / Bukti Transfer"
+                                          alt="Foto WhatsApp"
                                           className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
                                           loading="lazy"
                                           onError={(e) => {
@@ -2987,7 +2987,7 @@ function WhatsAppAiPage() {
           <DialogHeader className="w-full flex flex-row items-center justify-between pb-2 border-b border-slate-800 shrink-0">
             <DialogTitle className="text-sm font-semibold flex items-center gap-2 text-slate-200">
               <ImageIcon className="h-4 w-4 text-amber-400" />
-              <span>Pratinjau Foto Bukti Transfer / Media WhatsApp</span>
+              <span>Pratinjau Foto WhatsApp</span>
             </DialogTitle>
             {previewImageUrl && (
               <a
