@@ -24,6 +24,14 @@ import {
   SheetDescription
 } from "@/components/ui/sheet";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from "@/components/ui/dialog";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger
@@ -33,7 +41,8 @@ import {
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
-  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, Smile
+  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, Smile,
+  Pin, PinOff, Calendar, Clock
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -67,6 +76,17 @@ interface ChatLog {
   channel?: 'waba' | 'waha_main' | 'waha_campaign' | string | null;
   is_read?: boolean | null;
   created_at: string;
+}
+
+interface WhatsAppPinnedChat {
+  phone: string;
+  chat_id: string | null;
+  customer_name: string | null;
+  is_pinned: boolean;
+  follow_up_date: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface EmojiItem {
@@ -410,8 +430,18 @@ function WhatsAppAiPage() {
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [chatSearch, setChatSearch] = useState("");
-  const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order">("all");
+  const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order" | "pinned">("all");
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pinDialogChat, setPinDialogChat] = useState<{
+    chat_id: string;
+    customer_name: string;
+    customer_phone: string;
+    formatted_phone: string;
+  } | null>(null);
+  const [pinDate, setPinDate] = useState<string>("");
+  const [pinNote, setPinNote] = useState<string>("");
+  const [savingPin, setSavingPin] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Mark all unread incoming messages for a customer/chat as read
@@ -641,6 +671,135 @@ function WhatsAppAiPage() {
     }
   };
 
+  // 4b. Fetch Pinned Chats & Follow-up Reminders from whatsapp_pinned_chats
+  const { data: pinnedChats = [], refetch: refetchPinned } = useQuery<WhatsAppPinnedChat[]>({
+    queryKey: ["whatsapp-pinned-chats"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_pinned_chats" as any)
+        .select("*")
+        .eq("is_pinned", true);
+      if (error) {
+        console.error("Gagal mengambil pinned chats:", error);
+        return [];
+      }
+      return (data || []) as WhatsAppPinnedChat[];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Realtime Supabase Subscription for pinned chats
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-whatsapp-pinned-chats")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "whatsapp_pinned_chats" },
+        () => {
+          refetchPinned();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetchPinned]);
+
+  // Fast lookup Map: phone digits or chat_id -> WhatsAppPinnedChat
+  const pinnedMap = useMemo(() => {
+    const map = new Map<string, WhatsAppPinnedChat>();
+    pinnedChats.forEach(p => {
+      if (p.is_pinned) {
+        const clean = (p.phone || "").replace(/[^0-9]/g, "");
+        if (clean) map.set(clean, p);
+        if (p.chat_id) map.set(p.chat_id, p);
+      }
+    });
+    return map;
+  }, [pinnedChats]);
+
+  // Open Pin Dialog Modal
+  const handleOpenPinDialog = useCallback((chat: {
+    chat_id: string;
+    customer_name: string;
+    customer_phone: string;
+    formatted_phone: string;
+  }) => {
+    const cleanPhone = (chat.customer_phone || "").replace(/[^0-9]/g, "");
+    const current = pinnedMap.get(cleanPhone) || (chat.chat_id ? pinnedMap.get(chat.chat_id) : undefined);
+
+    setPinDialogChat(chat);
+    setPinDate(current?.follow_up_date || "");
+    setPinNote(current?.note || "");
+    setPinDialogOpen(true);
+  }, [pinnedMap]);
+
+  // Save or Update Pin & Follow-up Note
+  const handleSavePin = async () => {
+    if (!pinDialogChat) return;
+    const cleanPhone = (pinDialogChat.customer_phone || "").replace(/[^0-9]/g, "");
+    if (!cleanPhone) {
+      toast.error("Nomor kontak tidak valid");
+      return;
+    }
+
+    setSavingPin(true);
+    try {
+      const payload = {
+        phone: cleanPhone,
+        chat_id: pinDialogChat.chat_id,
+        customer_name: pinDialogChat.customer_name,
+        is_pinned: true,
+        follow_up_date: pinDate ? pinDate : null,
+        note: pinNote.trim() ? pinNote.trim() : null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from("whatsapp_pinned_chats" as any)
+        .upsert(payload, { onConflict: "phone" });
+
+      if (error) throw error;
+
+      toast.success("Chat berhasil disematkan & follow-up tersimpan! 📌");
+      refetchPinned();
+      setPinDialogOpen(false);
+    } catch (err: any) {
+      console.error("Error saving pin:", err);
+      toast.error("Gagal menyimpan pin: " + (err.message || "Error"));
+    } finally {
+      setSavingPin(false);
+    }
+  };
+
+  // Remove Pin (Unpin)
+  const handleUnpin = async (phone: string, chatId?: string) => {
+    const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
+    if (!cleanPhone && !chatId) return;
+
+    setSavingPin(true);
+    try {
+      let query = supabase.from("whatsapp_pinned_chats" as any).delete();
+      if (cleanPhone) {
+        query = query.eq("phone", cleanPhone);
+      } else if (chatId) {
+        query = query.eq("chat_id", chatId);
+      }
+      const { error } = await query;
+      if (error) throw error;
+
+      toast.success("Pin chat berhasil dilepas.");
+      refetchPinned();
+      setPinDialogOpen(false);
+    } catch (err: any) {
+      console.error("Error unpinning:", err);
+      toast.error("Gagal melepas pin: " + (err.message || "Error"));
+    } finally {
+      setSavingPin(false);
+    }
+  };
+
   // 5. Fetch Quick Replies (Balas Cepat)
   const { data: quickReplies = [], refetch: refetchQuickReplies } = useQuery<{
     id: string;
@@ -820,6 +979,45 @@ function WhatsAppAiPage() {
     return `+${clean}`;
   };
 
+  // Date helpers for Follow-up & Pin reminders (Asia/Jakarta)
+  const getTodayStrJakarta = () => {
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+    } catch (e) {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+  };
+
+  const getFutureDateStr = (daysToAdd: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysToAdd);
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+    } catch (e) {
+      return d.toISOString().split("T")[0];
+    }
+  };
+
+  const formatFollowUpDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    try {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+      return `${day} ${months[month - 1]}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const getFollowUpStatus = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "no_date";
+    const today = getTodayStrJakarta();
+    if (dateStr === today) return "today";
+    if (dateStr < today) return "overdue";
+    return "upcoming";
+  };
+
   // Grouped unique chats with enriched contact info & response status
   const uniqueChats = useMemo(() => {
     const chatsMap = new Map<string, {
@@ -888,23 +1086,28 @@ function WhatsAppAiPage() {
     return Array.from(chatsMap.values());
   }, [chatLogs]);
 
-  // Response status statistics for WABA (all, unread, order)
+  // Response status statistics for WABA (all, unread, order, pinned)
   const responseCounts = useMemo(() => {
     let unread = 0;
     let order = 0;
+    let pinned = 0;
     uniqueChats.forEach(c => {
       const isTaggedOrder = chatTagsMap.get(c.customer_phone) === "order";
       if (isTaggedOrder) order++;
       if (c.isUnread) unread++;
+      if (pinnedMap.has(c.customer_phone) || (c.chat_id && pinnedMap.has(c.chat_id))) {
+        pinned++;
+      }
     });
     return {
       all: uniqueChats.length,
       unread,
       order,
+      pinned,
     };
-  }, [uniqueChats, chatTagsMap]);
+  }, [uniqueChats, chatTagsMap, pinnedMap]);
 
-  // Filtered by responseFilter and chatSearch query
+  // Filtered and sorted: Pinned chats stick to the top, followed by urgency and latest message
   const filteredChats = useMemo(() => {
     let list = uniqueChats;
 
@@ -913,18 +1116,60 @@ function WhatsAppAiPage() {
       list = list.filter(c => c.isUnread || c.chat_id === selectedChatId);
     } else if (responseFilter === "order") {
       list = list.filter(c => chatTagsMap.get(c.customer_phone) === "order");
+    } else if (responseFilter === "pinned") {
+      list = list.filter(c => pinnedMap.has(c.customer_phone) || (c.chat_id && pinnedMap.has(c.chat_id)));
     }
 
-    if (!chatSearch.trim()) return list;
-    const q = chatSearch.trim().toLowerCase();
-    const qDigits = q.replace(/[^0-9]/g, "");
-    return list.filter(c => {
-      const matchName = c.customer_name.toLowerCase().includes(q);
-      const matchPhone = (qDigits && c.customer_phone.includes(qDigits)) || c.formatted_phone.toLowerCase().includes(q);
-      const matchMsg = c.latestLog.message.toLowerCase().includes(q);
-      return matchName || matchPhone || matchMsg;
+    if (chatSearch.trim()) {
+      const q = chatSearch.trim().toLowerCase();
+      const qDigits = q.replace(/[^0-9]/g, "");
+      list = list.filter(c => {
+        const matchName = c.customer_name.toLowerCase().includes(q);
+        const matchPhone = (qDigits && c.customer_phone.includes(qDigits)) || c.formatted_phone.toLowerCase().includes(q);
+        const matchMsg = c.latestLog.message.toLowerCase().includes(q);
+        const pin = pinnedMap.get(c.customer_phone) || (c.chat_id ? pinnedMap.get(c.chat_id) : undefined);
+        const matchNote = pin?.note?.toLowerCase().includes(q);
+        return matchName || matchPhone || matchMsg || matchNote;
+      });
+    }
+
+    // Sort: Pinned chats strictly stick to the top
+    const today = getTodayStrJakarta();
+    return [...list].sort((a, b) => {
+      const pinA = pinnedMap.get(a.customer_phone) || (a.chat_id ? pinnedMap.get(a.chat_id) : undefined);
+      const pinB = pinnedMap.get(b.customer_phone) || (b.chat_id ? pinnedMap.get(b.chat_id) : undefined);
+
+      const isPinA = !!pinA;
+      const isPinB = !!pinB;
+
+      // Pinned chats come before unpinned chats
+      if (isPinA && !isPinB) return -1;
+      if (!isPinA && isPinB) return 1;
+
+      // When both are pinned, prioritize follow-up urgency:
+      if (isPinA && isPinB) {
+        const dateA = pinA?.follow_up_date || "";
+        const dateB = pinB?.follow_up_date || "";
+
+        if (dateA && dateB) {
+          if (dateA === today && dateB !== today) return -1;
+          if (dateB === today && dateA !== today) return 1;
+          if (dateA < today && dateB > today) return -1;
+          if (dateB < today && dateA > today) return 1;
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+        } else if (dateA && !dateB) {
+          return -1;
+        } else if (!dateA && dateB) {
+          return 1;
+        }
+
+        return new Date(b.latestLog.created_at).getTime() - new Date(a.latestLog.created_at).getTime();
+      }
+
+      // Default non-pinned: newest log first
+      return new Date(b.latestLog.created_at).getTime() - new Date(a.latestLog.created_at).getTime();
     });
-  }, [uniqueChats, responseFilter, selectedChatId, chatSearch, chatTagsMap]);
+  }, [uniqueChats, responseFilter, selectedChatId, chatSearch, chatTagsMap, pinnedMap]);
 
   // Active chat bubbles (WABA only)
   const selectedChatMessages = useMemo(() => {
@@ -1183,12 +1428,12 @@ function WhatsAppAiPage() {
                 </Button>
               </div>
 
-              {/* Response Status Filter Pills (Semua, Belum Dibaca, Order) */}
-              <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
+              {/* Response Status Filter Pills (Semua, Belum Dibaca, Order, Follow-up) */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
                 <button
                   type="button"
                   onClick={() => setResponseFilter("all")}
-                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "all"
                       ? "bg-white text-slate-900 shadow-xs font-bold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
@@ -1200,16 +1445,16 @@ function WhatsAppAiPage() {
                 <button
                   type="button"
                   onClick={() => setResponseFilter("unread")}
-                  className={`py-1.5 px-1.5 rounded-md font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "unread"
                       ? "bg-emerald-600 text-white shadow-xs font-bold"
                       : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
                   }`}
                 >
                   {responseCounts.unread > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse shrink-0" />
                   )}
-                  <span>Belum Dibaca</span>
+                  <span>Belum</span>
                   <span className={`text-[10px] ${responseCounts.unread > 0 ? "font-bold bg-white/20 px-1 py-0.2 rounded-full" : "opacity-80"}`}>
                     ({responseCounts.unread})
                   </span>
@@ -1217,7 +1462,7 @@ function WhatsAppAiPage() {
                 <button
                   type="button"
                   onClick={() => setResponseFilter("order")}
-                  className={`py-1.5 px-2 rounded-md font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all ${
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
                     responseFilter === "order"
                       ? "bg-amber-500 text-white shadow-xs font-bold"
                       : "text-amber-800 hover:bg-amber-100/70 font-semibold"
@@ -1225,6 +1470,18 @@ function WhatsAppAiPage() {
                 >
                   <span>🛒 Order</span>
                   <span className="text-[10px] opacity-90 font-bold">({responseCounts.order})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResponseFilter("pinned")}
+                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                    responseFilter === "pinned"
+                      ? "bg-sky-600 text-white shadow-xs font-bold"
+                      : "text-sky-800 hover:bg-sky-100/70 font-semibold"
+                  }`}
+                >
+                  <span>📌 Pin</span>
+                  <span className="text-[10px] opacity-90 font-bold">({responseCounts.pinned})</span>
                 </button>
               </div>
 
@@ -1268,6 +1525,8 @@ function WhatsAppAiPage() {
                     const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
                     const isLastIncoming = chat.latestLog.direction === "incoming";
                     const isOrdered = chatTagsMap.get(chat.customer_phone) === "order";
+                    const pinData = pinnedMap.get(chat.customer_phone) || (chat.chat_id ? pinnedMap.get(chat.chat_id) : undefined);
+                    const isPinned = !!pinData;
 
                     return (
                       <div
@@ -1285,13 +1544,69 @@ function WhatsAppAiPage() {
                                 title="Pesan baru belum dibaca! Klik untuk membuka dan menandai dibaca."
                               />
                             )}
+                            {isPinned && (
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenPinDialog(chat);
+                                }}
+                                className="text-xs shrink-0 cursor-pointer hover:scale-125 transition-transform"
+                                title="Chat disematkan (PIN) - Klik untuk kelola reminder follow-up"
+                              >
+                                📌
+                              </span>
+                            )}
                             <p className="font-semibold text-sm truncate text-slate-900 group-hover:text-amber-700 transition-colors">
                               {isGoodName ? chat.customer_name : chat.formatted_phone || `+${chat.customer_phone}`}
                             </p>
                           </div>
-                          <p className="text-[11px] font-mono font-medium text-emerald-700">
-                            {chat.formatted_phone || `+${chat.customer_phone}`}
-                          </p>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[11px] font-mono font-medium text-emerald-700">
+                              {chat.formatted_phone || `+${chat.customer_phone}`}
+                            </p>
+                            {isPinned && (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenPinDialog(chat);
+                                }}
+                                className="cursor-pointer"
+                                title="Klik untuk ubah jadwal follow-up atau catatan"
+                              >
+                                {(() => {
+                                  const status = getFollowUpStatus(pinData?.follow_up_date);
+                                  if (status === "today") {
+                                    return (
+                                      <span className="bg-rose-500 text-white font-bold px-1.5 py-0.2 rounded text-[10px] flex items-center gap-0.5 animate-pulse shadow-2xs">
+                                        🔥 HARI INI {pinData?.note ? `("${pinData.note}")` : ""}
+                                      </span>
+                                    );
+                                  }
+                                  if (status === "overdue") {
+                                    return (
+                                      <span className="bg-amber-100 border border-amber-300 text-amber-900 font-semibold px-1.5 py-0.2 rounded text-[10px] flex items-center gap-0.5">
+                                        ⚠️ Lewat: {formatFollowUpDate(pinData?.follow_up_date!)} {pinData?.note ? `("${pinData.note}")` : ""}
+                                      </span>
+                                    );
+                                  }
+                                  if (status === "upcoming") {
+                                    return (
+                                      <span className="bg-sky-50 border border-sky-200 text-sky-800 font-medium px-1.5 py-0.2 rounded text-[10px] flex items-center gap-0.5">
+                                        📌 Janji: {formatFollowUpDate(pinData?.follow_up_date!)} {pinData?.note ? `("${pinData.note}")` : ""}
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="bg-amber-50 border border-amber-200 text-amber-800 font-medium px-1.5 py-0.2 rounded text-[10px] flex items-center gap-0.5">
+                                      📌 Tersemat {pinData?.note ? `("${pinData.note}")` : ""}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </div>
+
                           <p className={`text-xs truncate ${chat.isUnread ? "text-emerald-700 font-semibold" : isLastIncoming ? "text-slate-700 font-medium" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
                             {isLastIncoming ? `💬 ${chat.latestLog.message}` : chat.latestLog.message}
                           </p>
@@ -1306,12 +1621,31 @@ function WhatsAppAiPage() {
                                 <button
                                   type="button"
                                   className="h-6 w-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-200/90 hover:scale-110 active:scale-95 transition-all shadow-2xs hover:shadow-xs border border-transparent hover:border-slate-300 cursor-pointer"
-                                  title="Menu Label Chat"
+                                  title="Menu Label & Follow-up Chat"
                                 >
                                   <ChevronDown className="h-3.5 w-3.5 stroke-[2.5]" />
                                 </button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-44 p-1 shadow-lg bg-white border border-slate-200 z-50">
+                              <DropdownMenuContent align="end" className="w-48 p-1 shadow-lg bg-white border border-slate-200 z-50">
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenPinDialog(chat)}
+                                  className="text-xs text-amber-800 focus:text-amber-900 focus:bg-amber-50 cursor-pointer font-semibold gap-2 py-2"
+                                >
+                                  <Pin className="h-4 w-4 text-amber-600" />
+                                  <span>{isPinned ? "Ubah Pin / Follow-up" : "📌 Pin & Follow-up"}</span>
+                                </DropdownMenuItem>
+                                {isPinned && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleUnpin(chat.customer_phone, chat.chat_id)}
+                                    className="text-xs text-slate-600 focus:text-slate-900 focus:bg-slate-100 cursor-pointer font-medium gap-2 py-1.5"
+                                  >
+                                    <PinOff className="h-4 w-4 text-slate-500" />
+                                    <span>Lepas Pin Chat</span>
+                                  </DropdownMenuItem>
+                                )}
+
+                                <div className="h-px bg-slate-100 my-1" />
+
                                 {isOrdered ? (
                                   <DropdownMenuItem
                                     onClick={() => handleToggleOrderTag(chat.customer_phone, false)}
@@ -1361,6 +1695,7 @@ function WhatsAppAiPage() {
                   const displayName = isGoodName ? activeChat.customer_name : "Pelanggan";
                   const displayPhone = activeChat?.formatted_phone || formatDisplayPhone(selectedChatId.replace(/[^0-9]/g, ""));
                   const isCurrentOrdered = activeChat ? chatTagsMap.get(activeChat.customer_phone) === "order" : false;
+                  const currentPin = activeChat ? (pinnedMap.get(activeChat.customer_phone) || (activeChat.chat_id ? pinnedMap.get(activeChat.chat_id) : undefined)) : undefined;
 
                   return (
                     <>
@@ -1384,6 +1719,22 @@ function WhatsAppAiPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* Pin / Follow-up Button in Header */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => activeChat && handleOpenPinDialog(activeChat)}
+                            className={`h-7 px-2.5 text-[11px] gap-1.5 font-semibold shadow-2xs transition-all cursor-pointer ${
+                              currentPin
+                                ? "bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300"
+                                : "text-slate-600 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200"
+                            }`}
+                            title={currentPin ? "Ubah rencana follow-up" : "Sematkan chat & jadwalkan follow-up"}
+                          >
+                            <Pin className={`h-3.5 w-3.5 ${currentPin ? "text-amber-600 fill-amber-500" : "text-slate-400"}`} />
+                            <span>{currentPin ? "📌 Follow-up" : "Pin Follow-up"}</span>
+                          </Button>
+
                           {/* Order Toggle Button in Header */}
                           <Button
                             size="sm"
@@ -1416,6 +1767,60 @@ function WhatsAppAiPage() {
                           )}
                         </div>
                       </CardHeader>
+
+                      {/* Follow-up Reminder Banner */}
+                      {currentPin && (
+                        <div className="px-4 py-2 bg-gradient-to-r from-amber-50 via-amber-50/60 to-orange-50 border-b border-amber-200 flex items-center justify-between text-xs text-amber-950">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className="font-bold flex items-center gap-1 shrink-0 text-amber-900">
+                              📌 Follow-up:
+                            </span>
+                            {currentPin.follow_up_date && (
+                              <span className={`px-2 py-0.5 rounded font-bold text-[11px] shrink-0 ${
+                                getFollowUpStatus(currentPin.follow_up_date) === "today"
+                                  ? "bg-rose-500 text-white animate-pulse shadow-2xs"
+                                  : getFollowUpStatus(currentPin.follow_up_date) === "overdue"
+                                  ? "bg-amber-200 text-amber-900 border border-amber-400"
+                                  : "bg-sky-100 text-sky-800 border border-sky-200"
+                              }`}>
+                                {getFollowUpStatus(currentPin.follow_up_date) === "today"
+                                  ? "🔥 HARI INI"
+                                  : getFollowUpStatus(currentPin.follow_up_date) === "overdue"
+                                  ? `⚠️ Terlewat (${formatFollowUpDate(currentPin.follow_up_date)})`
+                                  : `📅 ${formatFollowUpDate(currentPin.follow_up_date)}`}
+                              </span>
+                            )}
+                            {currentPin.note ? (
+                              <span className="text-slate-800 font-medium bg-white/80 px-2 py-0.5 rounded border border-amber-200 truncate max-w-md">
+                                "{currentPin.note}"
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 italic text-[11px]">
+                                (Belum ada catatan)
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => activeChat && handleOpenPinDialog(activeChat)}
+                              className="h-6 px-2 text-[11px] text-amber-800 hover:bg-amber-200/70 font-semibold cursor-pointer"
+                            >
+                              Ubah
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => activeChat && handleUnpin(activeChat.customer_phone, activeChat.chat_id)}
+                              className="h-6 px-2 text-[11px] text-rose-700 hover:bg-rose-100 font-medium cursor-pointer"
+                              title="Selesai follow-up dan lepas pin"
+                            >
+                              Lepas Pin
+                            </Button>
+                          </div>
+                        </div>
+                      )}
 
                       <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/40 space-y-3.5">
                         {selectedChatMessages.map((msg) => {
@@ -2249,6 +2654,206 @@ function WhatsAppAiPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Smart PIN & Follow-up Reminder Dialog */}
+      <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
+        <DialogContent className="sm:max-w-[460px] p-6 bg-white rounded-xl shadow-2xl">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-slate-900">
+              <Pin className="h-5 w-5 text-amber-600 fill-amber-500" />
+              <span>Sematkan Chat & Pengingat Follow-up</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Chat yang disematkan akan selalu berada di posisi paling atas agar tidak tertumpuk pesan lain.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pinDialogChat && (
+            <div className="space-y-4 pt-2">
+              {/* Customer info card */}
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-sm text-slate-900">
+                    {pinDialogChat.customer_name && pinDialogChat.customer_name !== "Pelanggan" && pinDialogChat.customer_name !== "Meta Status"
+                      ? pinDialogChat.customer_name
+                      : pinDialogChat.formatted_phone}
+                  </p>
+                  <p className="text-xs text-emerald-700 font-mono font-medium">
+                    {pinDialogChat.formatted_phone}
+                  </p>
+                </div>
+                {pinnedMap.has((pinDialogChat.customer_phone || "").replace(/[^0-9]/g, "")) && (
+                  <Badge className="bg-amber-500 text-white text-[10px] font-bold">
+                    📌 Sedang Tersemat
+                  </Badge>
+                )}
+              </div>
+
+              {/* Tanggal Follow-up */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-amber-600" />
+                    <span>Tanggal Rencana Follow-up:</span>
+                  </Label>
+                  {pinDate && (
+                    <button
+                      type="button"
+                      onClick={() => setPinDate("")}
+                      className="text-[11px] text-rose-600 hover:underline font-normal cursor-pointer"
+                    >
+                      Hapus Tanggal
+                    </button>
+                  )}
+                </div>
+                <Input
+                  type="date"
+                  value={pinDate}
+                  onChange={(e) => setPinDate(e.target.value)}
+                  className="text-xs h-9 bg-white cursor-pointer"
+                />
+
+                {/* Quick Date Shortcut Buttons */}
+                <div className="flex flex-wrap gap-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPinDate(getTodayStrJakarta())}
+                    className={`px-2 py-1 rounded text-[11px] border font-medium transition-all cursor-pointer ${
+                      pinDate === getTodayStrJakarta()
+                        ? "bg-amber-600 text-white border-amber-600 font-bold"
+                        : "bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    Hari Ini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPinDate(getFutureDateStr(1))}
+                    className={`px-2 py-1 rounded text-[11px] border font-medium transition-all cursor-pointer ${
+                      pinDate === getFutureDateStr(1)
+                        ? "bg-amber-600 text-white border-amber-600 font-bold"
+                        : "bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    Besok
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPinDate(getFutureDateStr(2))}
+                    className={`px-2 py-1 rounded text-[11px] border font-medium transition-all cursor-pointer ${
+                      pinDate === getFutureDateStr(2)
+                        ? "bg-amber-600 text-white border-amber-600 font-bold"
+                        : "bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    Lusa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPinDate(getFutureDateStr(3))}
+                    className={`px-2 py-1 rounded text-[11px] border font-medium transition-all cursor-pointer ${
+                      pinDate === getFutureDateStr(3)
+                        ? "bg-amber-600 text-white border-amber-600 font-bold"
+                        : "bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    +3 Hari
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPinDate(getFutureDateStr(7))}
+                    className={`px-2 py-1 rounded text-[11px] border font-medium transition-all cursor-pointer ${
+                      pinDate === getFutureDateStr(7)
+                        ? "bg-amber-600 text-white border-amber-600 font-bold"
+                        : "bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200"
+                    }`}
+                  >
+                    +1 Minggu
+                  </button>
+                </div>
+              </div>
+
+              {/* Catatan Follow-up (100% custom-typed by Big Bos / Admin) */}
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-amber-600" />
+                  <span>Catatan Khusus (Bisa diketik bebas):</span>
+                </Label>
+                <Textarea
+                  placeholder="Ketik catatan manual di sini... Cth: di Tasikmalaya, janji transfer tgl 25, tunggu gajian, minta katalog reseller..."
+                  value={pinNote}
+                  onChange={(e) => setPinNote(e.target.value)}
+                  rows={3}
+                  className="text-xs bg-white resize-none"
+                />
+
+                {/* Quick chip suggestions */}
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  <span className="text-[10px] text-slate-500 font-medium">Contoh cepat:</span>
+                  {[
+                    "Janji Transfer",
+                    "Tunggu Gajian",
+                    "Tanya Stok",
+                    "Minta Sampel",
+                    "di Luar Kota",
+                  ].map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => {
+                        setPinNote(prev => (prev ? `${prev} - ${chip}` : chip));
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 border border-slate-200 transition-colors cursor-pointer"
+                    >
+                      +{chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <DialogFooter className="flex items-center justify-between sm:justify-between pt-3 border-t border-slate-100">
+                <div>
+                  {pinnedMap.has((pinDialogChat.customer_phone || "").replace(/[^0-9]/g, "")) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={savingPin}
+                      onClick={() => handleUnpin(pinDialogChat.customer_phone, pinDialogChat.chat_id)}
+                      className="h-8 text-xs text-rose-600 hover:bg-rose-50 border-rose-200 cursor-pointer"
+                    >
+                      <PinOff className="h-3.5 w-3.5 mr-1" />
+                      Lepas Pin
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={savingPin}
+                    onClick={() => setPinDialogOpen(false)}
+                    className="h-8 text-xs text-slate-600 cursor-pointer"
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={savingPin}
+                    onClick={handleSavePin}
+                    className="h-8 text-xs bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Pin className="h-3.5 w-3.5 fill-slate-900" />
+                    <span>{savingPin ? "Menyimpan..." : "Simpan Pin"}</span>
+                  </Button>
+                </div>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
