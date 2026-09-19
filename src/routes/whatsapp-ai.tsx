@@ -36,13 +36,19 @@ import {
   PopoverContent,
   PopoverTrigger
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { 
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
   ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, Smile,
-  Pin, PinOff, Calendar, Clock
+  Pin, PinOff, Calendar, Clock, Copy
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -442,7 +448,27 @@ function WhatsAppAiPage() {
   const [pinDate, setPinDate] = useState<string>("");
   const [pinNote, setPinNote] = useState<string>("");
   const [savingPin, setSavingPin] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Helper to extract clean digit-only phone (no +, -, or spaces; e.g. 6281284629656) for Agregator CRM search
+  const getCleanCopyPhone = useCallback((phone?: string) => {
+    if (!phone) return "";
+    let clean = phone.replace(/[^0-9]/g, "");
+    if (clean.startsWith("0")) {
+      clean = "62" + clean.substring(1);
+    }
+    return clean;
+  }, []);
+
+  const handleCopyPhone = useCallback((phone?: string) => {
+    const clean = getCleanCopyPhone(phone);
+    if (!clean) return;
+    navigator.clipboard.writeText(clean);
+    setCopiedPhone(true);
+    toast.success(`Nomor ${clean} berhasil disalin! Siap dipaste ke Agregator 📋`);
+    setTimeout(() => setCopiedPhone(false), 2000);
+  }, [getCleanCopyPhone]);
 
   // Mark all unread incoming messages for a customer/chat as read
   const markingReadRef = useRef<Set<string>>(new Set());
@@ -1703,9 +1729,36 @@ function WhatsAppAiPage() {
                         <div>
                           <CardTitle className="text-base flex items-center gap-2">
                             <span>{displayName}</span>
-                            <span className="text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              {displayPhone}
-                            </span>
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyPhone(activeChat?.customer_phone || selectedChatId)}
+                                    className="group/phone inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/90 active:scale-95 px-2 py-0.5 rounded border border-emerald-200 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs"
+                                    title="Klik untuk salin nomor murni tanpa strip"
+                                  >
+                                    <span>{displayPhone}</span>
+                                    {copiedPhone ? (
+                                      <Check className="h-3 w-3 text-emerald-600 animate-in zoom-in" />
+                                    ) : (
+                                      <Copy className="h-3 w-3 text-emerald-600/70 opacity-0 group-hover/phone:opacity-100 transition-opacity" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-slate-900 text-white border border-slate-700 text-xs py-1.5 px-3 shadow-xl flex items-center gap-1.5 z-50 rounded-lg">
+                                  {copiedPhone ? (
+                                    <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                                      <Check className="h-3.5 w-3.5" /> Tersalin: {getCleanCopyPhone(activeChat?.customer_phone || selectedChatId)}!
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1.5">
+                                      <Copy className="h-3.5 w-3.5 text-amber-400" /> Salin nomor: <strong className="font-mono text-amber-300">{getCleanCopyPhone(activeChat?.customer_phone || selectedChatId)}</strong>
+                                    </span>
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
                             {isCurrentOrdered && (
                               <Badge className="bg-amber-500 text-white text-[10px] flex items-center gap-1">
