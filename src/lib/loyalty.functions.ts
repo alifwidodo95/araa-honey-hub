@@ -421,16 +421,23 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       let wahaUrl = "https://waha.araahoney.my.id";
       let sessionName = "default";
       let apiKey = "araahoney123";
+      let campaignWahaUrl = "https://waha.araahoney.my.id/waha2";
 
       const wahaRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
       if (wahaRes.rowCount && wahaRes.rows[0].value) {
         const val = wahaRes.rows[0].value;
         if (val.url) wahaUrl = val.url.replace(/\/$/, "");
+        if (val.wahaUrl) wahaUrl = val.wahaUrl.replace(/\/$/, "");
         if (val.session) sessionName = val.session;
+        if (val.sessionName) sessionName = val.sessionName;
         if (val.apiKey) apiKey = val.apiKey;
+        if (val.campaignWahaUrl) campaignWahaUrl = val.campaignWahaUrl.replace(/\/$/, "");
       }
 
       const activeSession = data.senderSession || sessionName || "default";
+      if (activeSession === "campaign" || activeSession === "waha_campaign") {
+        wahaUrl = campaignWahaUrl || `${wahaUrl}/waha2`;
+      }
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",

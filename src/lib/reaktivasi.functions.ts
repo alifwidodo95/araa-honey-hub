@@ -410,7 +410,9 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
       // 2. DISPATCH VIA WAHA (Slot 1 Default or Slot 2 Campaign)
       const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
       const wahaConfig = wahaConfigRes.rows[0]?.value || {};
-      const { wahaUrl, sessionName, apiKey, campaignSessionName } = wahaConfig;
+      const { sessionName, apiKey, campaignSessionName } = wahaConfig;
+      let wahaUrl = (wahaConfig.wahaUrl || "https://waha.araahoney.my.id").replace(/\/$/, "");
+      const campaignWahaUrl = (wahaConfig.campaignWahaUrl || `${wahaUrl}/waha2`).replace(/\/$/, "");
 
       if (!wahaUrl) {
         throw new Error("Konfigurasi server WAHA belum diatur.");
@@ -418,6 +420,9 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       // Determine active sender session: prefer data.senderSession, then campaignSessionName, then sessionName
       const activeSession = data.senderSession || campaignSessionName || "campaign";
+      if (activeSession === "campaign" || activeSession === "waha_campaign") {
+        wahaUrl = campaignWahaUrl;
+      }
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers["x-api-key"] = apiKey;
@@ -657,18 +662,23 @@ export const getWahaSessionsInfo = createServerFn({ method: "GET" }).handler(asy
     pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
     const res = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
     const cfg = res.rows[0]?.value || {};
-    const wahaUrl = cfg.wahaUrl || "https://waha.araahoney.my.id";
+    let wahaUrl = (cfg.wahaUrl || "https://waha.araahoney.my.id").replace(/\/$/, "");
+    const campaignWahaUrl = (cfg.campaignWahaUrl || `${wahaUrl}/waha2`).replace(/\/$/, "");
     const mainSessionName = cfg.sessionName || "default";
     const campaignSessionName = cfg.campaignSessionName || "campaign";
 
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
 
-    const sessionRes = await fetch(`${wahaUrl}/api/sessions`, { headers }).catch(() => null);
-    const sessionsList: any[] = sessionRes && sessionRes.ok ? await sessionRes.json().catch(() => []) : [];
+    const [mainRes, campRes] = await Promise.all([
+      fetch(`${wahaUrl}/api/sessions`, { headers }).catch(() => null),
+      fetch(`${campaignWahaUrl}/api/sessions`, { headers }).catch(() => null)
+    ]);
+    const mainList: any[] = mainRes && mainRes.ok ? await mainRes.json().catch(() => []) : [];
+    const campList: any[] = campRes && campRes.ok ? await campRes.json().catch(() => []) : [];
 
-    const mainSession = sessionsList.find((s: any) => s.name === mainSessionName) || null;
-    const campaignSession = sessionsList.find((s: any) => s.name === campaignSessionName) || null;
+    const mainSession = mainList.find((s: any) => s.name === mainSessionName) || null;
+    const campaignSession = campList.find((s: any) => s.name === campaignSessionName) || null;
 
     const wabaRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
     const wabaConfig = wabaRes.rows[0]?.value || {};

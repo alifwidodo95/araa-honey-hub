@@ -30,6 +30,7 @@ export interface SendWhatsAppOptions {
   };
   wahaConfig?: {
     wahaUrl?: string;
+    campaignWahaUrl?: string;
     sessionName?: string;
     campaignSessionName?: string;
     apiKey?: string;
@@ -252,7 +253,10 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
     ? (opts.wahaConfig?.campaignSessionName || 'campaign')
     : (opts.wahaConfig?.sessionName || 'default');
 
-  const wahaUrl = opts.wahaConfig?.wahaUrl || process.env.WAHA_URL || 'https://waha.araahoney.my.id';
+  const defaultUrl = isCampaign
+    ? (opts.wahaConfig?.campaignWahaUrl || `${opts.wahaConfig?.wahaUrl || 'https://waha.araahoney.my.id'}/waha2`)
+    : (opts.wahaConfig?.wahaUrl || 'https://waha.araahoney.my.id');
+  const wahaUrl = (defaultUrl || process.env.WAHA_URL || 'https://waha.araahoney.my.id').replace(/\/$/, '');
   const apiKey = opts.wahaConfig?.apiKey || process.env.WAHA_API_KEY || 'araahoney123';
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

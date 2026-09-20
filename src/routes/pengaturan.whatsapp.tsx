@@ -53,10 +53,11 @@ function WhatsAppPage() {
   const qc = useQueryClient();
   
   // WAHA Configurations (Persisted to localStorage + Supabase app_settings)
-  const [wahaUrl, setWahaUrl] = useState(() => localStorage.getItem("waha_url") || "http://localhost:3000");
+  const [wahaUrl, setWahaUrl] = useState(() => localStorage.getItem("waha_url") || "https://waha.araahoney.my.id");
+  const [campaignWahaUrl, setCampaignWahaUrl] = useState(() => localStorage.getItem("waha_campaign_url") || "https://waha.araahoney.my.id/waha2");
   const [sessionName, setSessionName] = useState(() => localStorage.getItem("waha_session") || "default");
   const [campaignSessionName, setCampaignSessionName] = useState(() => localStorage.getItem("waha_campaign_session") || "campaign");
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("waha_api_key") || "");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("waha_api_key") || "araahoney123");
   const [scheduleTime, setScheduleTime] = useState(() => localStorage.getItem("waha_schedule_time") || "19:00");
   const [intervalVal, setIntervalVal] = useState(() => localStorage.getItem("waha_send_interval") || "60"); // in seconds
   const [autoSchedule, setAutoSchedule] = useState(() => localStorage.getItem("waha_auto_schedule") === "true");
@@ -540,6 +541,10 @@ function WhatsAppPage() {
         setCampaignSessionName(wahaConfig.campaignSessionName);
         localStorage.setItem("waha_campaign_session", wahaConfig.campaignSessionName);
       }
+      if (wahaConfig.campaignWahaUrl) {
+        setCampaignWahaUrl(wahaConfig.campaignWahaUrl);
+        localStorage.setItem("waha_campaign_url", wahaConfig.campaignWahaUrl);
+      }
       if (wahaConfig.apiKey) {
         setApiKey(wahaConfig.apiKey);
         localStorage.setItem("waha_api_key", wahaConfig.apiKey);
@@ -648,6 +653,7 @@ function WhatsAppPage() {
             wahaUrl: wahaUrl.trim(),
             sessionName: sessionName.trim(),
             campaignSessionName: campaignSessionName.trim(),
+            campaignWahaUrl: campaignWahaUrl.trim(),
             apiKey: apiKey.trim(),
             scheduleTime,
             intervalVal,
@@ -660,6 +666,7 @@ function WhatsAppPage() {
       if (error) throw error;
 
       localStorage.setItem("waha_url", wahaUrl.trim());
+      localStorage.setItem("waha_campaign_url", campaignWahaUrl.trim());
       localStorage.setItem("waha_session", sessionName.trim());
       localStorage.setItem("waha_campaign_session", campaignSessionName.trim());
       localStorage.setItem("waha_api_key", apiKey.trim());
@@ -814,23 +821,35 @@ function WhatsAppPage() {
   const checkAllSessions = async (silent = false) => {
     if (!silent) setLoadingStatus(true);
     try {
-      const res = await fetch("/api/waha-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions`,
-          method: "GET",
-          headers: getWahaHeaders()
-        })
-      });
-      if (!res.ok) {
-        throw new Error("HTTP status " + res.status);
-      }
-      const sessions = await safeJson(res);
-      const list: any[] = Array.isArray(sessions) ? sessions : [];
+      const campUrl = (campaignWahaUrl || `${wahaUrl}/waha2`).replace(/\/$/, "");
+      const [resMain, resCamp] = await Promise.all([
+        fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${wahaUrl}/api/sessions`,
+            method: "GET",
+            headers: getWahaHeaders()
+          })
+        }).catch(() => null),
+        fetch("/api/waha-proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: `${campUrl}/api/sessions`,
+            method: "GET",
+            headers: getWahaHeaders()
+          })
+        }).catch(() => null)
+      ]);
+
+      const sessionsMain = resMain && resMain.ok ? await safeJson(resMain) : [];
+      const sessionsCamp = resCamp && resCamp.ok ? await safeJson(resCamp) : [];
+      const listMain: any[] = Array.isArray(sessionsMain) ? sessionsMain : [];
+      const listCamp: any[] = Array.isArray(sessionsCamp) ? sessionsCamp : [];
 
       // 1. Slot 1 (Nomor Utama CS)
-      const main = list.find((s: any) => s.name === sessionName);
+      const main = listMain.find((s: any) => s.name === sessionName);
       if (main) {
         let norm = main.status || "STOPPED";
         if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
@@ -843,7 +862,7 @@ function WhatsAppPage() {
       }
 
       // 2. Slot 2 (Nomor Kampanye Outreach)
-      const camp = list.find((s: any) => s.name === campaignSessionName);
+      const camp = listCamp.find((s: any) => s.name === campaignSessionName);
       if (camp) {
         let norm = camp.status || "STOPPED";
         if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
@@ -869,6 +888,7 @@ function WhatsAppPage() {
   // Start WAHA Session for target slot (with auto-recovery restart)
   const handleStartSession = async (target: "main" | "campaign" = selectedSlot) => {
     const sName = (target === "main" ? sessionName : campaignSessionName) || (target === "main" ? "default" : "campaign");
+    const targetUrl = target === "main" ? wahaUrl : (campaignWahaUrl || `${wahaUrl}/waha2`).replace(/\/$/, "");
     if (target === "main") setActionLoadingMain(true);
     else setActionLoadingCampaign(true);
 
@@ -877,7 +897,7 @@ function WhatsAppPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions/start`,
+          url: `${targetUrl}/api/sessions/start`,
           method: "POST",
           headers: getWahaHeaders(),
           body: { name: sName }
@@ -892,7 +912,7 @@ function WhatsAppPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            url: `${wahaUrl}/api/sessions/${sName}/stop`,
+            url: `${targetUrl}/api/sessions/${sName}/stop`,
             method: "POST",
             headers: getWahaHeaders()
           })
@@ -905,7 +925,7 @@ function WhatsAppPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            url: `${wahaUrl}/api/sessions/start`,
+            url: `${targetUrl}/api/sessions/start`,
             method: "POST",
             headers: getWahaHeaders(),
             body: { name: sName }
@@ -934,6 +954,7 @@ function WhatsAppPage() {
   // Stop & Logout WAHA Session for target slot
   const handleStopSession = async (target: "main" | "campaign" = selectedSlot) => {
     const sName = target === "main" ? sessionName : campaignSessionName;
+    const targetUrl = target === "main" ? wahaUrl : (campaignWahaUrl || `${wahaUrl}/waha2`).replace(/\/$/, "");
     const isMain = target === "main";
     const promptMsg = isMain
       ? "Apakah Anda yakin ingin mengeluarkan sesi Nomor Utama CS ini? (Sesi akan di-logout dan memerlukan scan QR baru)"
@@ -949,7 +970,7 @@ function WhatsAppPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: `${wahaUrl}/api/sessions/${sName}/logout`,
+          url: `${targetUrl}/api/sessions/${sName}/logout`,
           method: "POST",
           headers: getWahaHeaders()
         })
@@ -959,7 +980,7 @@ function WhatsAppPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            url: `${wahaUrl}/api/sessions/logout`,
+            url: `${targetUrl}/api/sessions/logout`,
             method: "POST",
             headers: getWahaHeaders(),
             body: { name: sName }
@@ -1043,11 +1064,12 @@ function WhatsAppPage() {
 
     const fetchCampaignQr = async () => {
       try {
+        const campUrl = (campaignWahaUrl || `${wahaUrl}/waha2`).replace(/\/$/, "");
         const res = await fetch("/api/waha-proxy", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            url: `${wahaUrl}/api/${campaignSessionName}/auth/qr`,
+            url: `${campUrl}/api/${campaignSessionName}/auth/qr`,
             method: "GET",
             headers: getWahaHeaders()
           })
@@ -1068,7 +1090,7 @@ function WhatsAppPage() {
       active = false;
       clearInterval(interval);
     };
-  }, [campaignSessionStatus, qrRefreshTrigger, wahaUrl, campaignSessionName, apiKey]);
+  }, [campaignSessionStatus, qrRefreshTrigger, wahaUrl, campaignWahaUrl, campaignSessionName, apiKey]);
 
   // Clean phone number format for WhatsApp (62xxx@c.us)
   const formatPhoneNumber = (phone: string): string => {
