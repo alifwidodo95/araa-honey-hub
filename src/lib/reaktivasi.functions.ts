@@ -447,16 +447,22 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
       let response: Response | null = null;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
       if (hasImage) {
+        const imgUrl = data.imageUrl!.trim();
+        const isPng = imgUrl.toLowerCase().includes(".png");
+        const isWebp = imgUrl.toLowerCase().includes(".webp");
+        const mimetype = isPng ? "image/png" : isWebp ? "image/webp" : "image/jpeg";
+        const filename = isPng ? "promo-reaktivasi-araa.png" : isWebp ? "promo-reaktivasi-araa.webp" : "promo-reaktivasi-araa.jpg";
+
         const imagePayload = {
           session: activeSession,
           chatId,
           file: {
-            url: data.imageUrl!.trim(),
-            mimetype: "image/jpeg",
-            filename: "promo-reaktivasi-araa.jpg",
+            url: imgUrl,
+            mimetype,
+            filename,
           },
           caption: data.message,
         };
@@ -491,14 +497,6 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
           body: JSON.stringify(textPayload),
           signal: controller.signal,
         }).catch(() => null);
-
-        if (!response || !response.ok) {
-          response = await fetch(`${wahaUrl}/api/messages/sendText`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(textPayload),
-          });
-        }
       }
 
       clearTimeout(timeoutId);

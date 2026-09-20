@@ -443,19 +443,25 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       console.log(`[Direct WAHA Send] Sending ${hasImage ? "IMAGE + CAPTION" : "TEXT"} to ${chatId} via ${wahaUrl} (${activeSession})...`);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
       let response: Response | null = null;
 
       if (hasImage) {
+        const imgUrl = data.imageUrl.trim();
+        const isPng = imgUrl.toLowerCase().includes(".png");
+        const isWebp = imgUrl.toLowerCase().includes(".webp");
+        const mimetype = isPng ? "image/png" : isWebp ? "image/webp" : "image/jpeg";
+        const filename = isPng ? "promo-madu-araa.png" : isWebp ? "promo-madu-araa.webp" : "promo-madu-araa.jpg";
+
         // Send Image with Caption
         const imagePayload = {
           session: activeSession,
           chatId,
           file: {
-            url: data.imageUrl.trim(),
-            mimetype: "image/jpeg",
-            filename: "promo-madu-araa.jpg",
+            url: imgUrl,
+            mimetype,
+            filename,
           },
           caption: data.message,
         };
@@ -466,21 +472,12 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           body: JSON.stringify(imagePayload),
           signal: controller.signal,
         }).catch((e) => {
-          console.warn("[WAHA /api/sendImage failed, trying /api/sendFile]:", e);
+          console.warn("[WAHA /api/sendImage failed, trying /api/sendFile]:", e?.message || e);
           return null;
         });
 
         if (!response || !response.ok) {
           response = await fetch(`${wahaUrl}/api/sendFile`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(imagePayload),
-            signal: controller.signal,
-          }).catch(() => null);
-        }
-
-        if (!response || !response.ok) {
-          response = await fetch(`${wahaUrl}/api/messages/sendFile`, {
             method: "POST",
             headers,
             body: JSON.stringify(imagePayload),
@@ -502,23 +499,15 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           body: JSON.stringify(textPayload),
           signal: controller.signal,
         }).catch((e) => {
-          console.warn("[WAHA Primary Endpoint failed, trying /api/messages/sendText]:", e);
+          console.warn("[WAHA Primary Endpoint failed]:", e?.message || e);
           return null;
         });
-
-        if (!response || !response.ok) {
-          response = await fetch(`${wahaUrl}/api/messages/sendText`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(textPayload),
-          });
-        }
       }
 
       clearTimeout(timeoutId);
 
       if (!response || !response.ok) {
-        const errBody = response ? await response.text().catch(() => "") : "Koneksi gateway terputus";
+        const errBody = response ? await response.text().catch(() => "") : "Koneksi gateway terputus atau timeout";
         throw new Error(`WAHA Gateway error (${response?.status || 500}): ${errBody.substring(0, 150)}`);
       }
 
