@@ -128,8 +128,8 @@ export const Route = createFileRoute('/api/scalev-webhook')({
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
             ON CONFLICT (scalev_order_id) DO UPDATE SET
               customer_name = EXCLUDED.customer_name,
-              customer_phone = EXCLUDED.customer_phone,
-              customer_raw_phone = EXCLUDED.customer_raw_phone,
+              customer_phone = CASE WHEN scalev_leads.is_phone_edited = true THEN scalev_leads.customer_phone ELSE EXCLUDED.customer_phone END,
+              customer_raw_phone = CASE WHEN scalev_leads.is_phone_edited = true THEN scalev_leads.customer_raw_phone ELSE EXCLUDED.customer_raw_phone END,
               product_name = EXCLUDED.product_name,
               gross_revenue = EXCLUDED.gross_revenue,
               scalev_status = EXCLUDED.scalev_status,

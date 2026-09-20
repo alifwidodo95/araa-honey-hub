@@ -100,6 +100,8 @@ export const Route = createFileRoute('/api/cron/sync-scalev')({
                 scalev_status = EXCLUDED.scalev_status,
                 payment_status = EXCLUDED.payment_status,
                 gross_revenue = EXCLUDED.gross_revenue,
+                customer_phone = CASE WHEN scalev_leads.is_phone_edited = true THEN scalev_leads.customer_phone ELSE EXCLUDED.customer_phone END,
+                customer_raw_phone = CASE WHEN scalev_leads.is_phone_edited = true THEN scalev_leads.customer_raw_phone ELSE EXCLUDED.customer_raw_phone END,
                 is_closed = CASE WHEN scalev_leads.is_closed = true THEN true ELSE EXCLUDED.is_closed END,
                 matched_order_id = COALESCE(scalev_leads.matched_order_id, EXCLUDED.matched_order_id),
                 closed_at = COALESCE(scalev_leads.closed_at, EXCLUDED.closed_at),

@@ -158,7 +158,7 @@ export const getScalevLeads = createServerFn({ method: "GET" })
           id, scalev_order_id, customer_name, customer_phone, customer_raw_phone,
           product_name, gross_revenue, scalev_status, payment_status, store_name,
           is_closed, matched_order_id, closed_at, followed_up_at, follow_up_count,
-          follow_up_session, created_at, updated_at,
+          follow_up_session, created_at, updated_at, COALESCE(is_phone_edited, false) AS is_phone_edited,
           COALESCE(follow_up_step, follow_up_count, 0) AS follow_up_step,
           fu1_at, fu2_at, fu3_at, last_fu_notes
         FROM scalev_leads
@@ -332,6 +332,8 @@ export const syncScalevHistory = createServerFn({ method: "POST" })
               scalev_status = EXCLUDED.scalev_status,
               payment_status = EXCLUDED.payment_status,
               gross_revenue = EXCLUDED.gross_revenue,
+              customer_phone = CASE WHEN scalev_leads.is_phone_edited = true THEN scalev_leads.customer_phone ELSE EXCLUDED.customer_phone END,
+              customer_raw_phone = CASE WHEN scalev_leads.is_phone_edited = true THEN scalev_leads.customer_raw_phone ELSE EXCLUDED.customer_raw_phone END,
               is_closed = CASE WHEN scalev_leads.is_closed = true THEN true ELSE EXCLUDED.is_closed END,
               matched_order_id = COALESCE(scalev_leads.matched_order_id, EXCLUDED.matched_order_id),
               closed_at = COALESCE(scalev_leads.closed_at, EXCLUDED.closed_at),
@@ -695,6 +697,76 @@ export const searchOrdersForLinking = createServerFn({ method: "GET" })
       if (pool) try { await pool.end(); } catch (e) {}
       console.error("[searchOrdersForLinking Error]:", err);
       return [];
+    }
+  });
+
+// 9. Update Customer Phone Number for a Lead (with immediate auto-matching check)
+export const updateScalevLeadPhone = createServerFn({ method: "POST" })
+  .validator((data: { leadId: string; newPhone: string }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      const cleanPhone = normalizePhone(data.newPhone);
+      if (!cleanPhone || cleanPhone.length < 9) {
+        throw new Error("Format nomor WhatsApp tidak valid. Minimal 9 digit angka.");
+      }
+
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      // 1. Fetch current lead
+      const leadRes = await pool.query(
+        "SELECT id, is_closed, created_at, customer_name FROM scalev_leads WHERE id = $1",
+        [data.leadId]
+      );
+      if (!leadRes.rowCount || leadRes.rowCount === 0) {
+        throw new Error("Data lead tidak ditemukan.");
+      }
+      const lead = leadRes.rows[0];
+
+      // 2. Check if an order matches in orders table (if lead is not closed yet)
+      let matchedOrder = false;
+      let matchedOrderId: string | null = null;
+      let closedAt: string | null = null;
+      let isClosed = lead.is_closed === true;
+
+      if (!isClosed) {
+        const variants = getPhoneVariants(cleanPhone);
+        const matchRes = await pool.query(
+          `SELECT id, created_at FROM orders 
+           WHERE customer_phone = ANY($1) 
+             AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
+           ORDER BY created_at DESC LIMIT 1`,
+          [variants, lead.created_at]
+        );
+
+        if (matchRes.rowCount && matchRes.rowCount > 0) {
+          matchedOrder = true;
+          isClosed = true;
+          matchedOrderId = matchRes.rows[0].id;
+          closedAt = matchRes.rows[0].created_at;
+        }
+      }
+
+      // 3. Update scalev_leads
+      await pool.query(
+        `UPDATE scalev_leads 
+         SET customer_phone = $1, 
+             customer_raw_phone = $2, 
+             is_phone_edited = true,
+             is_closed = $3,
+             matched_order_id = COALESCE($4, matched_order_id),
+             closed_at = COALESCE($5, closed_at),
+             updated_at = now() 
+         WHERE id = $6`,
+        [cleanPhone, data.newPhone.trim(), isClosed, matchedOrderId, closedAt, data.leadId]
+      );
+
+      await pool.end();
+      return { ok: true, matchedOrder, customerPhone: cleanPhone };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[updateScalevLeadPhone Error]:", err);
+      throw new Error(err.message || "Gagal memperbarui nomor HP pelanggan");
     }
   });
 

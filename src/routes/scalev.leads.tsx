@@ -17,7 +17,8 @@ import {
   Users, CheckCircle2, AlertCircle, RefreshCw, Settings2,
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
-  Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap
+  Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
+  Pencil
 } from "lucide-react";
 import {
   getScalevMetrics,
@@ -28,7 +29,8 @@ import {
   getScalevConfig,
   saveScalevConfig,
   manualToggleScalevClosing,
-  searchOrdersForLinking
+  searchOrdersForLinking,
+  updateScalevLeadPhone
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
@@ -373,6 +375,41 @@ export function ScalevLeadsPage() {
       isClosed: false,
     });
   };
+
+  // State: Edit Customer Phone Modal
+  const [editPhoneModalOpen, setEditPhoneModalOpen] = useState(false);
+  const [leadToEditPhone, setLeadToEditPhone] = useState<any>(null);
+  const [newPhoneInput, setNewPhoneInput] = useState("");
+
+  const handleOpenEditPhone = (lead: any) => {
+    setLeadToEditPhone(lead);
+    setNewPhoneInput(lead.customer_phone || lead.customer_raw_phone || "");
+    setEditPhoneModalOpen(true);
+  };
+
+  // Mutation: Update Lead Phone Number
+  const updatePhoneMutation = useMutation({
+    mutationFn: (payload: { leadId: string; newPhone: string }) =>
+      updateScalevLeadPhone({ data: payload }),
+    onSuccess: (res) => {
+      if (res.matchedOrder) {
+        toast.success(
+          `✅ Nomor HP berhasil diperbarui ke ${res.customerPhone} dan otomatis tercocokkan dengan pesanan di Penjualan (Closing Won)!`
+        );
+      } else {
+        toast.success(`✅ Nomor HP berhasil diperbarui ke ${res.customerPhone}!`);
+      }
+      setEditPhoneModalOpen(false);
+      setLeadToEditPhone(null);
+      refetchMetrics();
+      refetchLeads();
+      queryClient.invalidateQueries({ queryKey: ["scalev-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["scalev-leads"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Gagal memperbarui nomor HP pelanggan.");
+    },
+  });
 
   const getTemplateForStep = (step: number, lead: any) => {
     let tpl = "";
@@ -797,9 +834,24 @@ export function ScalevLeadsPage() {
                             <span className="font-medium text-xs text-foreground">
                               {lead.customer_name || "Pelanggan Scalev"}
                             </span>
-                            <span className="text-xs font-mono text-muted-foreground">
-                              {lead.customer_phone}
-                            </span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-xs font-mono text-muted-foreground">
+                                {lead.customer_phone}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditPhone(lead)}
+                                className="p-0.5 rounded text-muted-foreground/60 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/50 transition-colors cursor-pointer"
+                                title="Ubah / Perbaiki Nomor WhatsApp"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              {lead.is_phone_edited && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-medium" title="Nomor telah diselaraskan/diedit manual">
+                                  Diedit
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-muted-foreground/70">
                               ID: {lead.scalev_order_id}
                             </span>
@@ -2138,6 +2190,115 @@ export function ScalevLeadsPage() {
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setManualClosingLead(null)}>
               Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 5. Modal Edit Nomor HP Pelanggan */}
+      <Dialog open={editPhoneModalOpen} onOpenChange={setEditPhoneModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                <Pencil className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">Ubah Nomor WhatsApp Pelanggan</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Perbaiki kesalahan input nomor telepon dari landing page agar data selaras dengan chat riil.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {leadToEditPhone && (
+            <div className="space-y-4 py-2">
+              {/* Info Ringkas Pelanggan */}
+              <div className="p-3 rounded-xl bg-muted/60 border border-border text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Nama:</span>
+                  <span className="font-semibold text-foreground">{leadToEditPhone.customer_name || "Pelanggan Scalev"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ID Scalev:</span>
+                  <span className="font-mono text-muted-foreground">{leadToEditPhone.scalev_order_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Nomor Saat Ini:</span>
+                  <span className="font-mono text-muted-foreground">{leadToEditPhone.customer_phone || "-"}</span>
+                </div>
+              </div>
+
+              {/* Input Nomor Baru */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-amber-500" />
+                  Nomor WhatsApp Baru
+                </label>
+                <Input
+                  type="tel"
+                  value={newPhoneInput}
+                  onChange={(e) => setNewPhoneInput(e.target.value)}
+                  placeholder="Contoh: 08123456789 atau 628123456789"
+                  className="font-mono text-sm"
+                  autoFocus
+                />
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Bisa diawali <span className="font-mono text-foreground font-semibold">08...</span> atau <span className="font-mono text-foreground font-semibold">628...</span>. Sistem akan otomatis menormalkan ke format standar.
+                </p>
+              </div>
+
+              {/* Catatan Otomatisasi */}
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs space-y-1">
+                <p className="font-semibold flex items-center gap-1.5 text-xs">
+                  <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                  Pencocokan Otomatis Penjualan:
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Jika nomor baru ini sudah tercatat pernah membuat pesanan di menu <b>Penjualan</b>, sistem akan langsung menandai lead ini sebagai <b>Closing (Won) Auto</b>!
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditPhoneModalOpen(false)}
+              disabled={updatePhoneMutation.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!leadToEditPhone) return;
+                const clean = newPhoneInput.replace(/[^0-9]/g, "");
+                if (clean.length < 9) {
+                  toast.error("Nomor telepon tidak valid. Minimal 9 angka.");
+                  return;
+                }
+                updatePhoneMutation.mutate({
+                  leadId: leadToEditPhone.id,
+                  newPhone: newPhoneInput,
+                });
+              }}
+              disabled={updatePhoneMutation.isPending || !newPhoneInput.trim()}
+              className="bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center gap-1.5"
+            >
+              {updatePhoneMutation.isPending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  Simpan Nomor HP
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
