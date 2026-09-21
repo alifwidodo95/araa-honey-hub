@@ -65,6 +65,44 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                 if (val.statuses && (!val.messages || val.messages.length === 0)) {
                   for (const st of val.statuses) {
                     console.log(`[Meta Webhook] Status update: recipient=${st.recipient_id}, status=${st.status}, id=${st.id}`);
+                    const statusVal = st.status; // 'sent' | 'delivered' | 'read' | 'failed'
+                    const cleanPhone = (st.recipient_id || '').replace(/[^0-9]/g, '');
+
+                    // Update delivery_status in whatsapp_chat_logs
+                    if (st.id && statusVal) {
+                      try {
+                        const upd = await pool.query(`
+                          UPDATE public.whatsapp_chat_logs
+                          SET delivery_status = $1
+                          WHERE wamid = $2
+                        `, [statusVal, st.id]);
+
+                        // Fallback: if not matched by wamid, update latest outgoing message for this phone
+                        if ((upd.rowCount || 0) === 0 && cleanPhone) {
+                          await pool.query(`
+                            UPDATE public.whatsapp_chat_logs
+                            SET delivery_status = $1
+                            WHERE id = (
+                              SELECT id FROM public.whatsapp_chat_logs
+                              WHERE direction = 'outgoing' AND customer_phone = $2 AND channel = 'waba'
+                              ORDER BY created_at DESC LIMIT 1
+                            )
+                          `, [statusVal, cleanPhone]);
+                        }
+
+                        // When customer reads, cascade previous unread outgoing messages to 'read' as well
+                        if (statusVal === 'read' && cleanPhone) {
+                          await pool.query(`
+                            UPDATE public.whatsapp_chat_logs
+                            SET delivery_status = 'read'
+                            WHERE direction = 'outgoing' AND customer_phone = $1 AND channel = 'waba' AND delivery_status != 'read'
+                          `, [cleanPhone]);
+                        }
+                      } catch (statusErr) {
+                        console.error('[Meta Webhook] Failed to update delivery_status:', statusErr);
+                      }
+                    }
+
                     if (st.status === 'failed' || (st.errors && st.errors.length > 0)) {
                       const errDetails = (st.errors || []).map((e: any) => `[Error ${e.code}]: ${e.title || ''} - ${e.message || ''} (${e.error_data?.details || ''})`).join('; ') || `Status: ${st.status}`;
                       console.error(`[Meta Webhook] Message DELIVERY FAILED: ${errDetails}`);

@@ -69,10 +69,11 @@ export const Route = createFileRoute('/api/whatsapp/send')({
                   custName = custRes.rows[0]?.name || 'Pelanggan';
                 }
               }
+              const msgId = result.messageId || null;
               await logPool.query(
-                `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, created_at)
-                 VALUES ($1, $2, $3, $4, 'outgoing', $5, $6, now())`,
-                [chatId, cleanPhone, custName, message, body.replied_by || 'manual', (channel as WhatsAppChannel) || 'waba']
+                `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, wamid, delivery_status, created_at)
+                 VALUES ($1, $2, $3, $4, 'outgoing', $5, $6, $7, 'sent', now())`,
+                [chatId, cleanPhone, custName, message, body.replied_by || 'manual', (channel as WhatsAppChannel) || 'waba', msgId]
               );
               await logPool.end();
             } catch (logErr) {

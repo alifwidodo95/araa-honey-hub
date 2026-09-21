@@ -47,7 +47,7 @@ import {
   Bot, MessageSquare, Settings, RefreshCw, Send, CheckCircle, 
   User, ShieldAlert, Cpu, HeartHandshake, Eye, EyeOff, Save, Phone,
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
-  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, Smile,
+  ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, CheckCheck, Smile,
   Pin, PinOff, Calendar, Clock, Copy,
   Image as ImageIcon, Download, ZoomIn, ExternalLink
 } from "lucide-react";
@@ -87,6 +87,8 @@ interface ChatLog {
   created_at: string;
   status?: 'sending' | 'failed' | 'sent';
   errorMsg?: string;
+  delivery_status?: 'sent' | 'delivered' | 'read' | 'failed' | null;
+  wamid?: string | null;
 }
 
 interface WhatsAppPinnedChat {
@@ -1702,12 +1704,23 @@ function WhatsAppAiPage() {
                             )}
                           </div>
 
-                          <p className={`text-xs truncate ${chat.isUnread ? "text-emerald-700 font-semibold" : isLastIncoming ? "text-slate-700 font-medium" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
-                            {chat.latestLog.media_id || chat.latestLog.message.includes('[Pelanggan Mengirim Gambar]')
-                              ? `📷 Foto ${chat.latestLog.message !== '[Pelanggan Mengirim Gambar]' ? chat.latestLog.message : ''}`.trim()
-                              : isLastIncoming
-                              ? `💬 ${chat.latestLog.message}`
-                              : chat.latestLog.message}
+                          <p className={`text-xs truncate flex items-center gap-1.5 ${chat.isUnread ? "text-emerald-700 font-semibold" : isLastIncoming ? "text-slate-700 font-medium" : isError ? "text-rose-600 font-medium" : "text-slate-500"}`}>
+                            {!isLastIncoming && !isError && (
+                              chat.latestLog.delivery_status === "read" ? (
+                                <CheckCheck className="w-3.5 h-3.5 text-cyan-500 shrink-0 stroke-[2.8]" title="Pesan sudah dibaca" />
+                              ) : chat.latestLog.delivery_status === "delivered" ? (
+                                <CheckCheck className="w-3.5 h-3.5 text-slate-400 shrink-0 stroke-[2]" title="Pesan terkirim ke HP" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5 text-slate-400 shrink-0 stroke-[2]" title="Pesan terkirim" />
+                              )
+                            )}
+                            <span className="truncate">
+                              {chat.latestLog.media_id || chat.latestLog.message.includes('[Pelanggan Mengirim Gambar]')
+                                ? `📷 Foto ${chat.latestLog.message !== '[Pelanggan Mengirim Gambar]' ? chat.latestLog.message : ''}`.trim()
+                                : isLastIncoming
+                                ? `💬 ${chat.latestLog.message}`
+                                : chat.latestLog.message}
+                            </span>
                           </p>
                         </div>
 
@@ -2149,14 +2162,23 @@ function WhatsAppAiPage() {
                                   <span className="text-[9px] font-bold uppercase tracking-wider">
                                     {isWabaTemplate ? "WABA TEMPLATE" : isAi ? "AI DEEPSEEK" : isManual ? "CS MANUAL" : "SISTEM"}
                                   </span>
-                                  {isManual && (
-                                    msg.status === "sending" ? (
-                                      <Clock className="w-3 h-3 text-amber-200 animate-spin" title="Sedang dikirim..." />
-                                    ) : msg.status === "failed" ? (
-                                      <AlertCircle className="w-3 h-3 text-rose-300" title="Gagal dikirim" />
-                                    ) : (
-                                      <Check className="w-3 h-3 text-emerald-300" title="Terkirim" />
-                                    )
+                                  {/* Delivery & Read Receipts (Sent ✓, Delivered ✓✓, Read ✓✓ Biru/Tebal) */}
+                                  {msg.status === "sending" ? (
+                                    <Clock className="w-3 h-3 text-amber-200 animate-spin" title="Sedang meluncur..." />
+                                  ) : msg.status === "failed" || msg.delivery_status === "failed" ? (
+                                    <AlertCircle className="w-3.5 h-3.5 text-rose-300" title="Gagal terkirim" />
+                                  ) : msg.delivery_status === "read" ? (
+                                    <span className="inline-flex items-center text-cyan-300 font-extrabold" title="Pesan sudah dibaca oleh konsumen (Centang 2 Tebal / Biru)">
+                                      <CheckCheck className="w-3.5 h-3.5 text-cyan-300 stroke-[3] filter drop-shadow-[0_0_2px_rgba(103,232,249,0.8)]" />
+                                    </span>
+                                  ) : msg.delivery_status === "delivered" ? (
+                                    <span className="inline-flex items-center text-white/80" title="Pesan sudah sampai di HP konsumen (Centang 2 Abu-abu)">
+                                      <CheckCheck className="w-3.5 h-3.5 text-white/80 stroke-[2.2]" />
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center text-white/70" title="Pesan terkirim ke server WhatsApp (Centang 1)">
+                                      <Check className="w-3.5 h-3.5 text-white/70 stroke-[2.2]" />
+                                    </span>
                                   )}
                                 </div>
                               </div>

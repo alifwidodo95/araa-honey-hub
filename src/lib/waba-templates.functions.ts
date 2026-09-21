@@ -220,13 +220,14 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
         const chatId = `${clean}@c.us`;
 
         await pool.query(
-          `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
-           VALUES ($1, $2, $3, $4, 'outgoing', 'waba', now())`,
+          `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, wamid, delivery_status, created_at)
+           VALUES ($1, $2, $3, $4, 'outgoing', 'waba', $5, 'sent', now())`,
           [
             chatId,
             clean,
             "Pelanggan",
             `[Template Resmi Meta: ${data.templateName}]`,
+            res.messageId || null,
           ]
         );
       } catch (e) {
