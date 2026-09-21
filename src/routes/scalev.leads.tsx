@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatIDR } from "@/lib/theme";
 import { toast } from "sonner";
 import {
@@ -18,7 +19,7 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil
+  Pencil, Trash2
 } from "lucide-react";
 import {
   getScalevMetrics,
@@ -30,7 +31,8 @@ import {
   saveScalevConfig,
   manualToggleScalevClosing,
   searchOrdersForLinking,
-  updateScalevLeadPhone
+  updateScalevLeadPhone,
+  deleteScalevLeads
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
@@ -106,6 +108,12 @@ export function ScalevLeadsPage() {
   const [searchOrderQuery, setSearchOrderQuery] = useState("");
   const [selectedOrderToLink, setSelectedOrderToLink] = useState<any | null>(null);
 
+  // Delete & Bulk Selection States
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Config Form State
   const [configForm, setConfigForm] = useState({
     apiKey: "",
@@ -167,6 +175,56 @@ export function ScalevLeadsPage() {
       }),
     refetchInterval: 15000,
   });
+
+  // Bulk Selection Helpers & Computed States
+  const currentLeads = useMemo(() => leadsData?.leads || [], [leadsData]);
+  const currentLeadIds = useMemo(() => currentLeads.map((l: any) => l.id), [currentLeads]);
+  const isAllSelected = currentLeadIds.length > 0 && currentLeadIds.every((id: string) => selectedLeadIds.includes(id));
+  const isSomeSelected = currentLeadIds.some((id: string) => selectedLeadIds.includes(id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedLeadIds(prev => prev.filter(id => !currentLeadIds.includes(id)));
+    } else {
+      setSelectedLeadIds(prev => Array.from(new Set([...prev, ...currentLeadIds])));
+    }
+  };
+
+  const handleToggleSelectLead = (id: string) => {
+    setSelectedLeadIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleOpenDeleteOne = (lead: any) => {
+    setLeadToDelete(lead);
+    setDeleteModalOpen(true);
+  };
+
+  const handleOpenBulkDelete = () => {
+    setLeadToDelete(null);
+    setDeleteModalOpen(true);
+  };
+
+  const handleExecuteDelete = async () => {
+    const idsToDelete = leadToDelete ? [leadToDelete.id] : selectedLeadIds;
+    if (idsToDelete.length === 0) return;
+
+    setIsDeleting(true);
+    try {
+      const res = await deleteScalevLeads({ data: { leadIds: idsToDelete } });
+      toast.success(`Berhasil menghapus ${res.deletedCount} lead`);
+      setSelectedLeadIds(prev => prev.filter(id => !idsToDelete.includes(id)));
+      setDeleteModalOpen(false);
+      setLeadToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["scalev-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["scalev-metrics"] });
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus data lead Scalev");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Query: WAHA Sessions Info (Check Slot 2: Admin Ayumi status)
   const { data: wahaInfo } = useQuery({
@@ -780,10 +838,59 @@ export function ScalevLeadsPage() {
 
         {/* Table Content */}
         <CardContent className="p-0">
+          {/* Bulk Action Floating Bar */}
+          {selectedLeadIds.length > 0 && (
+            <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white font-bold text-[11px]">
+                  {selectedLeadIds.length}
+                </span>
+                <span className="font-semibold text-foreground">
+                  Lead Terpilih
+                </span>
+                <span className="text-muted-foreground hidden sm:inline">
+                  (dari total {currentLeads.length} lead di halaman ini)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedLeadIds([])}
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Batal Pilih
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleOpenBulkDelete}
+                  className="h-7 text-xs gap-1.5 font-medium shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Terpilih ({selectedLeadIds.length})</span>
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader className="bg-muted/40">
                 <TableRow>
+                  <TableHead className="w-12 px-3 text-center">
+                    <Checkbox
+                      checked={
+                        isAllSelected
+                          ? true
+                          : isSomeSelected
+                          ? "indeterminate"
+                          : false
+                      }
+                      onCheckedChange={handleToggleSelectAll}
+                      aria-label="Pilih semua lead di halaman ini"
+                    />
+                  </TableHead>
                   <TableHead className="w-36 text-xs font-semibold">Waktu Masuk</TableHead>
                   <TableHead className="w-52 text-xs font-semibold">Pelanggan & Kontak</TableHead>
                   <TableHead className="text-xs font-semibold">Produk & Nominal</TableHead>
@@ -796,7 +903,7 @@ export function ScalevLeadsPage() {
               <TableBody>
                 {isLeadsLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-36 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-36 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         <span className="text-xs">Memuat data lead Scalev...</span>
@@ -805,7 +912,7 @@ export function ScalevLeadsPage() {
                   </TableRow>
                 ) : (leadsData?.leads || []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-36 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-36 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Users className="w-8 h-8 text-muted-foreground/40" />
                         <span className="text-sm font-medium text-foreground">Tidak ada lead ditemukan</span>
@@ -820,9 +927,24 @@ export function ScalevLeadsPage() {
                     const isClosed = lead.is_closed === true;
                     const hasFollowedUp = !!lead.followed_up_at;
                     const cleanPhone = String(lead.customer_phone || "").replace(/[^0-9]/g, "");
+                    const isSelected = selectedLeadIds.includes(lead.id);
 
                     return (
-                      <TableRow key={lead.id} className="hover:bg-muted/30 transition-colors">
+                      <TableRow 
+                        key={lead.id} 
+                        className={`transition-colors ${
+                          isSelected ? "bg-amber-500/10 dark:bg-amber-950/30" : "hover:bg-muted/30"
+                        }`}
+                      >
+                        {/* Checkbox Select */}
+                        <TableCell className="w-12 px-3 text-center">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handleToggleSelectLead(lead.id)}
+                            aria-label={`Pilih lead ${lead.customer_name}`}
+                          />
+                        </TableCell>
+
                         {/* Waktu */}
                         <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
                           {formatDateIndo(lead.created_at)}
@@ -1004,6 +1126,18 @@ export function ScalevLeadsPage() {
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
+
+                            {/* Tombol Hapus Lead */}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              type="button"
+                              onClick={() => handleOpenDeleteOne(lead)}
+                              className="w-7 h-7 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors shrink-0 cursor-pointer"
+                              title={`Hapus lead ${lead.customer_name || "ini"}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -2297,6 +2431,68 @@ export function ScalevLeadsPage() {
                 <>
                   <Check className="w-3.5 h-3.5" />
                   Simpan Nomor HP
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG KONFIRMASI HAPUS LEAD (SINGLE ATAU MASSAL) */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 className="w-5 h-5" />
+              <span>{leadToDelete ? "Hapus Lead Scalev" : `Hapus ${selectedLeadIds.length} Lead Terpilih`}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs pt-1.5 leading-relaxed text-muted-foreground">
+              {leadToDelete ? (
+                <>
+                  Apakah Anda yakin ingin menghapus lead atas nama{" "}
+                  <strong className="text-foreground">{leadToDelete.customer_name || "Pelanggan"}</strong>{" "}
+                  (<span className="font-mono text-foreground">{leadToDelete.customer_phone}</span>)?
+                  <br /><br />
+                  Data lead ini akan dihapus permanen dari sistem. Tindakan ini tidak dapat dibatalkan.
+                </>
+              ) : (
+                <>
+                  Apakah Anda yakin ingin menghapus massal{" "}
+                  <strong className="text-rose-600 font-bold">{selectedLeadIds.length} lead</strong> yang telah dicentang?
+                  <br /><br />
+                  Semua data lead yang dipilih akan dihapus permanen dari sistem. Tindakan ini tidak dapat dibatalkan.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="flex items-center justify-end gap-2 pt-3 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteModalOpen(false)}
+              disabled={isDeleting}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleExecuteDelete}
+              disabled={isDeleting}
+              className="gap-1.5 font-semibold shadow-xs"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menghapus...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{leadToDelete ? "Ya, Hapus Lead" : `Ya, Hapus (${selectedLeadIds.length})`}</span>
                 </>
               )}
             </Button>

@@ -770,3 +770,30 @@ export const updateScalevLeadPhone = createServerFn({ method: "POST" })
     }
   });
 
+// 10. Delete Scalev Lead(s) - Single or Bulk
+export const deleteScalevLeads = createServerFn({ method: "POST" })
+  .validator((data: { leadIds: string[] }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      if (!data?.leadIds || data.leadIds.length === 0) {
+        return { ok: true, deletedCount: 0 };
+      }
+
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      const res = await pool.query(
+        `DELETE FROM scalev_leads WHERE id = ANY($1::uuid[]) RETURNING id`,
+        [data.leadIds]
+      );
+
+      await pool.end();
+      return { ok: true, deletedCount: res.rowCount || 0 };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[deleteScalevLeads Error]:", err);
+      throw new Error(err.message || "Gagal menghapus data lead Scalev");
+    }
+  });
+
+
