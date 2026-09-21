@@ -151,6 +151,8 @@ const parseProductString = (
         detectedSize = sizes.find((s) => s.name.includes("130 gr")) || sizes[0];
       } else if (partUpper.includes("100") || partUpper.includes("100G")) {
         detectedSize = sizes.find((s) => s.name.includes("100 gr")) || sizes[0];
+      } else if (partUpper.includes("30") || partUpper.includes("30G") || partUpper.includes("30 GR") || partUpper.includes("30GR") || partUpper.includes("30 GRAM")) {
+        detectedSize = sizes.find((s) => s.name.includes("30 gr") || s.weight_grams === 30) || sizes[0];
       } else {
         detectedSize = sizes[0];
       }
