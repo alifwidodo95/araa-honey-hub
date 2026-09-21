@@ -1223,7 +1223,10 @@ function WhatsAppPage() {
       }
     } else {
       // Log Error to DB
-      const errDetail = sendResult.error || `Gagal terhubung atau terkirim dari gateway WhatsApp (${defaultResiChannel})`;
+      let errDetail = sendResult.error || `Gagal terhubung atau terkirim dari gateway WhatsApp (${defaultResiChannel})`;
+      if (errDetail.includes("<!DOCTYPE") || errDetail.includes("<html")) {
+        errDetail = "Koneksi server WAHA terputus atau timeout (Cloudflare 522/520). Server sedang sibuk.";
+      }
       const { data, error } = await supabase
         .from("orders")
         .update({ wa_share_error: errDetail })

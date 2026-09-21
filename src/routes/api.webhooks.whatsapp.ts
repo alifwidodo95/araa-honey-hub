@@ -695,7 +695,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           }
 
           // Send message back via WAHA
-          const sendRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
+          const sendRes = await fetch(`${wahaUrl}/api/sendText`, {
             method: 'POST',
             headers: getWahaHeaders(),
             body: JSON.stringify({

@@ -310,21 +310,40 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
       }
     }
 
-    // Send Text via WAHA
-    console.log(`[WA Dispatch] Sending Text via WAHA (${session}) to ${wahaChatId}...`);
-    let textRes = await fetch(`${wahaUrl}/api/sendText`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        session,
-        chatId: wahaChatId,
-        text: wahaMessage
-      })
-    });
+    // Helper to format WAHA error cleanly without raw HTML or technical codes
+    const formatWahaError = (status: number, rawText: string) => {
+      if (status === 522 || status === 520 || status === 504 || status === 502) {
+        return `Koneksi WAHA timeout (Cloudflare Error ${status}). Server sedang sibuk, silakan coba beberapa saat lagi.`;
+      }
+      if (rawText.includes('<html') || rawText.includes('<!DOCTYPE')) {
+        return `WAHA Server Error (${status}): Koneksi proxy/server origin terputus.`;
+      }
+      try {
+        const parsed = JSON.parse(rawText);
+        return parsed.message || parsed.error || rawText.slice(0, 150);
+      } catch {
+        return rawText.slice(0, 150);
+      }
+    };
 
-    if (!textRes.ok) {
-      // Fallback endpoint
-      textRes = await fetch(`${wahaUrl}/api/messages/sendText`, {
+    // Send Text via WAHA (with 1x retry on timeout/5xx)
+    console.log(`[WA Dispatch] Sending Text via WAHA (${session}) to ${wahaChatId}...`);
+    let textRes: Response;
+    try {
+      textRes = await fetch(`${wahaUrl}/api/sendText`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session,
+          chatId: wahaChatId,
+          text: wahaMessage
+        })
+      });
+    } catch (fetchErr: any) {
+      // Network fetch failure, wait 2s and retry once
+      console.warn(`[WA Dispatch] Initial fetch to /api/sendText failed (${fetchErr.message}), retrying in 2s...`);
+      await new Promise(r => setTimeout(r, 2000));
+      textRes = await fetch(`${wahaUrl}/api/sendText`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -335,12 +354,32 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
       });
     }
 
+    // If server returned 5xx (e.g. Cloudflare 522/520/504) or 429, retry once after 2.5 seconds
+    if (!textRes.ok && (textRes.status >= 500 || textRes.status === 429)) {
+      console.warn(`[WA Dispatch] WAHA responded with status ${textRes.status}, retrying in 2.5s...`);
+      await new Promise(r => setTimeout(r, 2500));
+      try {
+        textRes = await fetch(`${wahaUrl}/api/sendText`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            session,
+            chatId: wahaChatId,
+            text: wahaMessage
+          })
+        });
+      } catch (retryErr: any) {
+        console.error('[WA Dispatch] Retry failed:', retryErr);
+      }
+    }
+
     if (!textRes.ok) {
-      const errText = await textRes.text();
+      const errText = await textRes.text().catch(() => '');
+      const cleanError = formatWahaError(textRes.status, errText);
       return {
         success: false,
         channel,
-        error: `WAHA Error (${textRes.status}): ${errText}`
+        error: cleanError
       };
     }
 

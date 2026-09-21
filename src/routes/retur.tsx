@@ -68,24 +68,7 @@ const sendFollowUpMessage = async (order: any, config: any): Promise<boolean> =>
         }
       })
     });
-    if (res.ok) return true;
-
-    // Fallback endpoint
-    const fallbackRes = await fetch("/api/waha-proxy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: `${config.wahaUrl}/api/messages/sendText`,
-        method: "POST",
-        headers,
-        body: {
-          session: config.sessionName,
-          chatId: chatId,
-          text: message
-        }
-      })
-    });
-    return fallbackRes.ok;
+    return res.ok;
   } catch (err) {
     console.error("Error API WAHA:", err);
     return false;
