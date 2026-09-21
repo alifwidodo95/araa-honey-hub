@@ -85,6 +85,8 @@ interface ChatLog {
   media_id?: string | null;
   media_url?: string | null;
   created_at: string;
+  status?: 'sending' | 'failed' | 'sent';
+  errorMsg?: string;
 }
 
 interface WhatsAppPinnedChat {
@@ -438,6 +440,7 @@ function WhatsAppAiPage() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
+  const [pendingMessages, setPendingMessages] = useState<ChatLog[]>([]);
   const [chatSearch, setChatSearch] = useState("");
   const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order" | "pinned">("all");
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
@@ -1068,7 +1071,9 @@ function WhatsAppAiPage() {
       isOrderAgain: boolean;
     }>();
 
-    chatLogs.forEach(log => {
+    const combinedLogs = [...pendingMessages, ...chatLogs];
+
+    combinedLogs.forEach(log => {
       // Exclusively monitor WABA Meta Cloud API chats
       if (log.channel !== "waba") return;
 
@@ -1120,7 +1125,7 @@ function WhatsAppAiPage() {
     });
 
     return Array.from(chatsMap.values());
-  }, [chatLogs]);
+  }, [chatLogs, pendingMessages]);
 
   // Response status statistics for WABA (all, unread, order, pinned)
   const responseCounts = useMemo(() => {
@@ -1207,13 +1212,28 @@ function WhatsAppAiPage() {
     });
   }, [uniqueChats, responseFilter, selectedChatId, chatSearch, chatTagsMap, pinnedMap]);
 
-  // Active chat bubbles (WABA only)
+  // Active chat bubbles (WABA only) with optimistic messages
   const selectedChatMessages = useMemo(() => {
     if (!selectedChatId) return [];
-    return chatLogs
+    const serverMessages = chatLogs
       .filter(log => log.chat_id === selectedChatId && log.channel === "waba")
       .reverse(); // Order chronological (oldest to newest)
-  }, [chatLogs, selectedChatId]);
+
+    // Current pending messages for selected chat
+    const currentPending = pendingMessages.filter(p => {
+      if (p.chat_id !== selectedChatId) return false;
+      // Filter out if server already contains this exact message within 30 seconds
+      const pTime = new Date(p.created_at).getTime();
+      const alreadyInServer = serverMessages.some(s => 
+        s.direction === "outgoing" && 
+        s.message === p.message && 
+        Math.abs(new Date(s.created_at).getTime() - pTime) < 30000
+      );
+      return !alreadyInServer;
+    });
+
+    return [...serverMessages, ...currentPending];
+  }, [chatLogs, selectedChatId, pendingMessages]);
 
   // Scroll to bottom when selected chat messages change
   useEffect(() => {
@@ -1306,19 +1326,48 @@ function WhatsAppAiPage() {
     toast.success(`Gudang keberangkatan dipilih: ${fullName}`);
   };
 
-  // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send)
-  const handleSendManualReply = async () => {
-    const text = manualReplyText.trim();
+  // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send) with Zero-Delay Optimistic UI
+  const handleSendManualReply = async (retryMsg?: ChatLog) => {
+    const text = (retryMsg ? retryMsg.message : manualReplyText).trim();
     if (!text || !selectedChatId) return;
 
+    const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
+    const targetChannel = "waba";
+    const customerPhone = activeChatInfo?.customer_phone || selectedChatId.split("@")[0].replace("waba:", "").replace(/[^0-9]/g, "");
+    const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
+
+    const tempId = retryMsg ? retryMsg.id : `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const pendingLog: ChatLog = {
+      id: tempId,
+      chat_id: selectedChatId,
+      customer_phone: customerPhone,
+      customer_name: customerName,
+      message: text,
+      direction: "outgoing",
+      replied_by: "manual",
+      channel: targetChannel,
+      is_read: true,
+      created_at: retryMsg ? retryMsg.created_at : new Date().toISOString(),
+      status: "sending"
+    };
+
+    if (!retryMsg) {
+      // 1. INSTANT (0ms): Clear input and append optimistic message immediately
+      setManualReplyText("");
+      setPendingMessages(prev => [...prev, pendingLog]);
+    } else {
+      // Retrying: reset status back to sending
+      setPendingMessages(prev => prev.map(p => p.id === tempId ? { ...p, status: "sending", errorMsg: undefined } : p));
+    }
+
+    // Scroll to bottom immediately
+    setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 10);
+
+    // 2. BACKGROUND: Dispatch network request to Meta WABA
     setSendingReply(true);
     try {
-      const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
-      const targetChannel = "waba";
-      const customerPhone = activeChatInfo?.customer_phone || selectedChatId.split("@")[0].replace("waba:", "").replace(/[^0-9]/g, "");
-      const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
-
-      // 1. Call Unified WhatsApp Send API (which automatically logs to whatsapp_chat_logs)
       const sendRes = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1336,13 +1385,23 @@ function WhatsAppAiPage() {
         throw new Error(sendData.error || "Gagal mengirim via WABA Meta");
       }
 
-      toast.success("Balasan manual berhasil dikirim via WABA Resmi Meta!");
-      setManualReplyText("");
+      // Success: mark as sent
+      setPendingMessages(prev => prev.map(p => p.id === tempId ? { ...p, status: "sent" } : p));
+
+      // Auto-cleanup sent temp message after 4 seconds (once server logs have synced)
+      setTimeout(() => {
+        setPendingMessages(prev => prev.filter(p => p.id !== tempId));
+      }, 4000);
+
       if (selectedChatId) {
         markChatAsRead(selectedChatId, customerPhone);
       }
       refetchLogs();
     } catch (err: any) {
+      // Failed: mark as failed with error details for retry
+      setPendingMessages(prev => prev.map(p => 
+        p.id === tempId ? { ...p, status: "failed", errorMsg: err.message || "Gagal mengirim balasan." } : p
+      ));
       toast.error(err.message || "Gagal mengirim balasan.");
     } finally {
       setSendingReply(false);
@@ -1914,6 +1973,10 @@ function WhatsAppAiPage() {
                           const isWabaTemplate = msg.channel === "waba" || msg.replied_by === "template" || msg.message.startsWith("[Template");
                           const isAi = msg.replied_by === "ai";
                           const isManual = msg.replied_by === "manual";
+                          const isReaction = (msg.message || "").startsWith("[Reaksi: ") || msg.message === "[Pesan reaction]";
+                          const reactionEmoji = msg.message.startsWith("[Reaksi: ")
+                            ? msg.message.replace("[Reaksi: ", "").replace("]", "").trim()
+                            : "❤️";
 
                           if (isIncoming) {
                             return (
@@ -1927,6 +1990,10 @@ function WhatsAppAiPage() {
                                     {isOrderAgain ? (
                                       <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs animate-pulse">
                                         🎯 RESPON TOMBOL: ORDER LAGI
+                                      </Badge>
+                                    ) : isReaction ? (
+                                      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[9px] px-1.5 py-0 font-semibold flex items-center gap-1">
+                                        <span>Reaksi</span>
                                       </Badge>
                                     ) : (
                                       <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-semibold">
@@ -1968,9 +2035,19 @@ function WhatsAppAiPage() {
                                     </div>
                                   )}
 
-                                  {(!msg.media_id && !msg.media_url) || msg.message !== '[Pelanggan Mengirim Gambar]' ? (
-                                    <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
-                                  ) : null}
+                                  {isReaction ? (
+                                    <div className="flex items-center gap-2.5 py-1">
+                                      <span className="text-2xl filter drop-shadow-xs select-none">{reactionEmoji}</span>
+                                      <div className="text-xs">
+                                        <span className="font-semibold text-emerald-900 block">Reaksi Emotikon</span>
+                                        <span className="text-emerald-700/80 text-[11px]">Konsumen bereaksi terhadap pesan</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    (!msg.media_id && !msg.media_url) || msg.message !== '[Pelanggan Mengirim Gambar]' ? (
+                                      <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
+                                    ) : null
+                                  )}
 
                                   <div className="flex items-center gap-1.5 justify-end mt-1.5 text-slate-400 text-[9px]">
                                     <span>{msgTime}</span>
@@ -1982,13 +2059,17 @@ function WhatsAppAiPage() {
 
                           return (
                             <div key={msg.id} className="flex justify-end my-1">
-                              <div className={`max-w-[78%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none ${
+                              <div className={`max-w-[78%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none transition-all ${
                                 isWabaTemplate
                                   ? "bg-emerald-600 shadow-emerald-700/20"
                                   : isAi
                                   ? "bg-blue-600 shadow-blue-700/20"
                                   : isManual
-                                  ? "bg-amber-600 shadow-amber-700/20"
+                                  ? msg.status === "failed"
+                                    ? "bg-rose-600 shadow-rose-700/20 border border-rose-300"
+                                    : msg.status === "sending"
+                                    ? "bg-amber-600/90 shadow-amber-700/20"
+                                    : "bg-amber-600 shadow-amber-700/20"
                                   : "bg-slate-700 shadow-slate-800/20"
                               }`}>
                                 <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-white/20 text-[11px] font-semibold text-white/90">
@@ -2006,6 +2087,18 @@ function WhatsAppAiPage() {
                                     <>
                                       <User className="w-3.5 h-3.5 text-amber-200" />
                                       <span>Balasan Manual CS</span>
+                                      {msg.status === "sending" && (
+                                        <Badge className="bg-amber-500/50 text-amber-100 border-0 text-[9px] px-1.5 py-0 font-normal ml-auto flex items-center gap-1 animate-pulse">
+                                          <Clock className="w-2.5 h-2.5 animate-spin" />
+                                          <span>Mengirim...</span>
+                                        </Badge>
+                                      )}
+                                      {msg.status === "failed" && (
+                                        <Badge className="bg-rose-950/70 text-rose-200 border-0 text-[9px] px-1.5 py-0 font-semibold ml-auto flex items-center gap-1">
+                                          <AlertCircle className="w-2.5 h-2.5 text-rose-300" />
+                                          <span>Gagal Kirim</span>
+                                        </Badge>
+                                      )}
                                     </>
                                   ) : (
                                     <span>Sistem Otomatis</span>
@@ -2034,11 +2127,37 @@ function WhatsAppAiPage() {
                                 )}
 
                                 <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
+
+                                {/* Retry button if failed */}
+                                {msg.status === "failed" && (
+                                  <div className="mt-2.5 pt-2 border-t border-rose-400/40 flex items-center justify-between text-xs gap-2">
+                                    <span className="text-rose-200 text-[10px] truncate max-w-[200px]" title={msg.errorMsg}>
+                                      {msg.errorMsg || "Gagal menghubungi Meta WABA"}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendManualReply(msg)}
+                                      className="text-[11px] bg-white text-rose-700 hover:bg-rose-50 font-bold px-2.5 py-1 rounded-lg cursor-pointer transition-colors shadow-2xs shrink-0 flex items-center gap-1 active:scale-95"
+                                    >
+                                      <span>↺ Coba Lagi</span>
+                                    </button>
+                                  </div>
+                                )}
+
                                 <div className="flex items-center gap-1.5 justify-end mt-1.5 text-white/75">
                                   <span className="text-[9px]">{msgTime}</span>
                                   <span className="text-[9px] font-bold uppercase tracking-wider">
                                     {isWabaTemplate ? "WABA TEMPLATE" : isAi ? "AI DEEPSEEK" : isManual ? "CS MANUAL" : "SISTEM"}
                                   </span>
+                                  {isManual && (
+                                    msg.status === "sending" ? (
+                                      <Clock className="w-3 h-3 text-amber-200 animate-spin" title="Sedang dikirim..." />
+                                    ) : msg.status === "failed" ? (
+                                      <AlertCircle className="w-3 h-3 text-rose-300" title="Gagal dikirim" />
+                                    ) : (
+                                      <Check className="w-3 h-3 text-emerald-300" title="Terkirim" />
+                                    )
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2267,12 +2386,11 @@ function WhatsAppAiPage() {
                               setShowQuickReplyMenu(false);
                             }
                           }}
-                          disabled={sendingReply}
                           className="flex-1 rounded-xl"
                         />
                         <Button 
-                          onClick={handleSendManualReply} 
-                          disabled={sendingReply || !manualReplyText.trim()}
+                          onClick={() => handleSendManualReply()} 
+                          disabled={!manualReplyText.trim()}
                           className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer"
                         >
                           <Send className="h-4 w-4" />

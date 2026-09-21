@@ -142,6 +142,9 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     incomingText = msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.title || '';
                   } else if (messageType === 'button') {
                     incomingText = msg.button?.text || msg.button?.payload || '';
+                  } else if (messageType === 'reaction') {
+                    const reactionEmoji = msg.reaction?.emoji || '';
+                    incomingText = reactionEmoji ? `[Reaksi: ${reactionEmoji}]` : '[Pesan reaction]';
                   } else {
                     incomingText = msg.text?.body || `[Pesan ${messageType}]`;
                   }
@@ -169,7 +172,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', $6, now())
                   `, [userId, chatId, customerPhone, customerName, incomingText, mediaId]);
 
-                  // Check if AI auto-reply is active
+                  // Check if AI auto-reply is active (do not auto-reply to reaction emoji)
                   const {
                     deepseek_api_key: deepseekApiKey,
                     system_prompt: systemPrompt,
@@ -178,7 +181,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     biteship_origin_name: biteshipOriginName
                   } = aiSettings;
 
-                  if (isActive) {
+                  if (isActive && messageType !== 'reaction') {
                     let biteshipRatesText = '';
                     const lowercaseInput = incomingText.toLowerCase();
                     const asksForOngkir = 
