@@ -554,7 +554,7 @@ function WhatsAppAiPage() {
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [activeEmojiTab, setActiveEmojiTab] = useState("salam");
   const [emojiFilterText, setEmojiFilterText] = useState("");
-  const manualInputRef = useRef<HTMLInputElement>(null);
+  const manualInputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleInsertEmoji = (emoji: string) => {
     const input = manualInputRef.current;
@@ -567,6 +567,8 @@ function WhatsAppAiPage() {
         input.focus();
         const nextPos = start + emoji.length;
         input.setSelectionRange(nextPos, nextPos);
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
       }, 10);
     } else {
       setManualReplyText(prev => prev + emoji);
@@ -988,6 +990,13 @@ function WhatsAppAiPage() {
     msg = msg.replace(/\{nama\}/gi, nameToUse);
     setManualReplyText(msg);
     setShowQuickReplyMenu(false);
+    setTimeout(() => {
+      if (manualInputRef.current) {
+        manualInputRef.current.focus();
+        manualInputRef.current.style.height = "auto";
+        manualInputRef.current.style.height = Math.min(manualInputRef.current.scrollHeight, 160) + "px";
+      }
+    }, 10);
   };
 
   // Quick reply search query derived from manualReplyText
@@ -1356,6 +1365,9 @@ function WhatsAppAiPage() {
     if (!retryMsg) {
       // 1. INSTANT (0ms): Clear input and append optimistic message immediately
       setManualReplyText("");
+      if (manualInputRef.current) {
+        manualInputRef.current.style.height = "auto";
+      }
       setPendingMessages(prev => [...prev, pendingLog]);
     } else {
       // Retrying: reset status back to sending
@@ -2188,7 +2200,7 @@ function WhatsAppAiPage() {
                         <div ref={chatEndRef} />
                       </CardContent>
 
-                      <div className="p-3 border-t shrink-0 flex gap-2 bg-white relative">
+                      <div className="p-3 border-t shrink-0 flex gap-2 bg-white relative items-end">
                         {/* Floating Quick Reply Menu */}
                         {isQuickReplyMenuOpen && (
                           <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-40 animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-72 flex flex-col">
@@ -2391,16 +2403,21 @@ function WhatsAppAiPage() {
                           </PopoverContent>
                         </Popover>
 
-                        <Input
+                        <Textarea
                           ref={manualInputRef}
-                          placeholder={`Tulis balasan manual (ketik / untuk balas cepat)...`}
+                          rows={1}
+                          placeholder="Tulis balasan manual (Enter kirim, Shift+Enter baris baru, / balas cepat)..."
                           value={manualReplyText}
-                          onChange={(e) => setManualReplyText(e.target.value)}
+                          onChange={(e) => {
+                            setManualReplyText(e.target.value);
+                            e.target.style.height = "auto";
+                            e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
                               if (isQuickReplyMenuOpen && matchingQuickReplies.length > 0 && isTriggeredBySlash) {
                                 handleSelectQuickReply(matchingQuickReplies[0], displayName);
-                                e.preventDefault();
                               } else {
                                 handleSendManualReply();
                               }
@@ -2408,12 +2425,14 @@ function WhatsAppAiPage() {
                               setShowQuickReplyMenu(false);
                             }
                           }}
-                          className="flex-1 rounded-xl"
+                          className="flex-1 min-h-[38px] max-h-[160px] resize-none py-2 px-3 text-sm rounded-xl leading-relaxed border-input focus-visible:ring-amber-500"
                         />
                         <Button 
+                          type="button"
                           onClick={() => handleSendManualReply()} 
                           disabled={!manualReplyText.trim()}
-                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer"
+                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer h-9 px-3 shrink-0"
+                          title="Kirim Pesan (Enter)"
                         >
                           <Send className="h-4 w-4" />
                         </Button>
