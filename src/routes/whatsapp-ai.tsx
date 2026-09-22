@@ -49,7 +49,8 @@ import {
   Play, Pause, QrCode, AlertTriangle, XCircle, MapPin, Search, AlertCircle, Sparkles,
   ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, CheckCheck, Smile,
   Pin, PinOff, Calendar, Clock, Copy,
-  Image as ImageIcon, Download, ZoomIn, ExternalLink
+  Image as ImageIcon, Download, ZoomIn, ExternalLink,
+  Maximize2, Minimize2
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -192,6 +193,15 @@ const EMOJI_LIST: { category: string; label: string; items: EmojiItem[] }[] = [
 function WhatsAppAiPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"chats" | "settings">("chats");
+  
+  // Wide Mode State: default true (lebar penuh / widescreen) with localStorage persistence
+  const [isWideMode, setIsWideMode] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("waba_wide_mode");
+      return saved !== null ? saved === "true" : true;
+    }
+    return true;
+  });
   
   // Settings States
   const [isActive, setIsActive] = useState(false);
@@ -1452,7 +1462,7 @@ function WhatsAppAiPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto pb-20">
+    <div className={`space-y-4 pb-4 transition-all duration-150 ${isWideMode ? "w-full" : "max-w-7xl mx-auto"}`}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1464,7 +1474,31 @@ function WhatsAppAiPage() {
             Pusat pemantauan obrolan pelanggan, status respon pesan, dan asisten pintar secara real-time.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button
+            onClick={() => {
+              const next = !isWideMode;
+              setIsWideMode(next);
+              localStorage.setItem("waba_wide_mode", String(next));
+              toast.success(next ? "Mode Layar Lebar aktif!" : "Mode Standar aktif!");
+            }}
+            variant="outline"
+            size="sm"
+            className="text-xs h-9 gap-1.5 border-slate-200 cursor-pointer shadow-2xs"
+            title={isWideMode ? "Beralih ke tampilan standar (terpusat)" : "Perbesar ke tampilan layar penuh"}
+          >
+            {isWideMode ? (
+              <>
+                <Minimize2 className="h-3.5 w-3.5 text-slate-600" />
+                <span className="hidden sm:inline">Tampilan Standar</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="h-3.5 w-3.5 text-amber-600" />
+                <span className="hidden sm:inline">Layar Lebar</span>
+              </>
+            )}
+          </Button>
           <Button 
             onClick={() => {
               refetchLogs();
@@ -1473,6 +1507,7 @@ function WhatsAppAiPage() {
             }} 
             variant="outline" 
             size="sm"
+            className="text-xs h-9 cursor-pointer shadow-2xs"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Perbarui
@@ -1509,9 +1544,9 @@ function WhatsAppAiPage() {
 
       {/* Tab CONTENT 1: CHATS MONITOR */}
       {activeTab === "chats" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[650px]">
+        <div className="flex flex-col lg:flex-row gap-4 h-auto lg:h-[calc(100vh-14rem)] min-h-[560px]">
           {/* Chat List (Left Panel) */}
-          <Card className="lg:col-span-1 flex flex-col h-full overflow-hidden">
+          <Card className="w-full lg:w-[350px] xl:w-[390px] shrink-0 flex flex-col h-[500px] lg:h-full overflow-hidden border-slate-200/90 shadow-xs">
             <CardHeader className="py-3 px-4 border-b space-y-2.5 shrink-0 bg-slate-50/50">
               <div className="flex items-center justify-between">
                 <div>
@@ -1810,7 +1845,7 @@ function WhatsAppAiPage() {
           </Card>
 
           {/* Chat Bubbles (Right Panel) */}
-          <Card className="lg:col-span-2 flex flex-col h-full overflow-hidden">
+          <Card className="flex-1 min-w-0 flex flex-col h-[600px] lg:h-full overflow-hidden border-slate-200/90 shadow-xs">
             {selectedChatId ? (
               <>
                 {(() => {
@@ -2006,7 +2041,7 @@ function WhatsAppAiPage() {
                           if (isIncoming) {
                             return (
                               <div key={msg.id} className="flex justify-start my-1">
-                                <div className="max-w-[78%] rounded-2xl p-3.5 shadow-xs bg-white border-2 border-emerald-500/40 text-slate-800 rounded-tl-none ring-2 ring-emerald-500/10">
+                                <div className="max-w-[88%] xl:max-w-[75%] rounded-2xl p-3.5 shadow-xs bg-white border-2 border-emerald-500/40 text-slate-800 rounded-tl-none ring-2 ring-emerald-500/10">
                                   <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-100 text-[11px] font-bold text-emerald-800">
                                     <div className="flex items-center gap-1.5">
                                       <User className="w-3.5 h-3.5 text-emerald-600" />
@@ -2084,7 +2119,7 @@ function WhatsAppAiPage() {
 
                           return (
                             <div key={msg.id} className="flex justify-end my-1">
-                              <div className={`max-w-[78%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none transition-all ${
+                              <div className={`max-w-[88%] xl:max-w-[75%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none transition-all ${
                                 isWabaTemplate
                                   ? "bg-emerald-600 shadow-emerald-700/20"
                                   : isAi
@@ -2456,7 +2491,7 @@ function WhatsAppAiPage() {
 
       {/* Tab CONTENT 2: SETTINGS */}
       {activeTab === "settings" && (
-        <Card>
+        <Card className={isWideMode ? "max-w-6xl mx-auto border-slate-200/90 shadow-xs" : "border-slate-200/90 shadow-xs"}>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Settings className="h-5 w-5 text-amber-500" />
