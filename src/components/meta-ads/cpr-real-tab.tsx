@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { formatIDR } from "@/lib/theme";
 import { 
   Target, TrendingUp, TrendingDown, Users, Package, RefreshCw, 
-  Eye, CheckCircle2, AlertTriangle, MessageSquare, DollarSign, Calendar, Sparkles, ShieldCheck
+  Eye, CheckCircle2, AlertTriangle, MessageSquare, DollarSign, Calendar, Sparkles, ShieldCheck, ShoppingCart
 } from "lucide-react";
 import { 
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, 
@@ -88,7 +88,7 @@ export function CprRealTab() {
   const chartData = [...dailyRows].reverse().map((r) => ({
     name: formatDateIndo(r.tanggal).replace(` ${new Date().getFullYear()}`, ""),
     adSpend: r.ad_spend,
-    omzetMurni: r.omzet_murni,
+    uangBersih: r.omzet_murni,
     netProfit: r.net_profit_iklan,
     cprReal: r.cpr_real_closing,
     closingCount: r.closed_orders
@@ -98,26 +98,29 @@ export function CprRealTab() {
     <div className="space-y-6">
       {/* Top Header & Filter Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Target className="w-5 h-5 text-emerald-500" /> CPR Real Closing & Efektivitas Murni Iklan
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-emerald-500 text-white shadow-sm">
+              <Target className="w-5 h-5" />
+            </span>
+            <h3 className="text-xl font-bold tracking-tight text-foreground">
+              CPR Real Closing & Pure Ads Economics
             </h3>
-            <Badge variant="outline" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-xs font-semibold gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Murni Lead Scalev (Tanpa Repeat/CRM)
+            <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40">
+              Uang Bersih Kas
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
-            Menghitung efektivitas biaya iklan Meta Ads terhadap pesanan riil yang terkonfirmasi closing dari form Scalev. 
-            Sudah memperhitungkan basket size (beli &gt; 1 kg), HPP produk, dan biaya admin aggregator.
+          <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+            Metrik efektivitas murni iklan Meta Ads. Menghubungkan biaya iklan dengan uang riil kas yang diterima (<strong className="text-foreground">Bersih setelah admin & ongkir</strong>) tanpa bias repeat order ataupun duplikasi form.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        {/* Action & Filter */}
+        <div className="flex items-center gap-2.5 self-start md:self-auto">
           <Select value={dateRange} onValueChange={(val: any) => setDateRange(val)}>
-            <SelectTrigger className="w-36 h-9 text-xs font-semibold bg-background">
-              <Calendar className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue placeholder="Pilih Periode" />
+            <SelectTrigger className="w-[145px] h-9 text-xs bg-background border-emerald-500/30 font-medium">
+              <Calendar className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="1d">Hari Ini (Live)</SelectItem>
@@ -130,11 +133,11 @@ export function CprRealTab() {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => refetch()} 
+            onClick={() => refetch()}
             disabled={isFetching}
-            className="h-9 px-3 gap-1.5 text-xs font-semibold hover:bg-emerald-500/10 hover:text-emerald-700"
+            className="h-9 px-3 text-xs border-emerald-500/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 gap-1.5"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-emerald-600" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </Button>
         </div>
@@ -182,20 +185,22 @@ export function CprRealTab() {
           </CardContent>
         </Card>
 
-        {/* Card 3: Basket Size & Volume */}
-        <Card className="border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500" />
+        {/* Card 3: Uang Bersih Kas (Net Revenue) */}
+        <Card className="border-teal-500/30 bg-teal-50/50 dark:bg-teal-950/20 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-teal-500" />
           <CardContent className="p-4 space-y-1.5">
-            <div className="flex items-center justify-between text-xs font-semibold text-amber-800 dark:text-amber-300">
-              <span>BASKET SIZE (RATA-RATA)</span>
-              <Package className="w-4 h-4 text-amber-600" />
+            <div className="flex items-center justify-between text-xs font-semibold text-teal-800 dark:text-teal-300">
+              <span>UANG BERSIH KAS (NET)</span>
+              <Package className="w-4 h-4 text-teal-600" />
             </div>
             <div className="text-2xl font-extrabold text-foreground">
-              {summary ? `${summary.overall_basket_size} Kg / Cust` : "-"}
+              {summary ? formatIDR(summary.total_omzet_murni) : "-"}
             </div>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-amber-500/20">
-              <span>Total Volume: <strong>{summary?.total_volume_kg ?? 0} Kg</strong></span>
-              <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">Order 1 s/d 2 botol</span>
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-teal-500/20">
+              <span>Volume: <strong>{summary?.total_volume_kg ?? 0} Kg</strong></span>
+              <span className="text-[10px] text-muted-foreground font-medium">
+                {summary?.overall_basket_size ?? 0} Kg/cust
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -225,10 +230,10 @@ export function CprRealTab() {
       <Card className="shadow-sm border-border/80">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-500" /> Tren Finansial Iklan Murni (Spend vs Omzet vs Laba Bersih)
+            <TrendingUp className="w-4 h-4 text-emerald-500" /> Tren Finansial Iklan Murni (Spend vs Uang Bersih vs Laba)
           </CardTitle>
           <CardDescription className="text-xs">
-            Perbandingan harian biaya bakar iklan dengan pendapatan kotor dan laba bersih murni setelah dipotong HPP & admin.
+            Perbandingan harian biaya bakar iklan dengan uang riil kas yang diterima (setelah admin & ongkir) serta laba bersihnya.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-2">
@@ -249,15 +254,23 @@ export function CprRealTab() {
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(val) => `${(val / 1000000).toFixed(1)}M`} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
                   <RechartsTooltip 
-                    formatter={(val: any, name: any) => [formatIDR(Number(val)), name]}
-                    labelFormatter={(label) => `Tanggal: ${label}`}
-                    contentStyle={{ borderRadius: '12px', fontSize: '12px', border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                    formatter={(val: any, name: string) => [
+                      name === "CPR Real" ? formatIDR(val) : formatIDR(val),
+                      name === "adSpend" ? "Biaya Iklan" : name === "uangBersih" ? "Uang Bersih Kas" : name === "netProfit" ? "Laba Bersih" : name === "cprReal" ? "CPR Real" : name
+                    ]}
+                    labelStyle={{ fontWeight: "bold" }}
+                    contentStyle={{ borderRadius: "8px", fontSize: "12px" }}
                   />
-                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Bar yAxisId="left" dataKey="omzetMurni" name="Omzet Iklan Murni" fill="#10B981" radius={[4, 4, 0, 0]} barSize={20} />
-                  <Bar yAxisId="left" dataKey="adSpend" name="Biaya Iklan (Spend)" fill="#F59E0B" radius={[4, 4, 0, 0]} barSize={20} />
-                  <Line yAxisId="left" type="monotone" dataKey="netProfit" name="Laba Bersih Iklan" stroke="#3B82F6" strokeWidth={2.5} dot={{ r: 3 }} />
-                  <Line yAxisId="right" type="monotone" dataKey="cprReal" name="CPR Real Closing" stroke="#8B5CF6" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3 }} />
+                  <Legend 
+                    verticalAlign="top" 
+                    height={36} 
+                    iconType="circle" 
+                    formatter={(val) => val === "adSpend" ? "Biaya Iklan (Spend)" : val === "uangBersih" ? "Uang Bersih Kas" : val === "netProfit" ? "Laba Bersih Iklan" : val === "cprReal" ? "CPR Real (kanan)" : val}
+                  />
+                  <Bar yAxisId="left" dataKey="uangBersih" fill="#10B981" radius={[4, 4, 0, 0]} opacity={0.85} barSize={24} />
+                  <Bar yAxisId="left" dataKey="adSpend" fill="#F59E0B" radius={[4, 4, 0, 0]} opacity={0.85} barSize={24} />
+                  <Line yAxisId="left" type="monotone" dataKey="netProfit" stroke="#3B82F6" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="cprReal" stroke="#EF4444" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -265,38 +278,47 @@ export function CprRealTab() {
         </CardContent>
       </Card>
 
-      {/* Detailed Ground-Truth Table */}
+      {/* Daily Breakdown Table */}
       <Card className="shadow-sm border-border/80">
         <CardHeader className="pb-3 flex flex-row items-center justify-between flex-wrap gap-2">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-emerald-500" /> Rincian Harian Ground-Truth
+              <Calendar className="w-4 h-4 text-emerald-500" />
+              Tabel Rekap Harian CPR Real & Pendapatan Bersih
             </CardTitle>
             <CardDescription className="text-xs">
-              Setiap tanggal diverifikasi langsung dari lead Scalev yang terhubung ke pesanan riil.
+              Semua order diatribusikan ke tanggal biaya iklan dibayarkan. Nilai mengacu pada uang bersih riil yang diterima.
             </CardDescription>
           </div>
-          <Badge variant="outline" className="text-xs font-mono">
-            {dailyRows.length} Hari Tercatat
-          </Badge>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" /> &lt; 45k (Sehat)
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+              <span className="w-2 h-2 rounded-full bg-amber-500" /> 45k - 65k (Sedang)
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-red-700 dark:text-red-400">
+              <span className="w-2 h-2 rounded-full bg-red-500" /> &gt; 65k (Tinggi)
+            </span>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 text-xs">
+                <TableRow className="bg-muted/40 text-xs">
                   <TableHead>Tanggal</TableHead>
                   <TableHead className="text-right">Biaya Iklan</TableHead>
-                  <TableHead className="text-center">Leads</TableHead>
+                  <TableHead className="text-center">Lead Iklan</TableHead>
                   <TableHead className="text-center">Closing</TableHead>
                   <TableHead className="text-center">Closing Rate</TableHead>
-                  <TableHead className="text-right font-bold text-emerald-700 dark:text-emerald-400">CPR Real Closing</TableHead>
+                  <TableHead className="text-right">CPR Real</TableHead>
                   <TableHead className="text-center">Basket Size</TableHead>
-                  <TableHead className="text-right">Omzet Murni</TableHead>
-                  <TableHead className="text-right">HPP</TableHead>
-                  <TableHead className="text-right font-bold">Laba Bersih Iklan</TableHead>
+                  <TableHead className="text-right">Uang Bersih Riil</TableHead>
+                  <TableHead className="text-right">Total HPP</TableHead>
+                  <TableHead className="text-right">Laba Bersih Iklan</TableHead>
                   <TableHead className="text-center">POAS</TableHead>
-                  <TableHead className="text-center w-24">Aksi</TableHead>
+                  <TableHead className="text-center">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -346,6 +368,11 @@ export function CprRealTab() {
                           <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 font-bold">
                             {row.closed_orders}
                           </Badge>
+                          {row.manual_shopee_orders > 0 && (
+                            <span className="text-[9px] text-muted-foreground block">
+                              ({row.verified_orders} order + {row.manual_shopee_orders} shopee)
+                            </span>
+                          )}
                         </TableCell>
 
                         {/* Closing Rate */}
@@ -370,9 +397,14 @@ export function CprRealTab() {
                           <span className="text-[10px] text-muted-foreground block">({row.total_kg} Kg total)</span>
                         </TableCell>
 
-                        {/* Omzet Murni */}
-                        <TableCell className="text-right font-mono font-medium text-foreground">
-                          {formatIDR(row.omzet_murni)}
+                        {/* Uang Bersih Riil */}
+                        <TableCell className="text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                          <div>{formatIDR(row.omzet_murni)}</div>
+                          {row.omzet_kotor > row.omzet_murni && (
+                            <div className="text-[10px] text-muted-foreground font-normal">
+                              Kotor: {formatIDR(row.omzet_kotor)}
+                            </div>
+                          )}
                         </TableCell>
 
                         {/* HPP Total */}
@@ -405,7 +437,7 @@ export function CprRealTab() {
                             size="sm"
                             onClick={() => setSelectedDetailDate(row.tanggal)}
                             disabled={row.closed_orders === 0}
-                            className="h-7 px-2 text-[11px] gap-1 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                            className="h-7 px-2 text-[11px] gap-1 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 cursor-pointer"
                           >
                             <Eye className="w-3 h-3" />
                             Detail
@@ -445,10 +477,20 @@ export function CprRealTab() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-between text-xs bg-muted/40 p-3 rounded-lg border">
-                <span>Total Closing Terdata: <strong>{detailList.length} Pembeli</strong></span>
-                <span>Total Volume: <strong>{detailList.reduce((sum, d) => sum + d.honey_kg_used, 0).toFixed(1)} Kg</strong></span>
-                <span>Total Omzet: <strong>{formatIDR(detailList.reduce((sum, d) => sum + d.subtotal_gross, 0))}</strong></span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-muted/40 p-3 rounded-lg border">
+                <div>
+                  <span>Total Closing: <strong>{detailList.length} Pembeli</strong></span>
+                  <span className="mx-2 text-muted-foreground">•</span>
+                  <span>Volume: <strong>{detailList.reduce((sum, d) => sum + d.honey_kg_used, 0).toFixed(1)} Kg</strong></span>
+                </div>
+                <div className="text-left sm:text-right">
+                  <div className="text-[10px] text-muted-foreground">
+                    Omzet Kotor: {formatIDR(detailList.reduce((sum, d) => sum + d.subtotal_gross, 0))}
+                  </div>
+                  <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                    Uang Bersih Kas: {formatIDR(detailList.reduce((sum, d) => sum + d.net_revenue, 0))}
+                  </div>
+                </div>
               </div>
 
               <div className="border rounded-lg overflow-hidden">
@@ -458,26 +500,43 @@ export function CprRealTab() {
                       <TableHead className="w-10">No</TableHead>
                       <TableHead>Nama Pelanggan</TableHead>
                       <TableHead>No. WhatsApp</TableHead>
+                      <TableHead className="text-center">Status / Kurir</TableHead>
                       <TableHead className="text-center">Volume</TableHead>
-                      <TableHead className="text-right">Nilai Order</TableHead>
+                      <TableHead className="text-right">Nilai Bersih Diterima</TableHead>
                       <TableHead className="text-center">Waktu Order</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {detailList.map((item, idx) => (
-                      <TableRow key={item.order_id || idx} className="text-xs hover:bg-muted/20">
+                      <TableRow key={item.order_id || item.lead_id || idx} className="text-xs hover:bg-muted/20">
                         <TableCell className="text-muted-foreground font-mono">{idx + 1}</TableCell>
                         <TableCell className="font-semibold">{item.customer_name || item.lead_name}</TableCell>
                         <TableCell className="font-mono text-muted-foreground">
                           {item.customer_phone || item.lead_phone}
                         </TableCell>
                         <TableCell className="text-center">
+                          {item.is_manual_closing ? (
+                            <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200">
+                              🛒 Closing Shopee / Manual
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[9px] bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200">
+                              ✅ Order Valid {item.expedition ? `• ${item.expedition}` : ""}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
                           <Badge variant="secondary" className="text-[10px] font-bold">
                             {item.honey_kg_used} Kg
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right font-mono font-medium text-emerald-700 dark:text-emerald-400">
-                          {formatIDR(item.subtotal_gross)}
+                        <TableCell className="text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                          <div>{formatIDR(item.net_revenue)}</div>
+                          {item.subtotal_gross !== item.net_revenue && (
+                            <div className="text-[10px] text-muted-foreground font-normal line-through">
+                              {formatIDR(item.subtotal_gross)}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-center text-muted-foreground text-[11px]">
                           {item.order_created_at ? new Date(item.order_created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-"}
