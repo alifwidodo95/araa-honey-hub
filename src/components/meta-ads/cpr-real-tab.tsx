@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +21,7 @@ import {
   DailyAdsCprMetric, 
   RealAdsClosingDetail 
 } from "@/lib/meta-ads.functions";
+import { MetaDateRangePicker, MetaDateRange } from "./meta-date-range-picker";
 
 function formatDateIndo(dateStr: string) {
   if (!dateStr) return "-";
@@ -34,7 +35,22 @@ function formatDateIndo(dateStr: string) {
 }
 
 export function CprRealTab() {
-  const [dateRange, setDateRange] = useState<"1d" | "7d" | "14d" | "30d">("7d");
+  const todayWib = useMemo(() => {
+    const d = new Date(Date.now() + 7 * 3600000);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const default7dStart = useMemo(() => {
+    const d = new Date(Date.now() + 7 * 3600000 - 6 * 86400000);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const [dateRange, setDateRange] = useState<MetaDateRange>({
+    startDate: default7dStart,
+    endDate: todayWib,
+    presetKey: "last_7d",
+    presetLabel: "7 hari terakhir",
+  });
   const [selectedDetailDate, setSelectedDetailDate] = useState<string | null>(null);
 
   // 1. Query Real Ads CPR Data
@@ -44,28 +60,16 @@ export function CprRealTab() {
     isFetching, 
     refetch 
   } = useQuery({
-    queryKey: ["real-ads-cpr-analytics", dateRange],
+    queryKey: ["real-ads-cpr-analytics", dateRange.startDate, dateRange.endDate],
     queryFn: async () => {
-      const today = new Date();
-      let startDate = "";
-      const endDate = today.toISOString().slice(0, 10);
-
-      if (dateRange === "1d") {
-        startDate = endDate;
-      } else if (dateRange === "7d") {
-        const d = new Date(today.getTime() - 6 * 86400000);
-        startDate = d.toISOString().slice(0, 10);
-      } else if (dateRange === "14d") {
-        const d = new Date(today.getTime() - 13 * 86400000);
-        startDate = d.toISOString().slice(0, 10);
-      } else if (dateRange === "30d") {
-        const d = new Date(today.getTime() - 29 * 86400000);
-        startDate = d.toISOString().slice(0, 10);
-      }
-
-      const limit = dateRange === "30d" ? 30 : dateRange === "14d" ? 14 : 7;
-      return await getRealAdsCprAnalytics({ data: { startDate, endDate, limit } });
-    }
+      return await getRealAdsCprAnalytics({
+        data: {
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          limit: 100,
+        },
+      });
+    },
   });
 
   // 2. Query Detail Closing Customers for Selected Date
@@ -117,25 +121,17 @@ export function CprRealTab() {
 
         {/* Action & Filter */}
         <div className="flex items-center gap-2.5 self-start md:self-auto">
-          <Select value={dateRange} onValueChange={(val: any) => setDateRange(val)}>
-            <SelectTrigger className="w-[145px] h-9 text-xs bg-background border-emerald-500/30 font-medium">
-              <Calendar className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1d">Hari Ini (Live)</SelectItem>
-              <SelectItem value="7d">7 Hari Terakhir</SelectItem>
-              <SelectItem value="14d">14 Hari Terakhir</SelectItem>
-              <SelectItem value="30d">30 Hari Terakhir</SelectItem>
-            </SelectContent>
-          </Select>
+          <MetaDateRangePicker 
+            value={dateRange} 
+            onChange={(newRange) => setDateRange(newRange)} 
+          />
 
           <Button 
             variant="outline" 
             size="sm" 
             onClick={() => refetch()}
             disabled={isFetching}
-            className="h-9 px-3 text-xs border-emerald-500/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 gap-1.5"
+            className="h-9 px-3 text-xs border-emerald-500/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 gap-1.5 cursor-pointer shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
