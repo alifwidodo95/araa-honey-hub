@@ -23,6 +23,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { generateAIAdsAnalysis } from "@/lib/ai-ads-analyzer";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { CprRealTab } from "@/components/meta-ads/cpr-real-tab";
 
 export const Route = createFileRoute("/meta-ads")({
   component: () => (
@@ -925,8 +926,34 @@ function MetaAdsPage() {
         </div>
       </div>
 
-      {/* Meta Ads Token Configuration Card */}
-      <Card className="border border-border/80 bg-gradient-to-r from-card to-accent/5">
+      {/* Top Level Navigation Tabs */}
+      <Tabs defaultValue="cpr-real" className="w-full space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-3">
+          <TabsList className="bg-muted/80 p-1 rounded-xl h-auto border">
+            <TabsTrigger 
+              value="cpr-real" 
+              className="gap-2 py-2 px-5 font-semibold text-sm rounded-lg data-[state=active]:bg-emerald-600 data-[state=active]:text-white shadow-sm transition-all cursor-pointer"
+            >
+              <Target className="w-4 h-4" /> 🎯 CPR Real Closing (Murni Iklan)
+            </TabsTrigger>
+            <TabsTrigger 
+              value="manager" 
+              className="gap-2 py-2 px-5 font-semibold text-sm rounded-lg data-[state=active]:bg-background shadow-sm transition-all cursor-pointer"
+            >
+              <Megaphone className="w-4 h-4 text-honey" /> 📢 Kampanye & Ad Manager
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Tab 1: CPR Real Closing */}
+        <TabsContent value="cpr-real" className="m-0 space-y-6">
+          <CprRealTab />
+        </TabsContent>
+
+        {/* Tab 2: Kampanye & Ad Manager */}
+        <TabsContent value="manager" className="m-0 space-y-6">
+          {/* Meta Ads Token Configuration Card */}
+          <Card className="border border-border/80 bg-gradient-to-r from-card to-accent/5">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Key className="w-5 h-5 text-honey" /> Konfigurasi Token Meta Iklan
@@ -1676,6 +1703,8 @@ function MetaAdsPage() {
           </TabsContent>
         </Tabs>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
