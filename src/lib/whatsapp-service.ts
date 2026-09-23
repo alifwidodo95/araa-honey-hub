@@ -264,42 +264,60 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
     headers['X-Api-Key'] = apiKey;
   }
 
-  // Format button choices nicely for text-based WAHA
-  let wahaMessage = opts.message;
-  if (opts.buttons && opts.buttons.length > 0) {
-    const btnLines = opts.buttons.slice(0, 3).map((b, i) => `${i + 1}️⃣ ${b.title}`).join('\n');
-    wahaMessage += `\n\n📌 *Pilihan Balasan Cepat:*\n${btnLines}`;
-  }
+  // Pure natural message for WAHA without artificial button lists
+  const wahaMessage = opts.message;
 
   try {
     if (hasMedia) {
+      let mimetype = 'image/jpeg';
+      let filename = 'promo-araa.jpg';
+      if (isVideo) {
+        mimetype = 'video/mp4';
+        filename = 'video-araa.mp4';
+      } else if (/\.png(\?.*)?$/i.test(mediaUrl)) {
+        mimetype = 'image/png';
+        filename = 'promo-araa.png';
+      } else if (/\.webp(\?.*)?$/i.test(mediaUrl)) {
+        mimetype = 'image/webp';
+        filename = 'promo-araa.webp';
+      }
+
       const mediaPayload = {
         session,
         chatId: wahaChatId,
         file: {
           url: mediaUrl,
-          mimetype: isVideo ? 'video/mp4' : 'image/jpeg',
-          filename: isVideo ? 'video-araa.mp4' : 'promo-araa.jpg'
+          mimetype,
+          filename
         },
         caption: wahaMessage
       };
 
       console.log(`[WA Dispatch] Sending ${isVideo ? 'Video' : 'Image'} via WAHA (${session}) to ${wahaChatId}...`);
-      let mediaRes = await fetch(`${wahaUrl}/api/sendFile`, {
+      const primaryEndpoint = isVideo ? `${wahaUrl}/api/sendVideo` : `${wahaUrl}/api/sendImage`;
+      let mediaRes = await fetch(primaryEndpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(mediaPayload)
+      }).catch((e) => {
+        console.warn(`[WA Dispatch] WAHA ${primaryEndpoint} fetch failed:`, e);
+        return null;
       });
 
-      if (!mediaRes.ok && !isVideo) {
-        mediaRes = await fetch(`${wahaUrl}/api/sendImage`, {
+      // If primary endpoint fails or errors, fallback to /api/sendFile
+      if (!mediaRes || !mediaRes.ok) {
+        console.warn(`[WA Dispatch] Primary media endpoint (${primaryEndpoint}) failed, trying fallback /api/sendFile...`);
+        mediaRes = await fetch(`${wahaUrl}/api/sendFile`, {
           method: 'POST',
           headers,
           body: JSON.stringify(mediaPayload)
+        }).catch((e) => {
+          console.error('[WA Dispatch] WAHA /api/sendFile fallback failed:', e);
+          return null;
         });
       }
 
-      if (mediaRes.ok) {
+      if (mediaRes && mediaRes.ok) {
         const mediaData = await mediaRes.json().catch(() => ({}));
         return {
           success: true,
