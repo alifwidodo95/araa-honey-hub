@@ -18,7 +18,7 @@ import {
   Megaphone, Key, ShieldAlert, CheckCircle, RefreshCw, AlertCircle,
   TrendingUp, Users, MousePointerClick, Percent, Target, CirclePlay, CirclePause, Eye,
   Database, Bot, Sparkles, Send, Lightbulb, CheckCircle2, AlertOctagon, Film,
-  MessageSquare, Copy, ExternalLink, Loader2, Award, Zap
+  MessageSquare, Copy, ExternalLink, Loader2, Award, Zap, Layers
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { generateAIAdsAnalysis } from "@/lib/ai-ads-analyzer";
