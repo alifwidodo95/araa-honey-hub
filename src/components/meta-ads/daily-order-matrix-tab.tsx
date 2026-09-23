@@ -212,10 +212,8 @@ export function DailyOrderMatrixTab() {
               </div>
             </div>
             <div className="pt-2 border-t border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Pangsa Repeat:</span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                {summary?.overall_repeat_crm_share_pct || 0}%
-              </span>
+              <span>Pangsa: <strong className="text-emerald-600 dark:text-emerald-400">{summary?.overall_repeat_crm_share_pct || 0}%</strong></span>
+              <span>{summary?.total_repeat_crm_wa_orders || 0} WA • {summary?.total_reseller_orders || 0} Reseller</span>
             </div>
           </CardContent>
         </Card>
@@ -297,7 +295,7 @@ export function DailyOrderMatrixTab() {
                 {formatIDR(summary?.total_ad_savings_by_crm || 0)}
               </div>
               <div className="text-xs font-medium text-muted-foreground truncate">
-                {summary?.total_repeat_crm_orders || 0} order via CRM (Bebas Ads)
+                {summary?.total_repeat_crm_orders || 0} order CRM & Reseller (Bebas Ads)
               </div>
             </div>
             <div className="pt-2 border-t border-indigo-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
@@ -489,6 +487,11 @@ export function DailyOrderMatrixTab() {
                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
                           {formatIDR(row.repeat_crm_net_revenue)}
                         </div>
+                        {row.repeat_reseller_orders > 0 && (
+                          <div className="text-[9px] text-muted-foreground">
+                            {row.repeat_crm_wa_orders} WA • {row.repeat_reseller_orders} Reseller
+                          </div>
+                        )}
                       </TableCell>
 
                       {/* 2. Repeat Dari Iklan */}

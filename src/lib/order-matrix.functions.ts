@@ -22,8 +22,11 @@ export interface DailyOrderMatrixRow {
   repeat_total_orders: number;
   repeat_ads_orders: number;
   repeat_ads_net_revenue: number;
-  repeat_crm_orders: number; // Tanpa Iklan
+  repeat_crm_orders: number; // Tanpa Iklan (Total: CRM WA + Reseller)
   repeat_crm_net_revenue: number;
+  repeat_crm_wa_orders: number; // Khusus WA retail
+  repeat_reseller_orders: number; // Khusus Reseller
+  repeat_reseller_net_revenue: number;
 
   // 3. Shopee
   shopee_orders: number;
@@ -54,6 +57,9 @@ export interface OrderMatrixSummary {
 
   total_repeat_crm_orders: number;
   total_repeat_crm_net_revenue: number;
+  total_repeat_crm_wa_orders: number;
+  total_reseller_orders: number;
+  total_reseller_net_revenue: number;
 
   total_repeat_ads_orders: number;
   total_repeat_ads_net_revenue: number;
@@ -156,7 +162,8 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
               WHEN o.channel = 'tiktok' THEN 'tiktok'
               WHEN o.clean_phone IS NOT NULL AND o.customer_seq = 1 THEN 'pelanggan_baru'
               WHEN o.clean_phone IS NOT NULL AND o.customer_seq > 1 THEN 'repeat_order'
-              ELSE 'lainnya'
+              WHEN o.channel = 'reseller' THEN 'repeat_crm' -- Reseller langganan repeat tanpa ads
+              ELSE 'repeat_crm' -- Offline / non-phone repeat
             END as primary_category,
             EXISTS (
               SELECT 1 
@@ -176,7 +183,7 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
         ),
         daily_order_stats AS (
           SELECT 
-            order_date as tanggal,
+            to_char(order_date, 'YYYY-MM-DD') as tanggal,
             count(*) as total_orders,
             sum(net_revenue) as total_net_revenue,
             sum(cogs_total) as total_cogs,
@@ -188,13 +195,18 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
             count(CASE WHEN primary_category = 'pelanggan_baru' AND NOT has_scalev_lead THEN 1 END) as baru_organic_orders,
             sum(CASE WHEN primary_category = 'pelanggan_baru' THEN net_revenue ELSE 0 END) as baru_net_revenue,
 
-            -- Repeat Order Dari Iklan
-            count(CASE WHEN primary_category = 'repeat_order' AND has_scalev_lead THEN 1 END) as repeat_ads_orders,
-            sum(CASE WHEN primary_category = 'repeat_order' AND has_scalev_lead THEN net_revenue ELSE 0 END) as repeat_ads_net_revenue,
+            -- Repeat Order Dari Iklan (Scalev)
+            count(CASE WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND has_scalev_lead THEN 1 END) as repeat_ads_orders,
+            sum(CASE WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND has_scalev_lead THEN net_revenue ELSE 0 END) as repeat_ads_net_revenue,
 
-            -- Repeat Order Tanpa Iklan (CRM / WA Langsung)
-            count(CASE WHEN primary_category = 'repeat_order' AND NOT has_scalev_lead THEN 1 END) as repeat_crm_orders,
-            sum(CASE WHEN primary_category = 'repeat_order' AND NOT has_scalev_lead THEN net_revenue ELSE 0 END) as repeat_crm_net_revenue,
+            -- Repeat Order Tanpa Iklan (Total: CRM WA + Reseller)
+            count(CASE WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND NOT has_scalev_lead THEN 1 END) as repeat_crm_orders,
+            sum(CASE WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND NOT has_scalev_lead THEN net_revenue ELSE 0 END) as repeat_crm_net_revenue,
+
+            -- Sub-rincian Repeat: Khusus WA vs Reseller
+            count(CASE WHEN primary_category = 'repeat_order' AND NOT has_scalev_lead AND channel != 'reseller' THEN 1 END) as repeat_crm_wa_orders,
+            count(CASE WHEN channel = 'reseller' THEN 1 END) as repeat_reseller_orders,
+            sum(CASE WHEN channel = 'reseller' THEN net_revenue ELSE 0 END) as repeat_reseller_net_revenue,
 
             -- Shopee
             count(CASE WHEN primary_category = 'shopee' THEN 1 END) as shopee_orders,
@@ -204,15 +216,15 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
             count(CASE WHEN primary_category = 'tiktok' THEN 1 END) as tiktok_orders,
             sum(CASE WHEN primary_category = 'tiktok' THEN net_revenue ELSE 0 END) as tiktok_net_revenue,
 
-            -- Lainnya / Reseller
-            count(CASE WHEN primary_category = 'lainnya' THEN 1 END) as other_orders,
-            sum(CASE WHEN primary_category = 'lainnya' THEN net_revenue ELSE 0 END) as other_net_revenue
+            -- Lainnya
+            0 as other_orders,
+            0 as other_net_revenue
           FROM orders_classified
           GROUP BY order_date
         ),
         daily_ads AS (
           SELECT 
-            occurred_on AS tanggal, 
+            to_char(occurred_on, 'YYYY-MM-DD') AS tanggal, 
             SUM(amount) AS ad_spend
           FROM expenses_business
           WHERE category = 'meta_ads'
@@ -233,6 +245,9 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
           dos.repeat_ads_net_revenue,
           dos.repeat_crm_orders,
           dos.repeat_crm_net_revenue,
+          dos.repeat_crm_wa_orders,
+          dos.repeat_reseller_orders,
+          dos.repeat_reseller_net_revenue,
           dos.shopee_orders,
           dos.shopee_net_revenue,
           dos.tiktok_orders,
@@ -264,10 +279,8 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
       const result = await pool.query(mainQuery, params);
 
       const daily: DailyOrderMatrixRow[] = result.rows.map((r: any) => {
-        const d = new Date(r.tanggal);
-        const dateStr = !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : String(r.tanggal);
         return {
-          tanggal: dateStr,
+          tanggal: String(r.tanggal),
           total_orders: Number(r.total_orders || 0),
           total_net_revenue: Number(r.total_net_revenue || 0),
           total_cogs: Number(r.total_cogs || 0),
@@ -281,6 +294,9 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
           repeat_ads_net_revenue: Number(r.repeat_ads_net_revenue || 0),
           repeat_crm_orders: Number(r.repeat_crm_orders || 0),
           repeat_crm_net_revenue: Number(r.repeat_crm_net_revenue || 0),
+          repeat_crm_wa_orders: Number(r.repeat_crm_wa_orders || 0),
+          repeat_reseller_orders: Number(r.repeat_reseller_orders || 0),
+          repeat_reseller_net_revenue: Number(r.repeat_reseller_net_revenue || 0),
           shopee_orders: Number(r.shopee_orders || 0),
           shopee_net_revenue: Number(r.shopee_net_revenue || 0),
           tiktok_orders: Number(r.tiktok_orders || 0),
@@ -302,16 +318,15 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
       const total_baru_net_revenue = daily.reduce((acc, row) => acc + row.baru_net_revenue, 0);
       const total_repeat_crm_orders = daily.reduce((acc, row) => acc + row.repeat_crm_orders, 0);
       const total_repeat_crm_net_revenue = daily.reduce((acc, row) => acc + row.repeat_crm_net_revenue, 0);
+      const total_repeat_crm_wa_orders = daily.reduce((acc, row) => acc + row.repeat_crm_wa_orders, 0);
+      const total_reseller_orders = daily.reduce((acc, row) => acc + row.repeat_reseller_orders, 0);
+      const total_reseller_net_revenue = daily.reduce((acc, row) => acc + row.repeat_reseller_net_revenue, 0);
       const total_repeat_ads_orders = daily.reduce((acc, row) => acc + row.repeat_ads_orders, 0);
       const total_repeat_ads_net_revenue = daily.reduce((acc, row) => acc + row.repeat_ads_net_revenue, 0);
       const total_shopee_orders = daily.reduce((acc, row) => acc + row.shopee_orders, 0);
       const total_shopee_net_revenue = daily.reduce((acc, row) => acc + row.shopee_net_revenue, 0);
       const total_tiktok_orders = daily.reduce((acc, row) => acc + row.tiktok_orders, 0);
       const total_tiktok_net_revenue = daily.reduce((acc, row) => acc + row.tiktok_net_revenue, 0);
-      const total_other_orders = daily.reduce((acc, row) => acc + row.other_orders, 0);
-      const total_other_net_revenue = daily.reduce((acc, row) => acc + row.other_net_revenue, 0);
-      const total_ad_savings_by_crm = daily.reduce((acc, row) => acc + row.estimated_ad_savings, 0);
-
       const total_repeat_all = total_repeat_crm_orders + total_repeat_ads_orders;
       const overall_repeat_crm_share_pct =
         total_repeat_all > 0 ? Number(((total_repeat_crm_orders / total_repeat_all) * 100).toFixed(1)) : 0;
@@ -325,6 +340,9 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
         total_baru_net_revenue,
         total_repeat_crm_orders,
         total_repeat_crm_net_revenue,
+        total_repeat_crm_wa_orders,
+        total_reseller_orders,
+        total_reseller_net_revenue,
         total_repeat_ads_orders,
         total_repeat_ads_net_revenue,
         total_shopee_orders,
@@ -404,7 +422,8 @@ export const getDailyOrderMatrixDetails = createServerFn({ method: "GET" })
               WHEN o.channel = 'tiktok' THEN 'tiktok'
               WHEN o.clean_phone IS NOT NULL AND o.customer_seq = 1 THEN 'pelanggan_baru'
               WHEN o.clean_phone IS NOT NULL AND o.customer_seq > 1 THEN 'repeat_order'
-              ELSE 'lainnya'
+              WHEN o.channel = 'reseller' THEN 'repeat_crm' -- Reseller langganan repeat tanpa ads
+              ELSE 'repeat_crm' -- Offline / non-phone repeat
             END as primary_category,
             EXISTS (
               SELECT 1 
@@ -420,11 +439,11 @@ export const getDailyOrderMatrixDetails = createServerFn({ method: "GET" })
                 )
             ) as has_scalev_lead
           FROM orders_with_seq o
-          WHERE o.order_date = $1::date
+          WHERE (o.created_at AT TIME ZONE 'Asia/Jakarta')::date = $1::date
         )
         SELECT 
           id,
-          order_date,
+          to_char(order_date, 'YYYY-MM-DD') as order_date,
           created_at,
           customer_name,
           customer_phone,
@@ -435,18 +454,19 @@ export const getDailyOrderMatrixDetails = createServerFn({ method: "GET" })
             WHEN primary_category = 'shopee' THEN 'shopee'
             WHEN primary_category = 'tiktok' THEN 'tiktok'
             WHEN primary_category = 'pelanggan_baru' THEN 'pelanggan_baru'
-            WHEN primary_category = 'repeat_order' AND has_scalev_lead THEN 'repeat_ads'
-            WHEN primary_category = 'repeat_order' AND NOT has_scalev_lead THEN 'repeat_crm'
-            ELSE 'lainnya'
+            WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND has_scalev_lead THEN 'repeat_ads'
+            WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND NOT has_scalev_lead THEN 'repeat_crm'
+            ELSE 'repeat_crm'
           END as category,
           CASE 
             WHEN primary_category = 'shopee' THEN 'Shopee'
             WHEN primary_category = 'tiktok' THEN 'TikTok Shop'
             WHEN primary_category = 'pelanggan_baru' AND has_scalev_lead THEN 'Pelanggan Baru (Iklan)'
             WHEN primary_category = 'pelanggan_baru' AND NOT has_scalev_lead THEN 'Pelanggan Baru (Organik/WA)'
-            WHEN primary_category = 'repeat_order' AND has_scalev_lead THEN 'Repeat Order (Dari Iklan)'
-            WHEN primary_category = 'repeat_order' AND NOT has_scalev_lead THEN 'Repeat Order (CRM / Tanpa Iklan)'
-            ELSE 'Reseller / Offline'
+            WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND has_scalev_lead THEN 'Repeat Order (Dari Iklan)'
+            WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND NOT has_scalev_lead AND channel = 'reseller' THEN 'Repeat Reseller (Tanpa Iklan)'
+            WHEN (primary_category = 'repeat_order' OR primary_category = 'repeat_crm') AND NOT has_scalev_lead THEN 'Repeat Order (CRM / WA Langsung)'
+            ELSE 'Repeat Order (Tanpa Iklan)'
           END as category_label,
           subtotal_gross,
           net_revenue,
