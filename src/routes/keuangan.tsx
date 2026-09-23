@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MetaDateRangePicker, MetaDateRange } from "@/components/meta-ads/meta-date-range-picker";
 
 export const Route = createFileRoute("/keuangan")({ component: () => <RequireAuth requiredPermission="keuangan"><Page /></RequireAuth> });
 
@@ -90,36 +91,21 @@ const CustomRoasTooltip = ({ active, payload, label }: any) => {
 };
 
 function Page() {
-  const [rangeOption, setRangeOption] = useState<"today" | "yesterday" | "7days" | "30days" | "90days" | "custom">("30days");
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return toLocalISOString(d);
+  const [dateRange, setDateRange] = useState<MetaDateRange>(() => {
+    const nowWib = new Date(Date.now() + 7 * 3600000);
+    const endStr = nowWib.toISOString().slice(0, 10);
+    const startObj = new Date(nowWib.getTime() - 29 * 86400000);
+    const startStr = startObj.toISOString().slice(0, 10);
+    return {
+      startDate: startStr,
+      endDate: endStr,
+      presetKey: "last_30d",
+      presetLabel: "30 hari terakhir",
+    };
   });
-  const [endDate, setEndDate] = useState(() => toLocalISOString(new Date()));
 
-  // Sync dates when range option changes
-  useEffect(() => {
-    if (rangeOption === "custom") return;
-    const end = new Date();
-    const start = new Date();
-    
-    if (rangeOption === "today") {
-      // keep start as today
-    } else if (rangeOption === "yesterday") {
-      start.setDate(end.getDate() - 1);
-      end.setDate(end.getDate() - 1);
-    } else if (rangeOption === "7days") {
-      start.setDate(end.getDate() - 7);
-    } else if (rangeOption === "30days") {
-      start.setDate(end.getDate() - 30);
-    } else if (rangeOption === "90days") {
-      start.setDate(end.getDate() - 90);
-    }
-    
-    setStartDate(toLocalISOString(start));
-    setEndDate(toLocalISOString(end));
-  }, [rangeOption]);
+  const startDate = dateRange.startDate;
+  const endDate = dateRange.endDate;
 
   const { data: orders } = useQuery({
     queryKey: ["fin-orders", startDate, endDate],
@@ -297,40 +283,10 @@ function Page() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={rangeOption}
-            onValueChange={(v: any) => setRangeOption(v)}
-          >
-            <SelectTrigger className="w-[180px] bg-background text-xs h-9">
-              <SelectValue placeholder="Pilih Periode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hari Ini</SelectItem>
-              <SelectItem value="yesterday">Kemarin</SelectItem>
-              <SelectItem value="7days">1 Minggu Terakhir</SelectItem>
-              <SelectItem value="30days">1 Bulan Terakhir</SelectItem>
-              <SelectItem value="90days">3 Bulan Terakhir</SelectItem>
-              <SelectItem value="custom">Kustom Tanggal</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {rangeOption === "custom" && (
-            <div className="flex items-center gap-2 bg-muted/40 p-1 rounded-lg border h-9">
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-7 w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1"
-              />
-              <span className="text-xs font-medium text-muted-foreground px-0.5">s/d</span>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-7 w-36 bg-background text-xs border-none shadow-none focus-visible:ring-1"
-              />
-            </div>
-          )}
+          <MetaDateRangePicker
+            value={dateRange}
+            onChange={(newRange) => setDateRange(newRange)}
+          />
         </div>
       </div>
 
