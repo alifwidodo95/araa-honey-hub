@@ -37,6 +37,10 @@ const navStructure: NavEntry[] = [
   },
   {
     type: "item",
+    item: { to: "/scalev/leads", label: "Leads Ads & Closing Hub", icon: Zap },
+  },
+  {
+    type: "item",
     item: { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   },
   {
@@ -93,7 +97,6 @@ const navStructure: NavEntry[] = [
       label: "Pemasaran & AI",
       icon: Megaphone,
       items: [
-        { to: "/scalev/leads", label: "Scalev Leads & Closing", icon: Zap },
         { to: "/media", label: "Media & Testimoni", icon: ImageIcon },
         { to: "/meta-ads", label: "Meta Ads Manager", icon: Megaphone },
         { to: "/meta-comments", label: "Komentar Iklan", icon: MessageSquare },
