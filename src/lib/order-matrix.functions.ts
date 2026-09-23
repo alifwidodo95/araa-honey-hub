@@ -108,11 +108,13 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 
       let dateFilterClause = "";
+      let scalevFilterClause = "";
       const params: any[] = [];
 
       if (data.startDate) {
         params.push(data.startDate);
         dateFilterClause += ` AND (o.created_at AT TIME ZONE 'Asia/Jakarta')::date >= $${params.length}::date`;
+        scalevFilterClause += ` AND created_at >= ($${params.length}::date - INTERVAL '7 days')`;
       }
       if (data.endDate) {
         params.push(data.endDate);
@@ -122,7 +124,18 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
       const limit = data.limit && data.limit > 0 ? data.limit : 90;
 
       const mainQuery = `
-        WITH normalized_orders AS (
+        WITH relevant_leads AS (
+          SELECT 
+            matched_order_id,
+            CASE 
+              WHEN customer_phone LIKE '0%' THEN '62' || SUBSTRING(customer_phone FROM 2)
+              ELSE customer_phone
+            END as clean_lead_phone,
+            created_at
+          FROM scalev_leads
+          WHERE 1=1 ${scalevFilterClause}
+        ),
+        normalized_orders AS (
           SELECT 
             o.id,
             o.created_at,
@@ -167,16 +180,15 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
             END as primary_category,
             EXISTS (
               SELECT 1 
-              FROM scalev_leads sl 
-              WHERE sl.customer_phone = o.clean_phone 
-                OR sl.matched_order_id = o.id
-                OR (
-                  sl.customer_phone IS NOT NULL 
-                  AND o.clean_phone IS NOT NULL
-                  AND (sl.customer_phone = o.clean_phone OR '62' || LTRIM(sl.customer_phone, '0') = o.clean_phone)
-                  AND sl.created_at >= (o.created_at - INTERVAL '7 days')
-                  AND sl.created_at <= (o.created_at + INTERVAL '1 hour')
-                )
+              FROM relevant_leads rl 
+              WHERE rl.matched_order_id = o.id
+                 OR (
+                   rl.clean_lead_phone IS NOT NULL 
+                   AND o.clean_phone IS NOT NULL 
+                   AND rl.clean_lead_phone = o.clean_phone
+                   AND rl.created_at >= (o.created_at - INTERVAL '7 days')
+                   AND rl.created_at <= (o.created_at + INTERVAL '1 hour')
+                 )
             ) as has_scalev_lead
           FROM orders_with_seq o
           WHERE 1=1 ${dateFilterClause}
@@ -375,7 +387,19 @@ export const getDailyOrderMatrixDetails = createServerFn({ method: "GET" })
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 
       const query = `
-        WITH normalized_orders AS (
+        WITH relevant_leads AS (
+          SELECT 
+            matched_order_id,
+            CASE 
+              WHEN customer_phone LIKE '0%' THEN '62' || SUBSTRING(customer_phone FROM 2)
+              ELSE customer_phone
+            END as clean_lead_phone,
+            created_at
+          FROM scalev_leads
+          WHERE created_at >= ($1::date - INTERVAL '7 days')
+            AND created_at <= ($1::date + INTERVAL '2 days')
+        ),
+        normalized_orders AS (
           SELECT 
             o.id,
             o.customer_name,
@@ -427,16 +451,15 @@ export const getDailyOrderMatrixDetails = createServerFn({ method: "GET" })
             END as primary_category,
             EXISTS (
               SELECT 1 
-              FROM scalev_leads sl 
-              WHERE sl.customer_phone = o.clean_phone 
-                OR sl.matched_order_id = o.id
-                OR (
-                  sl.customer_phone IS NOT NULL 
-                  AND o.clean_phone IS NOT NULL
-                  AND (sl.customer_phone = o.clean_phone OR '62' || LTRIM(sl.customer_phone, '0') = o.clean_phone)
-                  AND sl.created_at >= (o.created_at - INTERVAL '7 days')
-                  AND sl.created_at <= (o.created_at + INTERVAL '1 hour')
-                )
+              FROM relevant_leads rl 
+              WHERE rl.matched_order_id = o.id
+                 OR (
+                   rl.clean_lead_phone IS NOT NULL 
+                   AND o.clean_phone IS NOT NULL 
+                   AND rl.clean_lead_phone = o.clean_phone
+                   AND rl.created_at >= (o.created_at - INTERVAL '7 days')
+                   AND rl.created_at <= (o.created_at + INTERVAL '1 hour')
+                 )
             ) as has_scalev_lead
           FROM orders_with_seq o
           WHERE (o.created_at AT TIME ZONE 'Asia/Jakarta')::date = $1::date
@@ -484,7 +507,7 @@ export const getDailyOrderMatrixDetails = createServerFn({ method: "GET" })
 
       const items: OrderMatrixDetailItem[] = result.rows.map((r: any) => ({
         id: String(r.id),
-        order_date: r.order_date ? new Date(r.order_date).toISOString().slice(0, 10) : "",
+        order_date: r.order_date ? String(r.order_date) : "",
         created_at: r.created_at ? new Date(r.created_at).toISOString() : "",
         customer_name: r.customer_name || "Pelanggan Anonim",
         customer_phone: r.customer_phone || "-",

@@ -63,6 +63,8 @@ export function DailyOrderMatrixTab() {
     data: matrixData, 
     isLoading, 
     isFetching, 
+    isError,
+    error,
     refetch 
   } = useQuery({
     queryKey: ["daily-order-matrix", dateRange.startDate, dateRange.endDate],
@@ -154,6 +156,24 @@ export function DailyOrderMatrixTab() {
         </div>
       </div>
 
+      {/* Error state banner */}
+      {isError && (
+        <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">Gagal memuat data matriks:</span>
+            <span>{(error as Error)?.message || "Terjadi kesalahan server saat mengambil data."}</span>
+          </div>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={() => refetch()} 
+            className="h-7 text-xs border-destructive/40 hover:bg-destructive/10 text-destructive shrink-0"
+          >
+            Coba Lagi
+          </Button>
+        </div>
+      )}
+
       {/* 5 Top Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* Card 1: Pelanggan Baru */}
@@ -165,26 +185,41 @@ export function DailyOrderMatrixTab() {
                 <span className="truncate">Pelanggan Baru</span>
               </span>
               <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 shrink-0 whitespace-nowrap">
-                {summary && summary.total_orders > 0 
-                  ? `${((summary.total_baru_orders / summary.total_orders) * 100).toFixed(0)}% Share`
-                  : "0%"}
+                {isLoading ? (
+                  <span className="inline-block w-8 h-2 bg-blue-500/20 animate-pulse rounded" />
+                ) : summary && summary.total_orders > 0 ? (
+                  `${((summary.total_baru_orders / summary.total_orders) * 100).toFixed(0)}% Share`
+                ) : (
+                  "0%"
+                )}
               </Badge>
             </div>
-            <div className="my-auto py-1">
-              <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
-                {summary?.total_baru_orders.toLocaleString("id-ID") || 0}
-                <span className="text-xs font-normal text-muted-foreground">order</span>
+            {isLoading ? (
+              <div className="my-auto py-1 space-y-1.5">
+                <div className="h-6 w-24 bg-muted/60 animate-pulse rounded" />
+                <div className="h-3.5 w-28 bg-muted/40 animate-pulse rounded" />
               </div>
-              <div className="text-xs font-bold text-blue-600 dark:text-blue-400 truncate">
-                {formatIDR(summary?.total_baru_net_revenue || 0)}
+            ) : (
+              <div className="my-auto py-1">
+                <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
+                  {summary?.total_baru_orders.toLocaleString("id-ID") || 0}
+                  <span className="text-xs font-normal text-muted-foreground">order</span>
+                </div>
+                <div className="text-xs font-bold text-blue-600 dark:text-blue-400 truncate">
+                  {formatIDR(summary?.total_baru_net_revenue || 0)}
+                </div>
               </div>
-            </div>
+            )}
             <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
               <span>Avg Basket:</span>
               <span className="font-semibold text-foreground">
-                {summary && summary.total_baru_orders > 0 
-                  ? formatIDR(summary.total_baru_net_revenue / summary.total_baru_orders)
-                  : "-"}
+                {isLoading ? (
+                  <span className="inline-block w-12 h-3 bg-muted/60 animate-pulse rounded" />
+                ) : summary && summary.total_baru_orders > 0 ? (
+                  formatIDR(summary.total_baru_net_revenue / summary.total_baru_orders)
+                ) : (
+                  "-"
+                )}
               </span>
             </div>
           </CardContent>
@@ -202,18 +237,25 @@ export function DailyOrderMatrixTab() {
                 Rp 0 Ads
               </Badge>
             </div>
-            <div className="my-auto py-1">
-              <div className="text-2xl font-black tracking-tight text-emerald-700 dark:text-emerald-300 flex items-baseline gap-1">
-                {summary?.total_repeat_crm_orders.toLocaleString("id-ID") || 0}
-                <span className="text-xs font-normal text-muted-foreground">order</span>
+            {isLoading ? (
+              <div className="my-auto py-1 space-y-1.5">
+                <div className="h-6 w-24 bg-emerald-500/20 animate-pulse rounded" />
+                <div className="h-3.5 w-28 bg-emerald-500/15 animate-pulse rounded" />
               </div>
-              <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                {formatIDR(summary?.total_repeat_crm_net_revenue || 0)}
+            ) : (
+              <div className="my-auto py-1">
+                <div className="text-2xl font-black tracking-tight text-emerald-700 dark:text-emerald-300 flex items-baseline gap-1">
+                  {summary?.total_repeat_crm_orders.toLocaleString("id-ID") || 0}
+                  <span className="text-xs font-normal text-muted-foreground">order</span>
+                </div>
+                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">
+                  {formatIDR(summary?.total_repeat_crm_net_revenue || 0)}
+                </div>
               </div>
-            </div>
+            )}
             <div className="pt-2 border-t border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Pangsa: <strong className="text-emerald-600 dark:text-emerald-400">{summary?.overall_repeat_crm_share_pct || 0}%</strong></span>
-              <span>{summary?.total_repeat_crm_wa_orders || 0} WA • {summary?.total_reseller_orders || 0} Reseller</span>
+              <span>Pangsa: <strong className="text-emerald-600 dark:text-emerald-400">{isLoading ? "..." : `${summary?.overall_repeat_crm_share_pct || 0}%`}</strong></span>
+              <span>{isLoading ? "..." : `${summary?.total_repeat_crm_wa_orders || 0} WA • ${summary?.total_reseller_orders || 0} Reseller`}</span>
             </div>
           </CardContent>
         </Card>
@@ -230,21 +272,32 @@ export function DailyOrderMatrixTab() {
                 Meta Ads
               </Badge>
             </div>
-            <div className="my-auto py-1">
-              <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
-                {summary?.total_repeat_ads_orders.toLocaleString("id-ID") || 0}
-                <span className="text-xs font-normal text-muted-foreground">order</span>
+            {isLoading ? (
+              <div className="my-auto py-1 space-y-1.5">
+                <div className="h-6 w-24 bg-muted/60 animate-pulse rounded" />
+                <div className="h-3.5 w-28 bg-muted/40 animate-pulse rounded" />
               </div>
-              <div className="text-xs font-bold text-amber-600 dark:text-amber-400 truncate">
-                {formatIDR(summary?.total_repeat_ads_net_revenue || 0)}
+            ) : (
+              <div className="my-auto py-1">
+                <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
+                  {summary?.total_repeat_ads_orders.toLocaleString("id-ID") || 0}
+                  <span className="text-xs font-normal text-muted-foreground">order</span>
+                </div>
+                <div className="text-xs font-bold text-amber-600 dark:text-amber-400 truncate">
+                  {formatIDR(summary?.total_repeat_ads_net_revenue || 0)}
+                </div>
               </div>
-            </div>
+            )}
             <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
               <span>Avg Basket:</span>
               <span className="font-semibold text-foreground">
-                {summary && summary.total_repeat_ads_orders > 0 
-                  ? formatIDR(summary.total_repeat_ads_net_revenue / summary.total_repeat_ads_orders)
-                  : "-"}
+                {isLoading ? (
+                  <span className="inline-block w-12 h-3 bg-muted/60 animate-pulse rounded" />
+                ) : summary && summary.total_repeat_ads_orders > 0 ? (
+                  formatIDR(summary.total_repeat_ads_net_revenue / summary.total_repeat_ads_orders)
+                ) : (
+                  "-"
+                )}
               </span>
             </div>
           </CardContent>
@@ -262,18 +315,25 @@ export function DailyOrderMatrixTab() {
                 Shopee & TT
               </Badge>
             </div>
-            <div className="my-auto py-1">
-              <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
-                {((summary?.total_shopee_orders || 0) + (summary?.total_tiktok_orders || 0)).toLocaleString("id-ID")}
-                <span className="text-xs font-normal text-muted-foreground">order</span>
+            {isLoading ? (
+              <div className="my-auto py-1 space-y-1.5">
+                <div className="h-6 w-24 bg-muted/60 animate-pulse rounded" />
+                <div className="h-3.5 w-28 bg-muted/40 animate-pulse rounded" />
               </div>
-              <div className="text-xs font-bold text-orange-600 dark:text-orange-400 truncate">
-                {formatIDR((summary?.total_shopee_net_revenue || 0) + (summary?.total_tiktok_net_revenue || 0))}
+            ) : (
+              <div className="my-auto py-1">
+                <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
+                  {((summary?.total_shopee_orders || 0) + (summary?.total_tiktok_orders || 0)).toLocaleString("id-ID")}
+                  <span className="text-xs font-normal text-muted-foreground">order</span>
+                </div>
+                <div className="text-xs font-bold text-orange-600 dark:text-orange-400 truncate">
+                  {formatIDR((summary?.total_shopee_net_revenue || 0) + (summary?.total_tiktok_net_revenue || 0))}
+                </div>
               </div>
-            </div>
+            )}
             <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Shopee: <strong className="text-foreground">{summary?.total_shopee_orders || 0}</strong></span>
-              <span>TikTok: <strong className="text-foreground">{summary?.total_tiktok_orders || 0}</strong></span>
+              <span>Shopee: <strong className="text-foreground">{isLoading ? "..." : summary?.total_shopee_orders || 0}</strong></span>
+              <span>TikTok: <strong className="text-foreground">{isLoading ? "..." : summary?.total_tiktok_orders || 0}</strong></span>
             </div>
           </CardContent>
         </Card>
@@ -290,18 +350,25 @@ export function DailyOrderMatrixTab() {
                 Efisiensi CRM
               </Badge>
             </div>
-            <div className="my-auto py-1">
-              <div className="text-2xl font-black tracking-tight text-indigo-700 dark:text-indigo-300 truncate">
-                {formatIDR(summary?.total_ad_savings_by_crm || 0)}
+            {isLoading ? (
+              <div className="my-auto py-1 space-y-1.5">
+                <div className="h-6 w-24 bg-indigo-500/20 animate-pulse rounded" />
+                <div className="h-3.5 w-28 bg-indigo-500/15 animate-pulse rounded" />
               </div>
-              <div className="text-xs font-medium text-muted-foreground truncate">
-                {summary?.total_repeat_crm_orders || 0} order CRM & Reseller (Bebas Ads)
+            ) : (
+              <div className="my-auto py-1">
+                <div className="text-2xl font-black tracking-tight text-indigo-700 dark:text-indigo-300 truncate">
+                  {formatIDR(summary?.total_ad_savings_by_crm || 0)}
+                </div>
+                <div className="text-xs font-medium text-muted-foreground truncate">
+                  {summary?.total_repeat_crm_orders || 0} order CRM & Reseller (Bebas Ads)
+                </div>
               </div>
-            </div>
+            )}
             <div className="pt-2 border-t border-indigo-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
               <span>Rasio Bebas Ads:</span>
               <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                {summary?.overall_repeat_crm_share_pct || 0}%
+                {isLoading ? "..." : `${summary?.overall_repeat_crm_share_pct || 0}%`}
               </span>
             </div>
           </CardContent>
@@ -340,61 +407,72 @@ export function DailyOrderMatrixTab() {
         </CardHeader>
         <CardContent className="pt-4">
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#88888820" vertical={false} />
-                <XAxis dataKey="name" stroke="#888888" fontSize={11} tickLine={false} />
-                <YAxis stroke="#888888" fontSize={11} tickLine={false} />
-                <RechartsTooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur-xs text-xs space-y-2 border-border min-w-[220px]">
-                          <div className="font-bold text-foreground border-b pb-1">
-                            {label} (Total: {data.totalOrders} order)
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-blue-600 dark:text-blue-400">
-                              <span>Pelanggan Baru:</span>
-                              <span className="font-semibold">{data.pelangganBaru} order</span>
+            {isLoading ? (
+              <div className="h-full w-full flex flex-col items-center justify-center gap-2.5 text-muted-foreground">
+                <RefreshCw className="w-7 h-7 animate-spin text-primary opacity-70" />
+                <span className="text-xs font-medium">Menyiapkan visualisasi grafik matriks...</span>
+              </div>
+            ) : chartData.length === 0 ? (
+              <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">
+                Tidak ada data grafik untuk rentang tanggal ini.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#88888820" vertical={false} />
+                  <XAxis dataKey="name" stroke="#888888" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#888888" fontSize={11} tickLine={false} />
+                  <RechartsTooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur-xs text-xs space-y-2 border-border min-w-[220px]">
+                            <div className="font-bold text-foreground border-b pb-1">
+                              {label} (Total: {data.totalOrders} order)
                             </div>
-                            <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                              <span>Repeat CRM ($0 Ads):</span>
-                              <span className="font-semibold">{data.repeatCrm} order ({formatIDR(data.omzetRepeatCrm)})</span>
-                            </div>
-                            <div className="flex justify-between text-amber-600 dark:text-amber-400">
-                              <span>Repeat Iklan:</span>
-                              <span className="font-semibold">{data.repeatAds} order ({formatIDR(data.omzetRepeatAds)})</span>
-                            </div>
-                            <div className="flex justify-between text-orange-600 dark:text-orange-400">
-                              <span>Shopee:</span>
-                              <span className="font-semibold">{data.shopee} order</span>
-                            </div>
-                            <div className="flex justify-between text-pink-600 dark:text-pink-400">
-                              <span>TikTok:</span>
-                              <span className="font-semibold">{data.tiktok} order</span>
-                            </div>
-                            {data.adSavings > 0 && (
-                              <div className="pt-1.5 border-t flex justify-between text-indigo-600 dark:text-indigo-400 font-bold">
-                                <span>Hemat Biaya Ads:</span>
-                                <span>{formatIDR(data.adSavings)}</span>
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                                <span>Pelanggan Baru:</span>
+                                <span className="font-semibold">{data.pelangganBaru} order</span>
                               </div>
-                            )}
+                              <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                                <span>Repeat CRM ($0 Ads):</span>
+                                <span className="font-semibold">{data.repeatCrm} order ({formatIDR(data.omzetRepeatCrm)})</span>
+                              </div>
+                              <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                                <span>Repeat Iklan:</span>
+                                <span className="font-semibold">{data.repeatAds} order ({formatIDR(data.omzetRepeatAds)})</span>
+                              </div>
+                              <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                                <span>Shopee:</span>
+                                <span className="font-semibold">{data.shopee} order</span>
+                              </div>
+                              <div className="flex justify-between text-pink-600 dark:text-pink-400">
+                                <span>TikTok:</span>
+                                <span className="font-semibold">{data.tiktok} order</span>
+                              </div>
+                              {data.adSavings > 0 && (
+                                <div className="pt-1.5 border-t flex justify-between text-indigo-600 dark:text-indigo-400 font-bold">
+                                  <span>Hemat Biaya Ads:</span>
+                                  <span>{formatIDR(data.adSavings)}</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="pelangganBaru" name="Pelanggan Baru" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="repeatCrm" name="Repeat CRM ($0 Ads)" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="repeatAds" name="Repeat Iklan" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="shopee" name="Shopee" stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="tiktok" name="TikTok" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
-              </ComposedChart>
-            </ResponsiveContainer>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="pelangganBaru" name="Pelanggan Baru" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="repeatCrm" name="Repeat CRM ($0 Ads)" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="repeatAds" name="Repeat Iklan" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="shopee" name="Shopee" stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="tiktok" name="TikTok" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </CardContent>
       </Card>
