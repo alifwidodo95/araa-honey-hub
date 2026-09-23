@@ -456,10 +456,28 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       const hasImage = !!(data.imageUrl && data.imageUrl.trim().startsWith("http"));
       console.log(`[Direct WAHA Send] Sending ${hasImage ? "IMAGE + CAPTION" : "TEXT"} to ${chatId} via ${wahaUrl} (${activeSession})...`);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      // Helper fetch with per-request timeout
+      const fetchWithTimeout = async (url: string, bodyObj: any, timeoutMs = 20000) => {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(bodyObj),
+            signal: ctrl.signal,
+          });
+          return res;
+        } catch (e: any) {
+          console.warn(`[WAHA fetch error ${url}]:`, e?.message || e);
+          return null;
+        } finally {
+          clearTimeout(tid);
+        }
+      };
 
       let response: Response | null = null;
+      let lastErrMsg = "Koneksi gateway terputus atau timeout";
 
       if (hasImage) {
         const imgUrl = data.imageUrl.trim();
@@ -468,7 +486,6 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         const mimetype = isPng ? "image/png" : isWebp ? "image/webp" : "image/jpeg";
         const filename = isPng ? "promo-madu-araa.png" : isWebp ? "promo-madu-araa.webp" : "promo-madu-araa.jpg";
 
-        // Send Image with Caption
         const imagePayload = {
           session: activeSession,
           chatId,
@@ -480,26 +497,24 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           caption: data.message,
         };
 
-        response = await fetch(`${wahaUrl}/api/sendImage`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(imagePayload),
-          signal: controller.signal,
-        }).catch((e) => {
-          console.warn("[WAHA /api/sendImage failed, trying /api/sendFile]:", e?.message || e);
-          return null;
-        });
+        // Attempt 1: sendImage (20s timeout)
+        response = await fetchWithTimeout(`${wahaUrl}/api/sendImage`, imagePayload, 20000);
 
+        // Smart Auto-Retry if attempt 1 failed
         if (!response || !response.ok) {
-          response = await fetch(`${wahaUrl}/api/sendFile`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(imagePayload),
-            signal: controller.signal,
-          }).catch(() => null);
+          console.warn("[WAHA sendImage Attempt 1 failed. Retrying in 2 seconds...]");
+          await new Promise((r) => setTimeout(r, 2000));
+          response = await fetchWithTimeout(`${wahaUrl}/api/sendImage`, imagePayload, 20000);
+        }
+
+        // Fallback: sendFile if sendImage endpoint didn't respond
+        if (!response || !response.ok) {
+          console.warn("[WAHA sendImage retry failed. Trying /api/sendFile...]");
+          response = await fetchWithTimeout(`${wahaUrl}/api/sendFile`, imagePayload, 20000);
         }
       }
 
+      // Graceful Fallback: If image send failed or no image, send as Text Message
       if (!response || !response.ok) {
         const textPayload = {
           session: activeSession,
@@ -507,21 +522,19 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           text: data.message,
         };
 
-        response = await fetch(`${wahaUrl}/api/sendText`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(textPayload),
-          signal: controller.signal,
-        }).catch((e) => {
-          console.warn("[WAHA Primary Endpoint failed]:", e?.message || e);
-          return null;
-        });
+        console.log(`[WAHA SendText] Dispatching text to ${chatId}...`);
+        response = await fetchWithTimeout(`${wahaUrl}/api/sendText`, textPayload, 15000);
+
+        // Auto-retry for text if failed
+        if (!response || !response.ok) {
+          console.warn("[WAHA sendText Attempt 1 failed. Retrying in 2 seconds...]");
+          await new Promise((r) => setTimeout(r, 2000));
+          response = await fetchWithTimeout(`${wahaUrl}/api/sendText`, textPayload, 15000);
+        }
       }
 
-      clearTimeout(timeoutId);
-
       if (!response || !response.ok) {
-        const errBody = response ? await response.text().catch(() => "") : "Koneksi gateway terputus atau timeout";
+        const errBody = response ? await response.text().catch(() => "") : lastErrMsg;
         throw new Error(`WAHA Gateway error (${response?.status || 500}): ${errBody.substring(0, 150)}`);
       }
 

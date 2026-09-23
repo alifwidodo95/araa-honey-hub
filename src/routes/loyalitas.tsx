@@ -768,8 +768,37 @@ function LoyaltyPage() {
         setSentMap((prev) => ({ ...prev, [c.phone]: true }));
         successCount++;
       } catch (err: any) {
-        console.warn(`Bulk send error to ${c.phone}:`, err);
-        failedCount++;
+        console.warn(`Bulk send error to ${c.phone}, retrying once in 2.5s...:`, err);
+        // Smart retry once in case of temporary network or gateway glitch
+        try {
+          await new Promise((r) => setTimeout(r, 2500));
+          if (!bulkAbortRef.current) {
+            await sendDirectLoyaltyWhatsApp({
+              data: {
+                phone: c.phone,
+                customerName: c.name,
+                message: formatted,
+                favoriteHoney: c.favoriteHoney,
+                imageUrl: imgUrl,
+                senderSession: selectedSenderSession,
+                templateName: isWaba ? selectedMetaTemplateName : undefined,
+                templateLanguage: isWaba ? (activeMetaTemplate?.language || "id") : undefined,
+                namedParameters: isWaba ? {
+                  nama: c.name || "Pelanggan",
+                  tanggal_order: formatDateIndo(c.lastOrderDate),
+                } : undefined,
+                headerImageUrl: isWaba ? (imgUrl || undefined) : undefined,
+              },
+            });
+            setSentMap((prev) => ({ ...prev, [c.phone]: true }));
+            successCount++;
+          } else {
+            failedCount++;
+          }
+        } catch (retryErr: any) {
+          console.error(`Bulk send retry also failed for ${c.phone}:`, retryErr);
+          failedCount++;
+        }
       }
 
       setBulkProgress((prev) => ({

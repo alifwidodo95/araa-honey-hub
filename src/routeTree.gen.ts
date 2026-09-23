@@ -39,6 +39,7 @@ import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
 import { Route as ApiScalevWebhookRouteImport } from './routes/api.scalev-webhook'
 import { Route as ApiLoyaltyStatsRouteImport } from './routes/api.loyalty-stats'
+import { Route as ApiHealthRouteImport } from './routes/api.health'
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api.webhooks.whatsapp'
 import { Route as ApiWebhooksMetaCommentsRouteImport } from './routes/api.webhooks.meta-comments'
@@ -206,6 +207,11 @@ const ApiLoyaltyStatsRoute = ApiLoyaltyStatsRouteImport.update({
   path: '/api/loyalty-stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWhatsappSendRoute = ApiWhatsappSendRouteImport.update({
   id: '/api/whatsapp/send',
   path: '/api/whatsapp/send',
@@ -305,6 +311,7 @@ export interface FileRoutesByFullPath {
   '/reaktivasi-2025': typeof Reaktivasi2025Route
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -353,6 +360,7 @@ export interface FileRoutesByTo {
   '/reaktivasi-2025': typeof Reaktivasi2025Route
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -402,6 +410,7 @@ export interface FileRoutesById {
   '/reaktivasi-2025': typeof Reaktivasi2025Route
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -452,6 +461,7 @@ export interface FileRouteTypes {
     | '/reaktivasi-2025'
     | '/retur'
     | '/whatsapp-ai'
+    | '/api/health'
     | '/api/loyalty-stats'
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
@@ -500,6 +510,7 @@ export interface FileRouteTypes {
     | '/reaktivasi-2025'
     | '/retur'
     | '/whatsapp-ai'
+    | '/api/health'
     | '/api/loyalty-stats'
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
@@ -548,6 +559,7 @@ export interface FileRouteTypes {
     | '/reaktivasi-2025'
     | '/retur'
     | '/whatsapp-ai'
+    | '/api/health'
     | '/api/loyalty-stats'
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
@@ -597,6 +609,7 @@ export interface RootRouteChildren {
   Reaktivasi2025Route: typeof Reaktivasi2025Route
   ReturRoute: typeof ReturRoute
   WhatsappAiRoute: typeof WhatsappAiRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiLoyaltyStatsRoute: typeof ApiLoyaltyStatsRoute
   ApiScalevWebhookRoute: typeof ApiScalevWebhookRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
@@ -841,6 +854,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLoyaltyStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/whatsapp/send': {
       id: '/api/whatsapp/send'
       path: '/api/whatsapp/send'
@@ -973,6 +993,7 @@ const rootRouteChildren: RootRouteChildren = {
   Reaktivasi2025Route: Reaktivasi2025Route,
   ReturRoute: ReturRoute,
   WhatsappAiRoute: WhatsappAiRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiLoyaltyStatsRoute: ApiLoyaltyStatsRoute,
   ApiScalevWebhookRoute: ApiScalevWebhookRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
