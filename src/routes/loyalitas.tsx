@@ -507,15 +507,17 @@ function LoyaltyPage() {
   // Dynamic CRM ROI Calculation based on selected timeframe
   const filteredCrmStats = useMemo(() => {
     const rawCrmStats = (apiResponse as any)?.crmStats || { total_crm_sent: 0, converted_customers: 0, crm_revenue: 0 };
-    const dailyList: Array<{ date: string; sent_count: number; converted_count: number; revenue: number }> = 
+    const dailyList: Array<{ date: string; sent_count: number; loyalty_sent_count?: number; reaktivasi_sent_count?: number; converted_count: number; revenue: number }> = 
       crmDailyTrends || [];
 
     if (crmTimeframe === "all") {
       const totalSent = Number(rawCrmStats.total_crm_sent) || 0;
+      const loyaltySent = Number(rawCrmStats.loyalty_crm_sent ?? rawCrmStats.total_crm_sent) || 0;
+      const reaktivasiSent = Number(rawCrmStats.reaktivasi_crm_sent) || 0;
       const converted = Number(rawCrmStats.converted_customers) || 0;
       const rev = Number(rawCrmStats.crm_revenue) || 0;
       const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
-      return { totalSent, converted, revenue: rev, rate, label: "Semua Waktu" };
+      return { totalSent, loyaltySent, reaktivasiSent, converted, revenue: rev, rate, label: "Semua Waktu" };
     }
 
     // Time calculations in Asia/Jakarta (UTC+7)
@@ -555,11 +557,13 @@ function LoyaltyPage() {
     }
 
     const totalSent = matchingDays.reduce((acc, d) => acc + (Number(d.sent_count) || 0), 0);
+    const loyaltySent = matchingDays.reduce((acc, d) => acc + (Number(d.loyalty_sent_count ?? d.sent_count) || 0), 0);
+    const reaktivasiSent = matchingDays.reduce((acc, d) => acc + (Number(d.reaktivasi_sent_count) || 0), 0);
     const converted = matchingDays.reduce((acc, d) => acc + (Number(d.converted_count) || 0), 0);
     const revenue = matchingDays.reduce((acc, d) => acc + (Number(d.revenue) || 0), 0);
     const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
 
-    return { totalSent, converted, revenue, rate, label };
+    return { totalSent, loyaltySent, reaktivasiSent, converted, revenue, rate, label };
   }, [apiResponse, crmDailyTrends, crmTimeframe]);
 
   // Format message for a specific customer based on the active tab template
@@ -1128,10 +1132,18 @@ function LoyaltyPage() {
             </div>
             <div>
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Pesan WA Terkirim</p>
-              <div className="text-xl font-extrabold text-foreground">
-                {filteredCrmStats.totalSent.toLocaleString("id-ID")} <span className="text-xs font-normal text-muted-foreground">Pesan</span>
+              <div className="text-xl font-extrabold text-foreground flex items-baseline gap-1.5 flex-wrap">
+                <span>{filteredCrmStats.loyaltySent.toLocaleString("id-ID")}</span>
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Pesan Loyalitas</span>
               </div>
-              <p className="text-[10px] text-muted-foreground">Periode: {filteredCrmStats.label}</p>
+              <p className="text-[10px] text-muted-foreground">
+                Periode: {filteredCrmStats.label}
+                {filteredCrmStats.reaktivasiSent > 0 && (
+                  <span className="ml-1 text-sky-600 dark:text-sky-400 font-medium">
+                    (+{filteredCrmStats.reaktivasiSent.toLocaleString("id-ID")} Reaktivasi)
+                  </span>
+                )}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -1225,7 +1237,12 @@ function LoyaltyPage() {
                             )}
                           </TableCell>
                           <TableCell className="py-2.5 text-center font-semibold text-foreground">
-                            {sent.toLocaleString("id-ID")} Pesan
+                            <div>{Number(d.loyalty_sent_count ?? d.sent_count).toLocaleString("id-ID")} Pesan</div>
+                            {Number(d.reaktivasi_sent_count) > 0 && (
+                              <div className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">
+                                +{Number(d.reaktivasi_sent_count).toLocaleString("id-ID")} Reaktivasi
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="py-2.5 text-center font-bold text-amber-600 dark:text-amber-400">
                             {conv.toLocaleString("id-ID")} Orang

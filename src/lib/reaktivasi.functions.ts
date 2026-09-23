@@ -349,8 +349,8 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
         // Record in crm_reminders as sent for cross-module sync
         await pool.query(
-          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
-           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
+          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
+           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'reaktivasi_2025')`,
           [data.customerName, rawPhone, data.product || "Madu Araa"]
         );
 
@@ -541,8 +541,8 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
       // Record in crm_reminders as sent for cross-module sync
       await pool.query(
-        `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
-         VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
+        `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
+         VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'reaktivasi_2025')`,
         [data.customerName, rawPhone, data.product || "Madu Araa"]
       );
 

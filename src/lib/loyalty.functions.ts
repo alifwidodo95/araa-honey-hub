@@ -69,6 +69,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
       sent_crm_normalized AS (
         SELECT 
           id,
+          stage,
           CASE 
             WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '0%' 
               THEN '62' || SUBSTRING(REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') FROM 2)
@@ -125,7 +126,9 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
       ),
       crm_conversions AS (
         SELECT 
-          COUNT(DISTINCT s.id)::int as total_crm_sent,
+          COUNT(DISTINCT s.phone)::int as total_crm_sent,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.stage IS DISTINCT FROM 'reaktivasi_2025')::int as loyalty_crm_sent,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.stage = 'reaktivasi_2025')::int as reaktivasi_crm_sent,
           COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_customers,
           COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue
         FROM sent_crm_normalized s
@@ -134,7 +137,9 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
       crm_daily_trends AS (
         SELECT 
           s.send_date as date,
-          COUNT(DISTINCT s.id)::int as sent_count,
+          COUNT(DISTINCT s.phone)::int as sent_count,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.stage IS DISTINCT FROM 'reaktivasi_2025')::int as loyalty_sent_count,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.stage = 'reaktivasi_2025')::int as reaktivasi_sent_count,
           COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_count,
           COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as revenue
         FROM sent_crm_normalized s
@@ -346,8 +351,8 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           throw new Error(`Gagal mengirim via WABA Resmi Meta: ${res.error}`);
         }
 
-        // Anti-double-chat sync
-        await pool.query(
+        // Anti-double-chat sync: Update existing pending reminder if exists, otherwise insert a new record
+        const updateRes = await pool.query(
           `UPDATE crm_reminders 
            SET status = 'sent', sent_at = now(), updated_at = now() 
            WHERE (
@@ -358,11 +363,13 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
           [rawPhone, "0" + rawPhone.slice(2)]
         );
 
-        await pool.query(
-          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
-           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
-          [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
-        );
+        if ((updateRes.rowCount || 0) === 0) {
+          await pool.query(
+            `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
+             VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'loyalitas')`,
+            [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
+          );
+        }
 
         // Record in whatsapp_chat_logs for Live Chat Monitor
         try {
@@ -518,8 +525,8 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         throw new Error(`WAHA Gateway error (${response?.status || 500}): ${errBody.substring(0, 150)}`);
       }
 
-      // SINKRONISASI ANTI-DOUBLE-CHAT:
-      await pool.query(
+      // SINKRONISASI ANTI-DOUBLE-CHAT: Update existing pending reminder if exists, otherwise insert a new record
+      const updateRes = await pool.query(
         `UPDATE crm_reminders 
          SET status = 'sent', sent_at = now(), updated_at = now() 
          WHERE (
@@ -530,11 +537,13 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         [rawPhone, "0" + rawPhone.slice(2)]
       );
 
-      await pool.query(
-        `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at)
-         VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now())`,
-        [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
-      );
+      if ((updateRes.rowCount || 0) === 0) {
+        await pool.query(
+          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
+           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'loyalitas')`,
+          [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
+        );
+      }
 
       // Record in whatsapp_chat_logs for Live Chat Monitor
       try {
