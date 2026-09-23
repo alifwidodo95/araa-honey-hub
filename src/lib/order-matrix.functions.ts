@@ -339,6 +339,9 @@ export const getDailyOrderMatrix = createServerFn({ method: "GET" })
       const total_shopee_net_revenue = daily.reduce((acc, row) => acc + row.shopee_net_revenue, 0);
       const total_tiktok_orders = daily.reduce((acc, row) => acc + row.tiktok_orders, 0);
       const total_tiktok_net_revenue = daily.reduce((acc, row) => acc + row.tiktok_net_revenue, 0);
+      const total_other_orders = daily.reduce((acc, row) => acc + row.other_orders, 0);
+      const total_other_net_revenue = daily.reduce((acc, row) => acc + row.other_net_revenue, 0);
+      const total_ad_savings_by_crm = daily.reduce((acc, row) => acc + row.estimated_ad_savings, 0);
       const total_repeat_all = total_repeat_crm_orders + total_repeat_ads_orders;
       const overall_repeat_crm_share_pct =
         total_repeat_all > 0 ? Number(((total_repeat_crm_orders / total_repeat_all) * 100).toFixed(1)) : 0;
