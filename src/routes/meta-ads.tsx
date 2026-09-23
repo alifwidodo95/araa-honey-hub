@@ -24,6 +24,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 import { generateAIAdsAnalysis } from "@/lib/ai-ads-analyzer";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { CprRealTab } from "@/components/meta-ads/cpr-real-tab";
+import { DailyOrderMatrixTab } from "@/components/meta-ads/daily-order-matrix-tab";
 
 export const Route = createFileRoute("/meta-ads")({
   component: () => (
@@ -937,6 +938,12 @@ function MetaAdsPage() {
               <Target className="w-4 h-4" /> 🎯 CPR Real Closing (Murni Iklan)
             </TabsTrigger>
             <TabsTrigger 
+              value="order-matrix" 
+              className="gap-2 py-2 px-5 font-semibold text-sm rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white shadow-sm transition-all cursor-pointer"
+            >
+              <Layers className="w-4 h-4" /> 📊 Matriks Order & Retensi (Baru vs Repeat vs MP)
+            </TabsTrigger>
+            <TabsTrigger 
               value="manager" 
               className="gap-2 py-2 px-5 font-semibold text-sm rounded-lg data-[state=active]:bg-background shadow-sm transition-all cursor-pointer"
             >
@@ -948,6 +955,11 @@ function MetaAdsPage() {
         {/* Tab 1: CPR Real Closing */}
         <TabsContent value="cpr-real" className="m-0 space-y-6">
           <CprRealTab />
+        </TabsContent>
+
+        {/* Tab 2: Matriks Harian Order & Retensi */}
+        <TabsContent value="order-matrix" className="m-0 space-y-6">
+          <DailyOrderMatrixTab />
         </TabsContent>
 
         {/* Tab 2: Kampanye & Ad Manager */}
