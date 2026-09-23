@@ -9,11 +9,21 @@ export const Route = createFileRoute('/api/health')({
 
         let campaignSession = 'unknown';
 
+        let wahaError: string | null = null;
+        let wahaHttpStatus: number | null = null;
+
         try {
           const wahaRes = await fetch('https://waha.araahoney.my.id/api/sessions', {
             headers: { 'x-api-key': 'araahoney123' },
-            signal: AbortSignal.timeout(4000),
-          }).catch(() => null);
+            signal: AbortSignal.timeout(8000),
+          }).catch((err) => {
+            wahaError = err?.message || String(err);
+            return null;
+          });
+
+          if (wahaRes) {
+            wahaHttpStatus = wahaRes.status;
+          }
 
           if (wahaRes && wahaRes.ok) {
             wahaStatus = 'connected';
@@ -57,8 +67,9 @@ export const Route = createFileRoute('/api/health')({
           } else {
             wahaStatus = 'standby';
           }
-        } catch {
+        } catch (outerErr: any) {
           wahaStatus = 'standby';
+          wahaError = outerErr?.message || String(outerErr);
         }
 
         return new Response(
@@ -68,6 +79,8 @@ export const Route = createFileRoute('/api/health')({
             waha: wahaStatus,
             slot1: defaultSession,
             slot2: campaignSession,
+            wahaHttpStatus,
+            wahaError,
           }),
           {
             status: 200,
