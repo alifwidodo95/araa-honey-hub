@@ -19,8 +19,19 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil, Trash2, Plus, Tag
+  Pencil, Trash2, Plus, Tag, FileText
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   getScalevMetrics,
   getScalevLeads,
@@ -89,29 +100,26 @@ const COMMON_UNCLOSED_REASONS = [
 
 function LeadNotesCell({ leadId, initialNotes }: { leadId: string; initialNotes?: string | null }) {
   const [notes, setNotes] = useState(initialNotes || "");
-  const [isEditing, setIsEditing] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [tempNotes, setTempNotes] = useState(initialNotes || "");
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setNotes(initialNotes || "");
+    setTempNotes(initialNotes || "");
   }, [initialNotes]);
 
   const handleSave = async (valueToSave: string) => {
     const trimmed = valueToSave.trim();
-    if (trimmed === (initialNotes || "").trim()) {
-      setIsEditing(false);
-      return;
-    }
-
     setIsSaving(true);
     try {
       await updateScalevLeadNotes({
         data: { leadId, notes: trimmed },
       });
       setNotes(trimmed);
-      setIsEditing(false);
+      setTempNotes(trimmed);
+      setIsOpen(false);
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
     } catch (err: any) {
@@ -123,100 +131,161 @@ function LeadNotesCell({ leadId, initialNotes }: { leadId: string; initialNotes?
 
   const handleSelectPreset = (reason: string) => {
     let newNotes = reason;
-    if (notes && !notes.includes(reason)) {
-      newNotes = `${notes}, ${reason}`;
+    if (tempNotes && !tempNotes.includes(reason)) {
+      newNotes = `${tempNotes}, ${reason}`;
     }
-    setNotes(newNotes);
-    handleSave(newNotes);
+    setTempNotes(newNotes);
   };
 
-  if (isEditing) {
-    return (
-      <div className="flex flex-col gap-1.5 py-1 min-w-[210px] max-w-[300px]">
-        <div className="flex items-center gap-1">
-          <Input
-            ref={inputRef}
-            autoFocus
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSave(notes);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setNotes(initialNotes || "");
-                setIsEditing(false);
-              }
-            }}
-            onBlur={() => handleSave(notes)}
-            placeholder="Tulis alasan belum closing..."
-            className="h-7 text-xs px-2 py-0.5 bg-background border-primary/50 shadow-xs focus-visible:ring-1"
-            disabled={isSaving}
-          />
-          {isSaving ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-          ) : (
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleSave(notes);
-              }}
-              className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded shrink-0 cursor-pointer"
-              title="Simpan (Enter)"
-            >
-              <Check className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Quick presets chips */}
-        <div className="flex flex-wrap gap-1 items-center">
-          <span className="text-[9px] text-muted-foreground/80 flex items-center gap-0.5 font-medium">
-            <Tag className="w-2.5 h-2.5" /> Cepat:
-          </span>
-          {COMMON_UNCLOSED_REASONS.map((reason) => (
-            <button
-              key={reason}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleSelectPreset(reason);
-              }}
-              className="text-[9px] px-1.5 py-0.5 rounded bg-muted/80 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border border-border/60 transition-colors cursor-pointer text-muted-foreground whitespace-nowrap"
-            >
-              {reason}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      onClick={() => setIsEditing(true)}
-      className="group relative flex items-center justify-between gap-1.5 py-1 px-1.5 -mx-1 rounded-md hover:bg-muted/60 cursor-pointer transition-colors min-h-[30px] max-w-[280px]"
-      title="Klik untuk mengubah catatan / alasan belum closing"
-    >
-      {notes ? (
-        <div className="flex items-center gap-1.5 overflow-hidden">
-          <span className="text-xs text-foreground font-medium truncate leading-tight" title={notes}>
-            {notes}
-          </span>
-          {justSaved && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1 py-0.2 rounded shrink-0 border border-emerald-500/20">
-              <Check className="w-2.5 h-2.5" /> Tersimpan
-            </span>
-          )}
-        </div>
-      ) : (
-        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 italic group-hover:text-primary transition-colors">
-          <Plus className="w-3 h-3" /> Tambah catatan...
-        </span>
-      )}
-      <Pencil className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1" />
+    <div className="flex items-center justify-center">
+      <Popover open={isOpen} onOpenChange={(open) => {
+        setIsOpen(open);
+        if (open) setTempNotes(notes);
+      }}>
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="cursor-pointer transition-transform active:scale-95 outline-none select-none inline-flex items-center"
+                >
+                  {notes ? (
+                    <Badge
+                      variant="outline"
+                      className={`text-[11px] font-medium px-2 py-0.5 gap-1.5 transition-all shadow-2xs whitespace-nowrap ${
+                        justSaved
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 font-semibold"
+                          : "bg-amber-50 hover:bg-amber-100/90 text-amber-800 border-amber-300/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 font-medium"
+                      }`}
+                    >
+                      <FileText className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>{justSaved ? "Tersimpan" : "Ada Catatan"}</span>
+                    </Badge>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-primary transition-colors py-0.5 px-2 rounded-full hover:bg-muted/70 border border-transparent hover:border-border/60">
+                      <Plus className="w-3 h-3" />
+                      <span>Catatan</span>
+                    </span>
+                  )}
+                </button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+
+            {/* Hover Tooltip: Show full content when cursor is moved over */}
+            {notes && !isOpen && (
+              <TooltipContent
+                side="top"
+                align="center"
+                className="max-w-[280px] p-2.5 bg-slate-900 text-slate-100 rounded-lg shadow-xl border border-slate-800 text-xs z-50 animate-in fade-in zoom-in-95 text-left"
+              >
+                <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 mb-1">
+                  <FileText className="w-3 h-3" />
+                  <span>Catatan Lead / Alasan:</span>
+                </div>
+                <p className="text-xs leading-relaxed text-slate-200 break-words whitespace-pre-wrap">
+                  {notes}
+                </p>
+                <div className="mt-1.5 pt-1 border-t border-slate-800 text-[9px] text-slate-400 flex items-center justify-between">
+                  <span>Klik untuk mengedit</span>
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>
+
+        {/* Popover Content (Edit Box) */}
+        <PopoverContent
+          side="bottom"
+          align="center"
+          className="w-80 p-3.5 shadow-xl rounded-xl border border-border bg-background z-50 text-left"
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b pb-1.5">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-primary" />
+                Catatan / Alasan Belum Closing
+              </span>
+              {notes && (
+                <button
+                  type="button"
+                  onClick={() => handleSave("")}
+                  className="text-[10px] text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                  title="Hapus catatan"
+                >
+                  Hapus
+                </button>
+              )}
+            </div>
+
+            <Textarea
+              autoFocus
+              value={tempNotes}
+              onChange={(e) => setTempNotes(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSave(tempNotes);
+                }
+              }}
+              placeholder="Tulis alasan belum closing (misal: Kemahalan, Tanya Suami, dsb)..."
+              className="text-xs min-h-[70px] resize-none focus-visible:ring-1"
+              disabled={isSaving}
+            />
+
+            {/* Quick Presets Chips */}
+            <div className="space-y-1">
+              <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                <Tag className="w-2.5 h-2.5" /> Pilihan Alasan Cepat:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {COMMON_UNCLOSED_REASONS.map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => handleSelectPreset(reason)}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-muted/80 hover:bg-primary/10 hover:text-primary hover:border-primary/40 border border-border/60 transition-colors cursor-pointer text-muted-foreground whitespace-nowrap"
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-1 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2.5"
+                onClick={() => setIsOpen(false)}
+                disabled={isSaving}
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3 gap-1"
+                onClick={() => handleSave(tempNotes)}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Menyimpan...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3 h-3" />
+                    Simpan
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -1039,7 +1108,7 @@ export function ScalevLeadsPage() {
                   <TableHead className="w-36 text-xs font-semibold">Waktu Masuk</TableHead>
                   <TableHead className="w-52 text-xs font-semibold">Pelanggan & Kontak</TableHead>
                   <TableHead className="text-xs font-semibold">Produk & Nominal</TableHead>
-                  <TableHead className="w-56 text-left text-xs font-semibold">Catatan / Alasan Belum Closing</TableHead>
+                  <TableHead className="w-32 text-center text-xs font-semibold">Catatan</TableHead>
                   <TableHead className="w-40 text-center text-xs font-semibold">Pencocokan CS</TableHead>
                   <TableHead className="w-32 text-center text-xs font-semibold">Follow Up</TableHead>
                   <TableHead className="w-36 text-right text-xs font-semibold pr-6">Aksi Cepat</TableHead>
@@ -1137,8 +1206,8 @@ export function ScalevLeadsPage() {
                           </div>
                         </TableCell>
 
-                        {/* Catatan / Alasan Belum Closing */}
-                        <TableCell>
+                        {/* Catatan Lead (Status saja, hover untuk isi) */}
+                        <TableCell className="text-center">
                           <LeadNotesCell leadId={lead.id} initialNotes={lead.notes} />
                         </TableCell>
 
