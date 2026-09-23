@@ -14,10 +14,5 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
-    vercel: {
-      functions: {
-        maxDuration: 60,
-      },
-    },
   },
 });
