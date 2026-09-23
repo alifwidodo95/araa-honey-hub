@@ -11,6 +11,17 @@ import {
   Menu, X, User as UserIcon, AlertTriangle, RotateCcw, Database, Bot, HeartHandshake, Image as ImageIcon, BarChart3, ChevronDown, Sparkles, Zap
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { getScalevMetrics } from "@/lib/scalev.functions";
+
+function getTodayWibString() {
+  const d = new Date();
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const jkt = new Date(utc + (3600000 * 7));
+  const year = jkt.getFullYear();
+  const month = String(jkt.getMonth() + 1).padStart(2, "0");
+  const day = String(jkt.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 type NavItem = {
   to: string;
@@ -31,14 +42,6 @@ type NavEntry =
 
 const navStructure: NavEntry[] = [
   // Standalone Items (Sering dibuka)
-  {
-    type: "item",
-    item: { to: "/whatsapp-ai", label: "WhatsApp Monitor", icon: MessageSquare },
-  },
-  {
-    type: "item",
-    item: { to: "/scalev/leads", label: "Leads Ads & Closing Hub", icon: Zap },
-  },
   {
     type: "item",
     item: { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -211,6 +214,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
     };
   }, [refetchUnrepliedChats]);
 
+  // Fetch unclosed Scalev leads for today (Leads Ads badge)
+  const { data: scalevTodayMetrics } = useQuery({
+    queryKey: ["scalev-today-metrics-badge"],
+    queryFn: async () => {
+      try {
+        const todayStr = getTodayWibString();
+        const res = await getScalevMetrics({ data: { startDate: todayStr, endDate: todayStr } });
+        return res;
+      } catch {
+        return null;
+      }
+    },
+    refetchInterval: 25000,
+    enabled: !!user?.id,
+  });
+
+  const todayUnclosedLeads = scalevTodayMetrics?.unclosedCount || 0;
+
   // Telegram Alert Trigger Hook
   useEffect(() => {
     if (!alerts || alerts.length === 0) return;
@@ -326,8 +347,109 @@ export function AppLayout({ children }: { children: ReactNode }) {
     navigate({ to: "/auth", replace: true });
   };
 
-  const renderNav = (onNavigate?: () => void) => (
-    <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
+  const renderNav = (onNavigate?: () => void) => {
+    const canAccessWhatsApp = hasPermission("whatsapp_ai") || hasPermission("whatsapp-ai");
+    const canAccessScalev = hasPermission("scalev_leads");
+    const hasDailyOps = canAccessWhatsApp || canAccessScalev;
+
+    const isWhatsAppActive = pathname === "/whatsapp-ai" || pathname.startsWith("/whatsapp-ai/");
+    const isScalevActive = pathname === "/scalev/leads" || pathname.startsWith("/scalev/leads/");
+
+    return (
+      <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
+        {/* 🎯 DAILY OPS HUB (Pusat Operasional Utama) */}
+        {hasDailyOps && (
+          <div className="mb-3.5 p-2 rounded-xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] dark:from-white/[0.06] dark:to-transparent border border-white/10 shadow-xs space-y-1.5">
+            <div className="flex items-center justify-between px-2 pt-0.5 pb-1">
+              <span className="text-[10px] font-bold tracking-wider uppercase text-amber-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Daily Ops Hub
+              </span>
+              <span className="text-[9px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest">
+                Utama
+              </span>
+            </div>
+
+            {/* 1. WhatsApp Monitor */}
+            {canAccessWhatsApp && (
+              <Link
+                to="/whatsapp-ai"
+                onClick={onNavigate}
+                className={`group relative flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg font-semibold transition-all ${
+                  isWhatsAppActive
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/60"
+                    : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-100 border border-emerald-500/25 hover:border-emerald-500/40"
+                }`}
+              >
+                <div className={`p-1.5 rounded-md transition-colors ${
+                  isWhatsAppActive 
+                    ? "bg-white/20 text-white" 
+                    : "bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/30"
+                }`}>
+                  <MessageSquare className="h-4 w-4 shrink-0" />
+                </div>
+                <span className="flex-1 truncate">WhatsApp Monitor</span>
+                {unrepliedChatCount > 0 ? (
+                  <div 
+                    className="relative flex items-center shrink-0" 
+                    title={`${unrepliedChatCount} Pesan respon baru belum dibaca`}
+                  >
+                    <span className="animate-ping absolute -inset-0.5 rounded-full bg-emerald-400 opacity-60"></span>
+                    <span className="relative bg-emerald-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1 border border-white/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
+                      <span>{unrepliedChatCount}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500/60 shrink-0 group-hover:bg-emerald-400 transition-colors" title="Monitor Aktif" />
+                )}
+              </Link>
+            )}
+
+            {/* 2. Leads Ads & Closing Hub */}
+            {canAccessScalev && (
+              <Link
+                to="/scalev/leads"
+                onClick={onNavigate}
+                className={`group relative flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg font-semibold transition-all ${
+                  isScalevActive
+                    ? "liquid-honey-active shadow-md border border-amber-400/60 font-bold"
+                    : "bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-100 border border-amber-500/25 hover:border-amber-500/40"
+                }`}
+              >
+                <div className={`p-1.5 rounded-md transition-colors ${
+                  isScalevActive 
+                    ? "bg-amber-950/20 text-amber-950" 
+                    : "bg-amber-500/20 text-amber-400 group-hover:bg-amber-500/30"
+                }`}>
+                  <Zap className="h-4 w-4 shrink-0" />
+                </div>
+                <span className="flex-1 truncate">Leads Ads & Closing Hub</span>
+                {todayUnclosedLeads > 0 ? (
+                  <span 
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 transition-colors ${
+                      isScalevActive 
+                        ? "bg-amber-950/20 text-amber-950 border border-amber-950/30" 
+                        : "bg-amber-500/25 text-amber-300 border border-amber-400/30 group-hover:bg-amber-400/30"
+                    }`}
+                    title={`${todayUnclosedLeads} Lead hari ini belum closing`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    <span>{todayUnclosedLeads} Lead</span>
+                  </span>
+                ) : (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0 transition-colors ${
+                    isScalevActive 
+                      ? "bg-amber-950/20 text-amber-950" 
+                      : "bg-amber-400/20 text-amber-300 group-hover:bg-amber-400/30"
+                  }`}>
+                    ⚡ Hub
+                  </span>
+                )}
+              </Link>
+            )}
+          </div>
+        )}
       {filteredNav.map((entry) => {
         if (entry.type === "item") {
           const it = entry.item;
@@ -436,7 +558,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         );
       })}
     </nav>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen flex w-full bg-background overflow-hidden">
