@@ -375,20 +375,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <Link
                 to="/whatsapp-ai"
                 onClick={onNavigate}
-                className={`group relative flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg font-semibold transition-all ${
+                className={`group relative flex items-center gap-2.5 px-3 py-2.5 min-h-[46px] rounded-lg transition-all ${
                   isWhatsAppActive
-                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-950/40 border border-emerald-400/60"
-                    : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-100 border border-emerald-500/25 hover:border-emerald-500/40"
+                    ? "bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-md shadow-emerald-950/50 border border-emerald-400/60 font-bold"
+                    : "bg-emerald-950/50 hover:bg-emerald-900/60 text-white border border-emerald-500/30 hover:border-emerald-400/50 shadow-xs font-semibold"
                 }`}
               >
-                <div className={`p-1.5 rounded-md transition-colors ${
+                <div className={`p-1.5 rounded-md shrink-0 transition-colors ${
                   isWhatsAppActive 
                     ? "bg-white/20 text-white" 
-                    : "bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500/30"
+                    : "bg-emerald-500/20 text-emerald-300 group-hover:bg-emerald-500/30"
                 }`}>
                   <MessageSquare className="h-4 w-4 shrink-0" />
                 </div>
-                <span className="flex-1 truncate">WhatsApp Monitor</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-white tracking-tight leading-snug">
+                    WhatsApp Monitor
+                  </div>
+                </div>
                 {unrepliedChatCount > 0 ? (
                   <div 
                     className="relative flex items-center shrink-0" 
@@ -401,7 +405,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     </span>
                   </div>
                 ) : (
-                  <span className="w-2 h-2 rounded-full bg-emerald-500/60 shrink-0 group-hover:bg-emerald-400 transition-colors" title="Monitor Aktif" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-xs group-hover:scale-125 transition-transform" title="Monitor Aktif" />
                 )}
               </Link>
             )}
@@ -411,38 +415,37 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <Link
                 to="/scalev/leads"
                 onClick={onNavigate}
-                className={`group relative flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg font-semibold transition-all ${
+                className={`group relative flex items-center gap-2.5 px-3 py-2.5 min-h-[46px] rounded-lg transition-all ${
                   isScalevActive
-                    ? "liquid-honey-active shadow-md border border-amber-400/60 font-bold"
-                    : "bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-100 border border-amber-500/25 hover:border-amber-500/40"
+                    ? "bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white shadow-md shadow-amber-950/50 border border-amber-400/80 font-bold"
+                    : "bg-amber-950/50 hover:bg-amber-900/60 text-white border border-amber-500/30 hover:border-amber-400/50 shadow-xs font-semibold"
                 }`}
               >
-                <div className={`p-1.5 rounded-md transition-colors ${
+                <div className={`p-1.5 rounded-md shrink-0 transition-colors ${
                   isScalevActive 
-                    ? "bg-amber-950/20 text-amber-950" 
-                    : "bg-amber-500/20 text-amber-400 group-hover:bg-amber-500/30"
+                    ? "bg-white/20 text-white" 
+                    : "bg-amber-500/20 text-amber-300 group-hover:bg-amber-500/30"
                 }`}>
                   <Zap className="h-4 w-4 shrink-0" />
                 </div>
-                <span className="flex-1 truncate">Leads Ads & Closing Hub</span>
+                <div className="flex-1 min-w-0 flex flex-col leading-tight">
+                  <span className="text-[13px] font-bold text-white tracking-tight">
+                    Leads Ads
+                  </span>
+                  <span className="text-[10.5px] font-semibold text-amber-200/90 tracking-tight">
+                    & Closing Hub
+                  </span>
+                </div>
                 {todayUnclosedLeads > 0 ? (
                   <span 
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 transition-colors ${
-                      isScalevActive 
-                        ? "bg-amber-950/20 text-amber-950 border border-amber-950/30" 
-                        : "bg-amber-500/25 text-amber-300 border border-amber-400/30 group-hover:bg-amber-400/30"
-                    }`}
+                    className="bg-amber-500/30 text-amber-100 border border-amber-400/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 shadow-xs"
                     title={`${todayUnclosedLeads} Lead hari ini belum closing`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
                     <span>{todayUnclosedLeads} Lead</span>
                   </span>
                 ) : (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0 transition-colors ${
-                    isScalevActive 
-                      ? "bg-amber-950/20 text-amber-950" 
-                      : "bg-amber-400/20 text-amber-300 group-hover:bg-amber-400/30"
-                  }`}>
+                  <span className="bg-amber-400/20 text-amber-200 border border-amber-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider shrink-0">
                     ⚡ Hub
                   </span>
                 )}
