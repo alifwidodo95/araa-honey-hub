@@ -155,30 +155,31 @@ export function DailyOrderMatrixTab() {
       </div>
 
       {/* 5 Top Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* Card 1: Pelanggan Baru */}
-        <Card className="border border-border/80 shadow-xs hover:shadow-md transition-all">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <UserPlus className="w-3.5 h-3.5 text-blue-500" /> Pelanggan Baru
+        <Card className="border border-border/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between h-[148px]">
+          <CardContent className="p-3.5 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 truncate">
+                <UserPlus className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span className="truncate">Pelanggan Baru</span>
               </span>
-              <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
+              <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 shrink-0 whitespace-nowrap">
                 {summary && summary.total_orders > 0 
-                  ? `${((summary.total_baru_orders / summary.total_orders) * 100).toFixed(0)}% Order`
+                  ? `${((summary.total_baru_orders / summary.total_orders) * 100).toFixed(0)}% Share`
                   : "0%"}
               </Badge>
             </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-foreground">
+            <div className="my-auto py-1">
+              <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
                 {summary?.total_baru_orders.toLocaleString("id-ID") || 0}
-                <span className="text-xs font-normal text-muted-foreground ml-1">order</span>
+                <span className="text-xs font-normal text-muted-foreground">order</span>
               </div>
-              <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
+              <div className="text-xs font-bold text-blue-600 dark:text-blue-400 truncate">
                 {formatIDR(summary?.total_baru_net_revenue || 0)}
               </div>
             </div>
-            <div className="pt-1.5 border-t border-border/50 text-[11px] text-muted-foreground flex items-center justify-between">
+            <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
               <span>Avg Basket:</span>
               <span className="font-semibold text-foreground">
                 {summary && summary.total_baru_orders > 0 
@@ -190,27 +191,28 @@ export function DailyOrderMatrixTab() {
         </Card>
 
         {/* Card 2: Repeat Order CRM (Tanpa Iklan) - HIGHLIGHT */}
-        <Card className="border-2 border-emerald-500/40 bg-gradient-to-b from-emerald-500/5 to-transparent shadow-xs hover:shadow-md transition-all">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <RefreshCw className="w-3.5 h-3.5" /> Repeat - CRM (Tanpa Iklan)
+        <Card className="border-2 border-emerald-500/40 bg-gradient-to-b from-emerald-500/5 to-transparent shadow-xs hover:shadow-md transition-all flex flex-col justify-between h-[148px]">
+          <CardContent className="p-3.5 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 truncate">
+                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Repeat CRM</span>
               </span>
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold">
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.5 shrink-0 whitespace-nowrap">
                 Rp 0 Ads
               </Badge>
             </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-emerald-700 dark:text-emerald-300">
+            <div className="my-auto py-1">
+              <div className="text-2xl font-black tracking-tight text-emerald-700 dark:text-emerald-300 flex items-baseline gap-1">
                 {summary?.total_repeat_crm_orders.toLocaleString("id-ID") || 0}
-                <span className="text-xs font-normal text-muted-foreground ml-1">order</span>
+                <span className="text-xs font-normal text-muted-foreground">order</span>
               </div>
-              <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+              <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">
                 {formatIDR(summary?.total_repeat_crm_net_revenue || 0)}
               </div>
             </div>
-            <div className="pt-1.5 border-t border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Share Repeat:</span>
+            <div className="pt-2 border-t border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
+              <span>Pangsa Repeat:</span>
               <span className="font-bold text-emerald-600 dark:text-emerald-400">
                 {summary?.overall_repeat_crm_share_pct || 0}%
               </span>
@@ -219,26 +221,27 @@ export function DailyOrderMatrixTab() {
         </Card>
 
         {/* Card 3: Repeat Order Dari Iklan */}
-        <Card className="border border-border/80 shadow-xs hover:shadow-md transition-all">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Repeat - Dari Iklan
+        <Card className="border border-border/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between h-[148px]">
+          <CardContent className="p-3.5 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 truncate">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="truncate">Repeat Iklan</span>
               </span>
-              <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
-                Lead Scalev
+              <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 shrink-0 whitespace-nowrap">
+                Meta Ads
               </Badge>
             </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-foreground">
+            <div className="my-auto py-1">
+              <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
                 {summary?.total_repeat_ads_orders.toLocaleString("id-ID") || 0}
-                <span className="text-xs font-normal text-muted-foreground ml-1">order</span>
+                <span className="text-xs font-normal text-muted-foreground">order</span>
               </div>
-              <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
+              <div className="text-xs font-bold text-amber-600 dark:text-amber-400 truncate">
                 {formatIDR(summary?.total_repeat_ads_net_revenue || 0)}
               </div>
             </div>
-            <div className="pt-1.5 border-t border-border/50 text-[11px] text-muted-foreground flex items-center justify-between">
+            <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
               <span>Avg Basket:</span>
               <span className="font-semibold text-foreground">
                 {summary && summary.total_repeat_ads_orders > 0 
@@ -250,53 +253,55 @@ export function DailyOrderMatrixTab() {
         </Card>
 
         {/* Card 4: Marketplace (Shopee & TikTok) */}
-        <Card className="border border-border/80 shadow-xs hover:shadow-md transition-all">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <ShoppingBag className="w-3.5 h-3.5 text-orange-500" /> Shopee & TikTok
+        <Card className="border border-border/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between h-[148px]">
+          <CardContent className="p-3.5 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 truncate">
+                <ShoppingBag className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="truncate">Marketplace</span>
               </span>
-              <Badge variant="secondary" className="text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold">
-                Marketplace
+              <Badge variant="secondary" className="text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold px-1.5 py-0.5 shrink-0 whitespace-nowrap">
+                Shopee & TT
               </Badge>
             </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-foreground">
+            <div className="my-auto py-1">
+              <div className="text-2xl font-black tracking-tight text-foreground flex items-baseline gap-1">
                 {((summary?.total_shopee_orders || 0) + (summary?.total_tiktok_orders || 0)).toLocaleString("id-ID")}
-                <span className="text-xs font-normal text-muted-foreground ml-1">order</span>
+                <span className="text-xs font-normal text-muted-foreground">order</span>
               </div>
-              <div className="text-xs font-semibold text-orange-600 dark:text-orange-400 mt-0.5">
+              <div className="text-xs font-bold text-orange-600 dark:text-orange-400 truncate">
                 {formatIDR((summary?.total_shopee_net_revenue || 0) + (summary?.total_tiktok_net_revenue || 0))}
               </div>
             </div>
-            <div className="pt-1.5 border-t border-border/50 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span className="truncate">Shopee: {summary?.total_shopee_orders || 0}</span>
-              <span className="truncate">TikTok: {summary?.total_tiktok_orders || 0}</span>
+            <div className="pt-2 border-t border-border/40 text-[11px] text-muted-foreground flex items-center justify-between">
+              <span>Shopee: <strong className="text-foreground">{summary?.total_shopee_orders || 0}</strong></span>
+              <span>TikTok: <strong className="text-foreground">{summary?.total_tiktok_orders || 0}</strong></span>
             </div>
           </CardContent>
         </Card>
 
         {/* Card 5: Komparasi Efisiensi & Hemat Ads */}
-        <Card className="border-2 border-indigo-500/40 bg-gradient-to-b from-indigo-500/5 to-transparent shadow-xs hover:shadow-md transition-all">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                <PiggyBank className="w-3.5 h-3.5" /> Hemat Biaya Iklan (CRM)
+        <Card className="border-2 border-indigo-500/40 bg-gradient-to-b from-indigo-500/5 to-transparent shadow-xs hover:shadow-md transition-all flex flex-col justify-between h-[148px]">
+          <CardContent className="p-3.5 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 truncate">
+                <PiggyBank className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Hemat Biaya Ads</span>
               </span>
-              <Badge variant="outline" className="text-[10px] bg-indigo-500/15 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-bold">
-                Profit Value
+              <Badge variant="outline" className="text-[10px] bg-indigo-500/15 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-bold px-1.5 py-0.5 shrink-0 whitespace-nowrap">
+                Efisiensi CRM
               </Badge>
             </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-indigo-700 dark:text-indigo-300">
+            <div className="my-auto py-1">
+              <div className="text-2xl font-black tracking-tight text-indigo-700 dark:text-indigo-300 truncate">
                 {formatIDR(summary?.total_ad_savings_by_crm || 0)}
               </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Terselamatkan oleh CRM tanpa bayar ads
-              </p>
+              <div className="text-xs font-medium text-muted-foreground truncate">
+                {summary?.total_repeat_crm_orders || 0} order via CRM (Bebas Ads)
+              </div>
             </div>
-            <div className="pt-1.5 border-t border-indigo-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
-              <span>Rasio Retensi Bebas Ads:</span>
+            <div className="pt-2 border-t border-indigo-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
+              <span>Rasio Bebas Ads:</span>
               <span className="font-bold text-indigo-600 dark:text-indigo-400">
                 {summary?.overall_repeat_crm_share_pct || 0}%
               </span>
