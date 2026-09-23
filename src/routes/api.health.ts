@@ -4,17 +4,59 @@ export const Route = createFileRoute('/api/health')({
   server: {
     handlers: {
       GET: async () => {
-        // Lightweight keep-alive ping to both Vercel lambda and WAHA gateway
         let wahaStatus = 'unknown';
+        let defaultSession = 'unknown';
+
+        let campaignSession = 'unknown';
+
         try {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 3000);
-          const wahaRes = await fetch('https://waha.araahoney.my.id/api/server/version', {
+          const wahaRes = await fetch('https://waha.araahoney.my.id/api/sessions', {
             headers: { 'x-api-key': 'araahoney123' },
-            signal: controller.signal,
+            signal: AbortSignal.timeout(4000),
           }).catch(() => null);
-          clearTimeout(timer);
-          wahaStatus = wahaRes && wahaRes.ok ? 'connected' : 'standby';
+
+          if (wahaRes && wahaRes.ok) {
+            wahaStatus = 'connected';
+            const sessions = (await wahaRes.json().catch(() => [])) as Array<{ name: string; status: string }>;
+            const main = sessions.find((s) => s.name === 'default');
+            const camp = sessions.find((s) => s.name === 'campaign');
+
+            if (main) {
+              defaultSession = main.status;
+              // Auto-Revive if main session stopped on VPS
+              if (main.status === 'STOPPED' || main.status === 'FAILED') {
+                console.log('[Auto-Healing WAHA] Session default is STOPPED, sending restart trigger...');
+                fetch('https://waha.araahoney.my.id/api/sessions/start', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': 'araahoney123',
+                  },
+                  body: JSON.stringify({ name: 'default' }),
+                  signal: AbortSignal.timeout(3000),
+                }).catch(() => null);
+              }
+            }
+
+            if (camp) {
+              campaignSession = camp.status;
+              // Auto-Revive if campaign session stopped on VPS
+              if (camp.status === 'STOPPED' || camp.status === 'FAILED') {
+                console.log('[Auto-Healing WAHA] Session campaign is STOPPED, sending restart trigger...');
+                fetch('https://waha.araahoney.my.id/api/sessions/start', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': 'araahoney123',
+                  },
+                  body: JSON.stringify({ name: 'campaign' }),
+                  signal: AbortSignal.timeout(3000),
+                }).catch(() => null);
+              }
+            }
+          } else {
+            wahaStatus = 'standby';
+          }
         } catch {
           wahaStatus = 'standby';
         }
@@ -24,6 +66,8 @@ export const Route = createFileRoute('/api/health')({
             status: 'ok',
             time: new Date().toISOString(),
             waha: wahaStatus,
+            slot1: defaultSession,
+            slot2: campaignSession,
           }),
           {
             status: 200,

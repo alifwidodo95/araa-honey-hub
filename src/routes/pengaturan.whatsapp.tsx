@@ -610,6 +610,8 @@ function WhatsAppPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [actionLoadingMain, setActionLoadingMain] = useState(false);
   const [actionLoadingCampaign, setActionLoadingCampaign] = useState(false);
+  const mainFailuresRef = useRef(0);
+  const campFailuresRef = useRef(0);
 
   // Backwards-compatible aliases for existing resi queue
   const sessionStatus = mainSessionStatus;
@@ -843,40 +845,60 @@ function WhatsAppPage() {
         }).catch(() => null)
       ]);
 
-      const sessionsMain = resMain && resMain.ok ? await safeJson(resMain) : [];
-      const sessionsCamp = resCamp && resCamp.ok ? await safeJson(resCamp) : [];
-      const listMain: any[] = Array.isArray(sessionsMain) ? sessionsMain : [];
-      const listCamp: any[] = Array.isArray(sessionsCamp) ? sessionsCamp : [];
+      const sessionsMain = resMain && resMain.ok ? await safeJson(resMain) : null;
+      const sessionsCamp = resCamp && resCamp.ok ? await safeJson(resCamp) : null;
 
       // 1. Slot 1 (Nomor Utama CS)
-      const main = listMain.find((s: any) => s.name === sessionName);
-      if (main) {
-        let norm = main.status || "STOPPED";
-        if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
-        setMainSessionStatus(norm);
-        setMainMeInfo(main.me || null);
-        if (norm === "SCAN_QR") setQrRefreshTrigger(prev => prev + 1);
+      if (sessionsMain && Array.isArray(sessionsMain)) {
+        const targetSessionName = sessionName || "default";
+        const main = sessionsMain.find((s: any) => s.name === targetSessionName || s.name === "default");
+        if (main) {
+          mainFailuresRef.current = 0;
+          let norm = main.status || "STOPPED";
+          if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
+          setMainSessionStatus(norm);
+          setMainMeInfo(main.me || null);
+          if (norm === "SCAN_QR") setQrRefreshTrigger(prev => prev + 1);
+        } else if (sessionsMain.length > 0) {
+          mainFailuresRef.current = 0;
+          setMainSessionStatus("STOPPED");
+          setMainMeInfo(null);
+        }
       } else {
-        setMainSessionStatus("STOPPED");
-        setMainMeInfo(null);
+        mainFailuresRef.current += 1;
+        if (mainFailuresRef.current >= 3) {
+          setMainSessionStatus("DISCONNECTED");
+        }
       }
 
       // 2. Slot 2 (Nomor Kampanye Outreach)
-      const camp = listCamp.find((s: any) => s.name === campaignSessionName);
-      if (camp) {
-        let norm = camp.status || "STOPPED";
-        if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
-        setCampaignSessionStatus(norm);
-        setCampaignMeInfo(camp.me || null);
-        if (norm === "SCAN_QR") setQrRefreshTrigger(prev => prev + 1);
+      if (sessionsCamp && Array.isArray(sessionsCamp)) {
+        const targetCampName = campaignSessionName || "campaign";
+        const camp = sessionsCamp.find((s: any) => s.name === targetCampName || s.name === "campaign");
+        if (camp) {
+          campFailuresRef.current = 0;
+          let norm = camp.status || "STOPPED";
+          if (norm === "SCAN_QR_CODE") norm = "SCAN_QR";
+          setCampaignSessionStatus(norm);
+          setCampaignMeInfo(camp.me || null);
+          if (norm === "SCAN_QR") setQrRefreshTrigger(prev => prev + 1);
+        } else if (sessionsCamp.length > 0) {
+          campFailuresRef.current = 0;
+          setCampaignSessionStatus("STOPPED");
+          setCampaignMeInfo(null);
+        }
       } else {
-        setCampaignSessionStatus("STOPPED");
-        setCampaignMeInfo(null);
+        campFailuresRef.current += 1;
+        if (campFailuresRef.current >= 3) {
+          setCampaignSessionStatus("DISCONNECTED");
+        }
       }
     } catch (err: any) {
       if (!silent) console.error("Gagal memeriksa status sesi WAHA:", err);
-      setMainSessionStatus("DISCONNECTED");
-      setCampaignSessionStatus("DISCONNECTED");
+      mainFailuresRef.current += 1;
+      campFailuresRef.current += 1;
+      if (mainFailuresRef.current >= 3) setMainSessionStatus("DISCONNECTED");
+      if (campFailuresRef.current >= 3) setCampaignSessionStatus("DISCONNECTED");
     } finally {
       if (!silent) setLoadingStatus(false);
     }
@@ -1013,7 +1035,7 @@ function WhatsAppPage() {
       if (wahaUrl) {
         checkAllSessions(true);
       }
-    }, 10000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [wahaUrl, sessionName, campaignSessionName]);
 

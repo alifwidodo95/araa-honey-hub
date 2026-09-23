@@ -17,6 +17,7 @@ export const Route = createFileRoute('/api/waha-proxy')({
           const fetchOptions: RequestInit = {
             method: method || 'GET',
             headers: headers || {},
+            signal: AbortSignal.timeout(15000),
           };
 
           if (body) {
