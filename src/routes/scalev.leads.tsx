@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil, Trash2
+  Pencil, Trash2, Plus, Tag
 } from "lucide-react";
 import {
   getScalevMetrics,
@@ -32,7 +32,8 @@ import {
   manualToggleScalevClosing,
   searchOrdersForLinking,
   updateScalevLeadPhone,
-  deleteScalevLeads
+  deleteScalevLeads,
+  updateScalevLeadNotes
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
@@ -74,6 +75,150 @@ function getNDaysAgoString(days: number) {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return getLocalDateString(d);
+}
+
+const COMMON_UNCLOSED_REASONS = [
+  "Kemahalan",
+  "Minta COD",
+  "Tanya Pasangan",
+  "Checkout Shopee",
+  "Nunggu Gajian",
+  "No WA Salah / Centang 1",
+  "Ragu Keaslian",
+];
+
+function LeadNotesCell({ leadId, initialNotes }: { leadId: string; initialNotes?: string | null }) {
+  const [notes, setNotes] = useState(initialNotes || "");
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setNotes(initialNotes || "");
+  }, [initialNotes]);
+
+  const handleSave = async (valueToSave: string) => {
+    const trimmed = valueToSave.trim();
+    if (trimmed === (initialNotes || "").trim()) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateScalevLeadNotes({
+        data: { leadId, notes: trimmed },
+      });
+      setNotes(trimmed);
+      setIsEditing(false);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2500);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan catatan lead");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSelectPreset = (reason: string) => {
+    let newNotes = reason;
+    if (notes && !notes.includes(reason)) {
+      newNotes = `${notes}, ${reason}`;
+    }
+    setNotes(newNotes);
+    handleSave(newNotes);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="flex flex-col gap-1.5 py-1 min-w-[210px] max-w-[300px]">
+        <div className="flex items-center gap-1">
+          <Input
+            ref={inputRef}
+            autoFocus
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSave(notes);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setNotes(initialNotes || "");
+                setIsEditing(false);
+              }
+            }}
+            onBlur={() => handleSave(notes)}
+            placeholder="Tulis alasan belum closing..."
+            className="h-7 text-xs px-2 py-0.5 bg-background border-primary/50 shadow-xs focus-visible:ring-1"
+            disabled={isSaving}
+          />
+          {isSaving ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+          ) : (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleSave(notes);
+              }}
+              className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded shrink-0 cursor-pointer"
+              title="Simpan (Enter)"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Quick presets chips */}
+        <div className="flex flex-wrap gap-1 items-center">
+          <span className="text-[9px] text-muted-foreground/80 flex items-center gap-0.5 font-medium">
+            <Tag className="w-2.5 h-2.5" /> Cepat:
+          </span>
+          {COMMON_UNCLOSED_REASONS.map((reason) => (
+            <button
+              key={reason}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleSelectPreset(reason);
+              }}
+              className="text-[9px] px-1.5 py-0.5 rounded bg-muted/80 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border border-border/60 transition-colors cursor-pointer text-muted-foreground whitespace-nowrap"
+            >
+              {reason}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={() => setIsEditing(true)}
+      className="group relative flex items-center justify-between gap-1.5 py-1 px-1.5 -mx-1 rounded-md hover:bg-muted/60 cursor-pointer transition-colors min-h-[30px] max-w-[280px]"
+      title="Klik untuk mengubah catatan / alasan belum closing"
+    >
+      {notes ? (
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          <span className="text-xs text-foreground font-medium truncate leading-tight" title={notes}>
+            {notes}
+          </span>
+          {justSaved && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1 py-0.2 rounded shrink-0 border border-emerald-500/20">
+              <Check className="w-2.5 h-2.5" /> Tersimpan
+            </span>
+          )}
+        </div>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 italic group-hover:text-primary transition-colors">
+          <Plus className="w-3 h-3" /> Tambah catatan...
+        </span>
+      )}
+      <Pencil className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1" />
+    </div>
+  );
 }
 
 export function ScalevLeadsPage() {
@@ -894,7 +1039,7 @@ export function ScalevLeadsPage() {
                   <TableHead className="w-36 text-xs font-semibold">Waktu Masuk</TableHead>
                   <TableHead className="w-52 text-xs font-semibold">Pelanggan & Kontak</TableHead>
                   <TableHead className="text-xs font-semibold">Produk & Nominal</TableHead>
-                  <TableHead className="w-28 text-center text-xs font-semibold">Status Scalev</TableHead>
+                  <TableHead className="w-56 text-left text-xs font-semibold">Catatan / Alasan Belum Closing</TableHead>
                   <TableHead className="w-40 text-center text-xs font-semibold">Pencocokan CS</TableHead>
                   <TableHead className="w-32 text-center text-xs font-semibold">Follow Up</TableHead>
                   <TableHead className="w-36 text-right text-xs font-semibold pr-6">Aksi Cepat</TableHead>
@@ -992,11 +1137,9 @@ export function ScalevLeadsPage() {
                           </div>
                         </TableCell>
 
-                        {/* Status Scalev */}
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="text-[11px] font-normal capitalize">
-                            {lead.scalev_status || "draft"}
-                          </Badge>
+                        {/* Catatan / Alasan Belum Closing */}
+                        <TableCell>
+                          <LeadNotesCell leadId={lead.id} initialNotes={lead.notes} />
                         </TableCell>
 
                         {/* Status Closing CS */}

@@ -139,7 +139,8 @@ export const getScalevLeads = createServerFn({ method: "GET" })
           LOWER(customer_name) LIKE $${params.length} OR 
           customer_phone LIKE $${params.length} OR 
           LOWER(scalev_order_id) LIKE $${params.length} OR 
-          LOWER(product_name) LIKE $${params.length}
+          LOWER(product_name) LIKE $${params.length} OR
+          LOWER(COALESCE(notes, '')) LIKE $${params.length}
         )`);
       }
 
@@ -160,7 +161,7 @@ export const getScalevLeads = createServerFn({ method: "GET" })
           is_closed, matched_order_id, closed_at, followed_up_at, follow_up_count,
           follow_up_session, created_at, updated_at, COALESCE(is_phone_edited, false) AS is_phone_edited,
           COALESCE(follow_up_step, follow_up_count, 0) AS follow_up_step,
-          fu1_at, fu2_at, fu3_at, last_fu_notes
+          fu1_at, fu2_at, fu3_at, last_fu_notes, notes
         FROM scalev_leads
         WHERE ${whereStr}
         ORDER BY created_at DESC
@@ -795,5 +796,36 @@ export const deleteScalevLeads = createServerFn({ method: "POST" })
       throw new Error(err.message || "Gagal menghapus data lead Scalev");
     }
   });
+
+// 11. Update Notes / Unclosed Reason for a Lead (Seamless Auto-save)
+export const updateScalevLeadNotes = createServerFn({ method: "POST" })
+  .validator((data: { leadId: string; notes: string }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      if (!data?.leadId) {
+        throw new Error("ID lead tidak valid.");
+      }
+
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      const res = await pool.query(
+        `UPDATE scalev_leads 
+         SET notes = $1, 
+             updated_at = now() 
+         WHERE id = $2 
+         RETURNING id, notes`,
+        [data.notes ?? null, data.leadId]
+      );
+
+      await pool.end();
+      return { ok: true, leadId: data.leadId, notes: res.rows[0]?.notes ?? "" };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[updateScalevLeadNotes Error]:", err);
+      throw new Error(err.message || "Gagal menyimpan catatan lead");
+    }
+  });
+
 
 
