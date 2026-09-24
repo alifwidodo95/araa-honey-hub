@@ -52,7 +52,7 @@ export async function autoMatchScalevLeadsWithPool(pool: pg.Pool): Promise<numbe
         AND o.created_at >= (sl.created_at - INTERVAL '2 hours')
         AND o.created_at <= (sl.created_at + INTERVAL '30 days')
       )
-      WHERE sl.is_closed = false
+      WHERE (sl.is_closed = false OR sl.matched_order_id IS NULL)
         AND NOT EXISTS (
           SELECT 1 FROM scalev_leads other_sl
           WHERE other_sl.matched_order_id = o.id
