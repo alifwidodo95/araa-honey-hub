@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
+import { runAutoMatchScalev } from "@/lib/scalev.functions";
 
 export const Route = createFileRoute("/penjualan")({ component: () => <RequireAuth><Page /></RequireAuth> });
 
@@ -553,6 +554,7 @@ function Page() {
       setCustomerName(""); setCustomerPhone(""); setTrackingNumber(""); setAmountReceived("");
       setExpedition(""); setPaymentMethod(""); setTransferBank("");
       qc.invalidateQueries();
+      runAutoMatchScalev().catch(() => {});
     }
   };
 
@@ -889,6 +891,7 @@ function Page() {
     });
     setImporting(false);
     qc.invalidateQueries();
+    runAutoMatchScalev().catch(() => {});
   };
 
   const resetImportState = () => {

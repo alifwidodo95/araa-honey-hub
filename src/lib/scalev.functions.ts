@@ -35,6 +35,44 @@ function formatWibFilterEnd(dateStr: string): string {
   return `${clean} 23:59:59.999+07`;
 }
 
+// Helper: Auto-match unclosed leads with orders (Nearest order within -2 hours to +30 days, anti-double claim)
+export async function autoMatchScalevLeadsWithPool(pool: pg.Pool): Promise<number> {
+  const matchSql = `
+    WITH matched AS (
+      SELECT DISTINCT ON (sl.id)
+        sl.id AS lead_id,
+        o.id AS order_id,
+        o.created_at AS order_created_at
+      FROM scalev_leads sl
+      JOIN orders o ON (
+        (o.customer_phone = sl.customer_phone 
+         OR o.customer_phone = ('0' || SUBSTRING(sl.customer_phone FROM 3))
+         OR ('62' || SUBSTRING(o.customer_phone FROM 2)) = sl.customer_phone
+         OR o.customer_phone = sl.customer_raw_phone)
+        AND o.created_at >= (sl.created_at - INTERVAL '2 hours')
+        AND o.created_at <= (sl.created_at + INTERVAL '30 days')
+      )
+      WHERE sl.is_closed = false
+        AND NOT EXISTS (
+          SELECT 1 FROM scalev_leads other_sl
+          WHERE other_sl.matched_order_id = o.id
+            AND other_sl.id != sl.id
+        )
+      ORDER BY sl.id, o.created_at ASC
+    )
+    UPDATE scalev_leads
+    SET is_closed = true,
+        matched_order_id = matched.order_id,
+        closed_at = matched.order_created_at,
+        updated_at = now()
+    FROM matched
+    WHERE scalev_leads.id = matched.lead_id
+    RETURNING scalev_leads.id
+  `;
+  const res = await pool.query(matchSql);
+  return res.rowCount || 0;
+}
+
 // 1. Get Scalev Lead Metrics & Closing Rate
 export const getScalevMetrics = createServerFn({ method: "GET" })
   .validator((data?: { startDate?: string; endDate?: string }) => data || {})
@@ -43,28 +81,43 @@ export const getScalevMetrics = createServerFn({ method: "GET" })
     try {
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 
+      // Run auto-match silently for any pending unclosed leads
+      try {
+        await autoMatchScalevLeadsWithPool(pool);
+      } catch (autoErr) {
+        console.error("[autoMatch in getScalevMetrics Error]:", autoErr);
+      }
+
       let whereClause = "WHERE 1=1";
       const params: any[] = [];
 
       if (data.startDate) {
         params.push(formatWibFilterStart(data.startDate));
-        whereClause += ` AND created_at >= $${params.length}`;
+        whereClause += ` AND sl.created_at >= $${params.length}`;
       }
       if (data.endDate) {
         params.push(formatWibFilterEnd(data.endDate));
-        whereClause += ` AND created_at <= $${params.length}`;
+        whereClause += ` AND sl.created_at <= $${params.length}`;
       }
 
       const query = `
         SELECT 
           COUNT(*)::int AS total_leads,
-          COUNT(*) FILTER (WHERE is_closed = true)::int AS closed_count,
-          COUNT(*) FILTER (WHERE is_closed = false)::int AS unclosed_count,
-          COUNT(*) FILTER (WHERE followed_up_at IS NOT NULL)::int AS followed_up_count,
-          COALESCE(SUM(gross_revenue), 0)::numeric AS total_revenue,
-          COALESCE(SUM(gross_revenue) FILTER (WHERE is_closed = true), 0)::numeric AS closed_revenue,
-          COALESCE(SUM(gross_revenue) FILTER (WHERE is_closed = false), 0)::numeric AS unclosed_revenue
-        FROM scalev_leads
+          COUNT(*) FILTER (WHERE sl.is_closed = true)::int AS closed_count,
+          COUNT(*) FILTER (WHERE sl.is_closed = false)::int AS unclosed_count,
+          COUNT(*) FILTER (WHERE sl.followed_up_at IS NOT NULL)::int AS followed_up_count,
+          COALESCE(SUM(
+            CASE 
+              WHEN sl.is_closed = true THEN COALESCE(o.net_revenue, o.amount_received, o.subtotal_gross, sl.gross_revenue, 0)
+              ELSE COALESCE(sl.gross_revenue, 0)
+            END
+          ), 0)::numeric AS total_revenue,
+          COALESCE(SUM(
+            COALESCE(o.net_revenue, o.amount_received, o.subtotal_gross, sl.gross_revenue, 0)
+          ) FILTER (WHERE sl.is_closed = true), 0)::numeric AS closed_revenue,
+          COALESCE(SUM(sl.gross_revenue) FILTER (WHERE sl.is_closed = false), 0)::numeric AS unclosed_revenue
+        FROM scalev_leads sl
+        LEFT JOIN orders o ON sl.matched_order_id = o.id
         ${whereClause}
       `;
 
@@ -118,29 +171,29 @@ export const getScalevLeads = createServerFn({ method: "GET" })
       const params: any[] = [];
 
       if (data.status === "closed") {
-        whereClauses.push("is_closed = true");
+        whereClauses.push("sl.is_closed = true");
       } else if (data.status === "unclosed") {
-        whereClauses.push("is_closed = false");
+        whereClauses.push("sl.is_closed = false");
       }
 
       if (data.startDate) {
         params.push(formatWibFilterStart(data.startDate));
-        whereClauses.push(`created_at >= $${params.length}`);
+        whereClauses.push(`sl.created_at >= $${params.length}`);
       }
 
       if (data.endDate) {
         params.push(formatWibFilterEnd(data.endDate));
-        whereClauses.push(`created_at <= $${params.length}`);
+        whereClauses.push(`sl.created_at <= $${params.length}`);
       }
 
       if (data.search && data.search.trim()) {
         params.push(`%${data.search.trim().toLowerCase()}%`);
         whereClauses.push(`(
-          LOWER(customer_name) LIKE $${params.length} OR 
-          customer_phone LIKE $${params.length} OR 
-          LOWER(scalev_order_id) LIKE $${params.length} OR 
-          LOWER(product_name) LIKE $${params.length} OR
-          LOWER(COALESCE(notes, '')) LIKE $${params.length}
+          LOWER(sl.customer_name) LIKE $${params.length} OR 
+          sl.customer_phone LIKE $${params.length} OR 
+          LOWER(sl.scalev_order_id) LIKE $${params.length} OR 
+          LOWER(sl.product_name) LIKE $${params.length} OR
+          LOWER(COALESCE(sl.notes, '')) LIKE $${params.length}
         )`);
       }
 
@@ -156,15 +209,18 @@ export const getScalevLeads = createServerFn({ method: "GET" })
 
       const leadsQuery = `
         SELECT 
-          id, scalev_order_id, customer_name, customer_phone, customer_raw_phone,
-          product_name, gross_revenue, scalev_status, payment_status, store_name,
-          is_closed, matched_order_id, closed_at, followed_up_at, follow_up_count,
-          follow_up_session, created_at, updated_at, COALESCE(is_phone_edited, false) AS is_phone_edited,
-          COALESCE(follow_up_step, follow_up_count, 0) AS follow_up_step,
-          fu1_at, fu2_at, fu3_at, last_fu_notes, notes
-        FROM scalev_leads
+          sl.id, sl.scalev_order_id, sl.customer_name, sl.customer_phone, sl.customer_raw_phone,
+          sl.product_name, sl.gross_revenue, sl.scalev_status, sl.payment_status, sl.store_name,
+          sl.is_closed, sl.matched_order_id, sl.closed_at, sl.followed_up_at, sl.follow_up_count,
+          sl.follow_up_session, sl.created_at, sl.updated_at, COALESCE(sl.is_phone_edited, false) AS is_phone_edited,
+          COALESCE(sl.follow_up_step, sl.follow_up_count, 0) AS follow_up_step,
+          sl.fu1_at, sl.fu2_at, sl.fu3_at, sl.last_fu_notes, sl.notes,
+          o.net_revenue, o.subtotal_gross AS order_subtotal_gross, o.amount_received AS order_amount_received,
+          o.tracking_number AS matched_tracking_number
+        FROM scalev_leads sl
+        LEFT JOIN orders o ON sl.matched_order_id = o.id
         WHERE ${whereStr}
-        ORDER BY created_at DESC
+        ORDER BY sl.created_at DESC
         LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}
       `;
 
@@ -173,7 +229,7 @@ export const getScalevLeads = createServerFn({ method: "GET" })
       // Get total count for pagination
       const countParams = params.slice(0, params.length - 2);
       const countRes = await pool.query(
-        `SELECT COUNT(*)::int AS total FROM scalev_leads WHERE ${whereStr}`,
+        `SELECT COUNT(*)::int AS total FROM scalev_leads sl WHERE ${whereStr}`,
         countParams
       );
       const totalCount = countRes.rows[0]?.total || 0;
@@ -195,47 +251,9 @@ export const runAutoMatchScalev = createServerFn({ method: "POST" }).handler(asy
   let pool: pg.Pool | null = null;
   try {
     pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
-
-    // Find all unclosed leads
-    const unclosedRes = await pool.query(
-      `SELECT id, customer_phone, created_at FROM scalev_leads WHERE is_closed = false`
-    );
-    const unclosedLeads = unclosedRes.rows || [];
-
-    if (unclosedLeads.length === 0) {
-      await pool.end();
-      return { newlyClosedCount: 0, totalChecked: 0 };
-    }
-
-    let newlyClosedCount = 0;
-
-    for (const lead of unclosedLeads) {
-      const variants = getPhoneVariants(lead.customer_phone);
-      const match = await pool.query(
-        `SELECT id, created_at FROM orders 
-         WHERE customer_phone = ANY($1) 
-           AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
-         ORDER BY created_at DESC LIMIT 1`,
-        [variants, lead.created_at]
-      );
-
-      if (match.rowCount && match.rowCount > 0) {
-        const order = match.rows[0];
-        await pool.query(
-          `UPDATE scalev_leads 
-           SET is_closed = true, 
-               matched_order_id = $1, 
-               closed_at = $2, 
-               updated_at = now() 
-           WHERE id = $3`,
-          [order.id, order.created_at, lead.id]
-        );
-        newlyClosedCount++;
-      }
-    }
-
+    const newlyClosedCount = await autoMatchScalevLeadsWithPool(pool);
     await pool.end();
-    return { newlyClosedCount, totalChecked: unclosedLeads.length };
+    return { newlyClosedCount };
   } catch (err: any) {
     if (pool) try { await pool.end(); } catch (e) {}
     console.error("[runAutoMatchScalev Error]:", err);
@@ -315,8 +333,10 @@ export const syncScalevHistory = createServerFn({ method: "POST" })
           const matchRes = await pool.query(
             `SELECT id, created_at FROM orders 
              WHERE customer_phone = ANY($1) 
-               AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
-             ORDER BY created_at DESC LIMIT 1`,
+               AND created_at >= ($2::timestamptz - INTERVAL '2 hours')
+               AND created_at <= ($2::timestamptz + INTERVAL '30 days')
+               AND id NOT IN (SELECT matched_order_id FROM scalev_leads WHERE matched_order_id IS NOT NULL)
+             ORDER BY created_at ASC LIMIT 1`,
             [variants, createdAtStr]
           );
           const isClosed = matchRes.rowCount ? matchRes.rowCount > 0 : false;
@@ -626,6 +646,30 @@ export const manualToggleScalevClosing = createServerFn({ method: "POST" })
           );
           if (orderRes.rowCount && orderRes.rowCount > 0) {
             closedAt = orderRes.rows[0].created_at;
+          }
+        } else {
+          // Smart Auto-lookup: check if this customer has an order in orders table within [created_at - 2h, created_at + 30d]
+          const leadRes = await pool.query(
+            "SELECT customer_phone, customer_raw_phone, created_at FROM scalev_leads WHERE id = $1",
+            [data.leadId]
+          );
+          if (leadRes.rowCount && leadRes.rowCount > 0) {
+            const lead = leadRes.rows[0];
+            const variants = getPhoneVariants(lead.customer_phone);
+            if (lead.customer_raw_phone) variants.push(lead.customer_raw_phone);
+            const autoMatch = await pool.query(
+              `SELECT id, created_at FROM orders 
+               WHERE customer_phone = ANY($1) 
+                 AND created_at >= ($2::timestamptz - INTERVAL '2 hours')
+                 AND created_at <= ($2::timestamptz + INTERVAL '30 days')
+                 AND id NOT IN (SELECT matched_order_id FROM scalev_leads WHERE matched_order_id IS NOT NULL AND id != $3)
+               ORDER BY created_at ASC LIMIT 1`,
+              [variants, lead.created_at, data.leadId]
+            );
+            if (autoMatch.rowCount && autoMatch.rowCount > 0) {
+              matchedOrderId = autoMatch.rows[0].id;
+              closedAt = autoMatch.rows[0].created_at;
+            }
           }
         }
 

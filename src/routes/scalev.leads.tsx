@@ -1200,9 +1200,20 @@ export function ScalevLeadsPage() {
                             <span className="text-xs text-foreground font-medium truncate" title={lead.product_name}>
                               {lead.product_name || "Madu Araa Murni"}
                             </span>
-                            <span className="text-xs font-semibold text-primary">
-                              {formatIDR(lead.gross_revenue || 0)}
-                            </span>
+                            {lead.is_closed && lead.net_revenue !== null && lead.net_revenue !== undefined ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                  {formatIDR(lead.net_revenue)}
+                                </span>
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold" title="Nominal Bersih Riil dari Penjualan">
+                                  Net Riil
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-semibold text-primary">
+                                {formatIDR(lead.gross_revenue || 0)}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
 
