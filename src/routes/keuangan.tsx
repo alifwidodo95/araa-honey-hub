@@ -348,11 +348,11 @@ function Page() {
               <div className="w-full bg-amber-500/10 h-1.5 rounded-full overflow-hidden mt-2">
                 <div 
                   className="bg-amber-500 h-full rounded-full transition-all duration-500" 
-                  style={{ width: `${gross > 0 ? (codTotal / gross) * 100 : 0}%` }}
+                  style={{ width: `${netRevenueTotal > 0 ? (codTotal / netRevenueTotal) * 100 : 0}%` }}
                 />
               </div>
               <div className="text-[10px] text-muted-foreground mt-1 text-right">
-                {gross > 0 ? ((codTotal / gross) * 100).toFixed(1) : 0}% dari total omzet kotor
+                {netRevenueTotal > 0 ? ((codTotal / netRevenueTotal) * 100).toFixed(1) : 0}% dari total omzet bersih
               </div>
             </div>
 
@@ -369,11 +369,11 @@ function Page() {
               <div className="w-full bg-blue-500/10 h-1.5 rounded-full overflow-hidden mt-2">
                 <div 
                   className="bg-blue-500 h-full rounded-full transition-all duration-500" 
-                  style={{ width: `${gross > 0 ? (transferTotal / gross) * 100 : 0}%` }}
+                  style={{ width: `${netRevenueTotal > 0 ? (transferTotal / netRevenueTotal) * 100 : 0}%` }}
                 />
               </div>
               <div className="text-[10px] text-muted-foreground mt-1 text-right">
-                {gross > 0 ? ((transferTotal / gross) * 100).toFixed(1) : 0}% dari total omzet kotor
+                {netRevenueTotal > 0 ? ((transferTotal / netRevenueTotal) * 100).toFixed(1) : 0}% dari total omzet bersih
               </div>
             </div>
 
@@ -390,11 +390,11 @@ function Page() {
               <div className="w-full bg-emerald-500/10 h-1.5 rounded-full overflow-hidden mt-2">
                 <div 
                   className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
-                  style={{ width: `${gross > 0 ? (cashTotal / gross) * 100 : 0}%` }}
+                  style={{ width: `${netRevenueTotal > 0 ? (cashTotal / netRevenueTotal) * 100 : 0}%` }}
                 />
               </div>
               <div className="text-[10px] text-muted-foreground mt-1 text-right">
-                {gross > 0 ? ((cashTotal / gross) * 100).toFixed(1) : 0}% dari total omzet kotor
+                {netRevenueTotal > 0 ? ((cashTotal / netRevenueTotal) * 100).toFixed(1) : 0}% dari total omzet bersih
               </div>
             </div>
           </div>
