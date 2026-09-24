@@ -37,7 +37,7 @@ export const Route = createFileRoute('/api/cron/send-ads-report')({
           // 3. Fetch Real Sales Data for the last 7 days
           const salesRes = await pool.query(`
             SELECT 
-              COALESCE(SUM(subtotal_gross), 0)::float as total_revenue,
+              COALESCE(SUM(COALESCE(net_revenue, subtotal_gross)), 0)::float as total_revenue,
               COUNT(*)::int as total_orders,
               COALESCE(SUM(cogs_total), 0)::float as total_cogs
             FROM orders

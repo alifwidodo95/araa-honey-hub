@@ -1234,8 +1234,7 @@ function Page() {
                 <TableHead>No. HP</TableHead>
                 <TableHead>Saluran</TableHead>
                 <TableHead>Resi</TableHead>
-                <TableHead>Subtotal</TableHead>
-                <TableHead>Bersih</TableHead>
+                <TableHead className="text-right">Nominal Bersih</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
@@ -1303,8 +1302,7 @@ function Page() {
                     )}
                   </TableCell>
                   <TableCell className="font-mono text-xs">{o.tracking_number ?? "-"}</TableCell>
-                  <TableCell>{formatIDR(o.subtotal_gross)}</TableCell>
-                  <TableCell className="font-medium">{formatIDR(o.net_revenue)}</TableCell>
+                  <TableCell className="text-right font-bold text-foreground">{formatIDR(o.net_revenue)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {!o.returned ? (
@@ -1323,7 +1321,7 @@ function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!orders?.length && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
+              {!orders?.length && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
             </TableBody>
           </Table>
 
@@ -1708,9 +1706,6 @@ function Page() {
                           <span className={`inline-block px-1 rounded text-[9px] font-bold ${o.paymentMethod === "COD" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
                             {o.paymentMethod}
                           </span>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
-                            Subtotal: <span className="font-semibold">{formatIDR(o.items.reduce((sum: number, it: any) => sum + (it.unit_price * it.qty), 0))}</span>
-                          </div>
                           <div className="text-xs font-bold text-foreground mt-0.5">
                             Bayar: {formatIDR(o.amountReceived)}
                           </div>

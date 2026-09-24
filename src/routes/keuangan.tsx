@@ -11,7 +11,6 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import {
   TrendingUp,
   Coins,
-  Percent,
   Receipt,
   Wallet,
   ArrowUpRight,
@@ -176,13 +175,12 @@ function Page() {
     },
   });
 
-  const gross = (orders ?? []).reduce((s, o: any) => s + Number(o.amount_received !== null ? o.amount_received : o.subtotal_gross), 0);
-  const platformFee = (orders ?? []).reduce((s, o: any) => s + Number(o.marketplace_fee) + Number(o.shipping_fee), 0);
-  const cogs = (orders ?? []).reduce((s, o: any) => s + Number(o.cogs_total), 0);
+  const netRevenueTotal = (orders ?? []).reduce((s, o: any) => s + Number(o.net_revenue || 0), 0);
+  const cogs = (orders ?? []).reduce((s, o: any) => s + Number(o.cogs_total || 0), 0);
   const opex = (biz ?? [])
     .filter((e: any) => e.category !== "packaging_purchase")
-    .reduce((s, e: any) => s + Number(e.amount), 0);
-  const netProfit = (orders ?? []).reduce((s, o: any) => s + Number(o.net_revenue), 0) - cogs - opex;
+    .reduce((s, e: any) => s + Number(e.amount || 0), 0);
+  const netProfit = netRevenueTotal - cogs - opex;
 
   const rawHoneyTotal = (honeyPurchases ?? []).reduce((s, h: any) => s + Number(h.price_total), 0);
   const packagingTotal = (pkgPurchases ?? []).reduce((s, p: any) => s + Number(p.total_price), 0);
@@ -234,7 +232,7 @@ function Page() {
   let cashCount = 0;
 
   (orders ?? []).forEach((o: any) => {
-    const amount = Number(o.amount_received !== null ? o.amount_received : o.subtotal_gross);
+    const amount = Number(o.net_revenue !== null && o.net_revenue !== undefined ? o.net_revenue : (o.amount_received ?? o.subtotal_gross));
     if (o.payment_method === "COD") {
       codTotal += amount;
       codCount++;
@@ -275,7 +273,7 @@ function Page() {
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1.5">
-            Laba bersih = Omzet − Potongan Platform − HPP − Operasional
+            Laba bersih = Omzet Bersih − HPP − Operasional
           </p>
           <div className="flex items-center gap-1.5 text-xs text-honey font-semibold mt-1">
             <CalendarDays className="w-3.5 h-3.5" />
@@ -290,30 +288,23 @@ function Page() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Metric 
-          label="Omzet Kotor" 
-          value={formatIDR(gross)} 
+          label="Omzet Bersih (Kas Masuk)" 
+          value={formatIDR(netRevenueTotal)} 
           icon={Coins} 
-          iconColor="text-amber-500" 
-          bgColor="bg-amber-500/10" 
+          iconColor="text-emerald-500" 
+          bgColor="bg-emerald-500/10" 
         />
         <Metric 
-          label="Potongan Platform" 
-          value={formatIDR(platformFee)} 
-          icon={Percent} 
-          iconColor="text-orange-500" 
-          bgColor="bg-orange-500/10" 
-        />
-        <Metric 
-          label="HPP" 
+          label="HPP (Biaya Produk)" 
           value={formatIDR(cogs)} 
           icon={Receipt} 
           iconColor="text-blue-500" 
           bgColor="bg-blue-500/10" 
         />
         <Metric 
-          label="Operasional" 
+          label="Operasional (Ads, Gaji, dll)" 
           value={formatIDR(opex)} 
           icon={Wallet} 
           iconColor="text-red-500" 

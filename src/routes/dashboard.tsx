@@ -116,8 +116,8 @@ function DashboardPage() {
       (data ?? []).forEach((o: any) => {
         const d = o.created_at.slice(0, 10);
         if (!map[d]) map[d] = { date: d, omzet: 0, laba: 0 };
-        const gross = Number(o.amount_received !== null && o.amount_received !== undefined ? o.amount_received : o.subtotal_gross);
-        map[d].omzet += gross;
+        const net = Number(o.net_revenue !== null && o.net_revenue !== undefined ? o.net_revenue : (o.amount_received ?? o.subtotal_gross));
+        map[d].omzet += net;
         map[d].laba += Number(o.net_revenue) - Number(o.cogs_total);
       });
       return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
@@ -156,7 +156,7 @@ function DashboardPage() {
   });
 
   const omzetToday = (ordersToday ?? []).reduce(
-    (s, o: any) => s + Number(o.amount_received !== null && o.amount_received !== undefined ? o.amount_received : o.subtotal_gross),
+    (s, o: any) => s + Number(o.net_revenue !== null && o.net_revenue !== undefined ? o.net_revenue : (o.amount_received ?? o.subtotal_gross)),
     0
   );
   const cogsToday = (ordersToday ?? []).reduce((s, o: any) => s + Number(o.cogs_total || 0), 0);
@@ -198,7 +198,7 @@ function DashboardPage() {
         <MetricCard label="Order Hari Ini" value={String(ordersToday?.length ?? 0)} />
         {hasPermission("keuangan") ? (
           <>
-            <MetricCard label="Omzet Hari Ini" value={formatIDR(omzetToday)} />
+            <MetricCard label="Omzet Bersih Hari Ini" value={formatIDR(omzetToday)} subValue="Uang Kas Masuk Riil" />
             <MetricCard 
               label="Laba Bersih" 
               value={formatIDR(netProfitToday)} 

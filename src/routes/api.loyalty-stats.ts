@@ -23,7 +23,7 @@ export const Route = createFileRoute('/api/loyalty-stats')({
                 o.id,
                 o.customer_name,
                 REGEXP_REPLACE(o.customer_phone, '[^0-9]', '', 'g') as raw_phone,
-                o.subtotal_gross,
+                COALESCE(o.net_revenue, o.subtotal_gross) as net_revenue,
                 o.created_at,
                 TO_CHAR(o.created_at, 'YYYY-MM') as order_month,
                 COALESCE(
@@ -44,7 +44,7 @@ export const Route = createFileRoute('/api/loyalty-stats')({
                   WHEN raw_phone LIKE '8%' THEN '62' || raw_phone
                   ELSE raw_phone
                 END as phone,
-                subtotal_gross,
+                net_revenue,
                 created_at,
                 order_month,
                 honey_type
@@ -61,7 +61,7 @@ export const Route = createFileRoute('/api/loyalty-stats')({
                 n.phone,
                 MAX(n.customer_name) as name,
                 COUNT(*)::int as order_count,
-                SUM(n.subtotal_gross)::numeric as total_spent,
+                SUM(n.net_revenue)::numeric as total_spent,
                 MIN(n.created_at) as first_order_date,
                 MAX(n.created_at) as last_order_date,
                 EXTRACT(DAY FROM (NOW() - MAX(n.created_at)))::int as days_since_last_order,
@@ -75,8 +75,8 @@ export const Route = createFileRoute('/api/loyalty-stats')({
                 COUNT(*)::int as total_orders,
                 COUNT(*) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') = n.order_month)::int as new_orders,
                 COUNT(*) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') != n.order_month)::int as repeat_orders,
-                COALESCE(SUM(n.subtotal_gross) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') = n.order_month), 0)::numeric as new_omzet,
-                COALESCE(SUM(n.subtotal_gross) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') != n.order_month), 0)::numeric as repeat_omzet
+                COALESCE(SUM(n.net_revenue) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') = n.order_month), 0)::numeric as new_omzet,
+                COALESCE(SUM(n.net_revenue) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') != n.order_month), 0)::numeric as repeat_omzet
               FROM normalized_orders n
               JOIN first_orders f ON n.phone = f.phone
               GROUP BY n.order_month
