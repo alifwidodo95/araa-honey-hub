@@ -20,8 +20,8 @@ const toLocalISOString = (date: Date) => {
 function DashboardPage() {
   const { role, hasPermission } = useAuth();
   const today = toLocalISOString(new Date());
-  const startIso = `${today}T00:00:00Z`;
-  const endIso = `${today}T23:59:59Z`;
+  const startIso = `${today}T00:00:00+07:00`;
+  const endIso = `${today}T23:59:59.999+07:00`;
 
   const { data: alerts } = useQuery({
     queryKey: ["unresolved-alerts"],
@@ -114,7 +114,7 @@ function DashboardPage() {
         .gte("created_at", since);
       const map: Record<string, { date: string; omzet: number; laba: number }> = {};
       (data ?? []).forEach((o: any) => {
-        const d = o.created_at.slice(0, 10);
+        const d = toLocalISOString(new Date(o.created_at));
         if (!map[d]) map[d] = { date: d, omzet: 0, laba: 0 };
         const net = Number(o.net_revenue !== null && o.net_revenue !== undefined ? o.net_revenue : (o.amount_received ?? o.subtotal_gross));
         map[d].omzet += net;
@@ -128,7 +128,7 @@ function DashboardPage() {
   const { data: monthReturnStats } = useQuery({
     queryKey: ["dashboard-month-return-stats", currentMonthKey],
     queryFn: async () => {
-      const startDate = `${currentMonthKey}-01T00:00:00Z`;
+      const startDate = `${currentMonthKey}-01T00:00:00+07:00`;
       let orders: any[] = [];
       let from = 0;
       const step = 1000;

@@ -1,7 +1,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
-import { normalizePhone } from '@/lib/scalev.functions';
+import { normalizePhone, autoMatchScalevLeadsWithPool } from '@/lib/scalev.functions';
 
 const DB_URL =
   process.env.DATABASE_URL ||
@@ -80,9 +80,11 @@ export const Route = createFileRoute('/api/cron/sync-scalev')({
             const variants = getPhoneVariants(customerPhone);
             const matchRes = await pool.query(
               `SELECT id, created_at FROM orders 
-               WHERE customer_phone = ANY($1) 
-                 AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
-               ORDER BY created_at DESC LIMIT 1`,
+               WHERE (customer_phone = ANY($1) OR regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($1))
+                 AND (returned IS NULL OR returned = false)
+                 AND created_at >= ($2::timestamptz - INTERVAL '2 hours')
+                 AND created_at <= ($2::timestamptz + INTERVAL '30 days')
+               ORDER BY created_at ASC LIMIT 1`,
               [variants, createdAtStr]
             );
 
@@ -124,6 +126,12 @@ export const Route = createFileRoute('/api/cron/sync-scalev')({
             );
 
             syncedCount++;
+          }
+
+          try {
+            await autoMatchScalevLeadsWithPool(pool);
+          } catch (autoErr) {
+            console.error('[cron autoMatch error]:', autoErr);
           }
 
           await pool.end();

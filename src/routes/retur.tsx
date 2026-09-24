@@ -113,9 +113,9 @@ function Page() {
     queryKey: ["cohort-return-stats", selectedMonth],
     queryFn: async () => {
       const [y, m] = selectedMonth.split("-").map(Number);
-      const startDate = `${selectedMonth}-01T00:00:00.000Z`;
+      const startDate = `${selectedMonth}-01T00:00:00.000+07:00`;
       const lastDay = new Date(y, m, 0).getDate();
-      const endDate = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59.999Z`;
+      const endDate = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59.999+07:00`;
 
       let orders: any[] = [];
       let from = 0;

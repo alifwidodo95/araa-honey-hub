@@ -257,6 +257,12 @@ function MetaAdsPage() {
   });
 
   const dateRangeBounds = useMemo(() => {
+    const formatLocal = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
     const end = new Date();
     const start = new Date();
     if (dateRange === "1d") {
@@ -267,16 +273,16 @@ function MetaAdsPage() {
       start.setDate(start.getDate() - 29);
     }
     return {
-      start: start.toISOString().slice(0, 10),
-      end: end.toISOString().slice(0, 10)
+      start: formatLocal(start),
+      end: formatLocal(end)
     };
   }, [dateRange]);
 
   const { data: dbOrders } = useQuery({
     queryKey: ["meta-db-orders", dateRangeBounds],
     queryFn: async () => {
-      const startIso = `${dateRangeBounds.start}T00:00:00Z`;
-      const endIso = `${dateRangeBounds.end}T23:59:59Z`;
+      const startIso = `${dateRangeBounds.start}T00:00:00+07:00`;
+      const endIso = `${dateRangeBounds.end}T23:59:59.999+07:00`;
       return (await supabase
         .from("orders")
         .select("net_revenue, cogs_total, created_at")

@@ -19,7 +19,7 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil, Trash2, Plus, Tag, FileText
+  Pencil, Trash2, Plus, Tag, FileText, RotateCcw
 } from "lucide-react";
 import {
   Popover,
@@ -1200,7 +1200,16 @@ export function ScalevLeadsPage() {
                             <span className="text-xs text-foreground font-medium truncate" title={lead.product_name}>
                               {lead.product_name || "Madu Araa Murni"}
                             </span>
-                            {lead.is_closed && lead.net_revenue !== null && lead.net_revenue !== undefined ? (
+                            {lead.order_returned ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-xs font-semibold text-muted-foreground line-through">
+                                  {formatIDR(lead.net_revenue !== null && lead.net_revenue !== undefined ? lead.net_revenue : (lead.gross_revenue || 0))}
+                                </span>
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-semibold" title="Pesanan telah diretur / batal">
+                                  Retur (Batal)
+                                </span>
+                              </div>
+                            ) : lead.is_closed && lead.net_revenue !== null && lead.net_revenue !== undefined ? (
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                                   {formatIDR(lead.net_revenue)}
@@ -1224,7 +1233,17 @@ export function ScalevLeadsPage() {
 
                         {/* Status Closing CS */}
                         <TableCell className="text-center">
-                          {isClosed ? (
+                          {lead.order_returned ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenManualClosing(lead)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shadow-xs"
+                              title="Pesanan penjualan terkait telah diretur / dibatalkan"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>Retur / Batal</span>
+                            </button>
+                          ) : isClosed ? (
                             <button
                               type="button"
                               onClick={() => handleOpenManualClosing(lead)}
@@ -2416,32 +2435,46 @@ export function ScalevLeadsPage() {
                     <p className="font-semibold text-foreground text-sm">{manualClosingLead.customer_name || "Pelanggan Scalev"}</p>
                     <p className="font-mono text-muted-foreground">{manualClosingLead.customer_phone}</p>
                   </div>
-                  <Badge variant={manualClosingLead.is_closed ? "default" : "outline"} className={`text-[10px] ${manualClosingLead.is_closed ? "bg-emerald-600 text-white" : "border-rose-300 text-rose-600"}`}>
-                    {manualClosingLead.is_closed ? "Closing (Won)" : "Belum Closing"}
+                  <Badge variant={manualClosingLead.order_returned ? "destructive" : manualClosingLead.is_closed ? "default" : "outline"} className={`text-[10px] ${manualClosingLead.order_returned ? "bg-rose-600 text-white" : manualClosingLead.is_closed ? "bg-emerald-600 text-white" : "border-rose-300 text-rose-600"}`}>
+                    {manualClosingLead.order_returned ? "Retur / Batal" : manualClosingLead.is_closed ? "Closing (Won)" : "Belum Closing"}
                   </Badge>
                 </div>
                 <div className="flex justify-between text-muted-foreground pt-1.5 border-t border-border/50 text-[11px]">
                   <span>Produk: <strong className="text-foreground">{manualClosingLead.product_name || "Madu Araa"}</strong></span>
                   <span>
                     Nominal:{" "}
-                    <strong className="text-emerald-600 font-semibold">
+                    <strong className={manualClosingLead.order_returned ? "text-muted-foreground line-through" : "text-emerald-600 font-semibold"}>
                       {formatIDR(
                         manualClosingLead.is_closed && manualClosingLead.net_revenue !== null && manualClosingLead.net_revenue !== undefined
                           ? manualClosingLead.net_revenue
                           : (manualClosingLead.gross_revenue || 0)
                       )}
                     </strong>
-                    {manualClosingLead.is_closed && manualClosingLead.net_revenue !== null && manualClosingLead.net_revenue !== undefined && (
+                    {manualClosingLead.order_returned ? (
+                      <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-semibold">
+                        Retur
+                      </span>
+                    ) : manualClosingLead.is_closed && manualClosingLead.net_revenue !== null && manualClosingLead.net_revenue !== undefined ? (
                       <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold">
                         Net Riil
                       </span>
-                    )}
+                    ) : null}
                   </span>
                 </div>
               </div>
 
-              {/* Status Banner when already closed */}
-              {manualClosingLead.is_closed && (
+              {/* Status Banner when already closed or returned */}
+              {manualClosingLead.order_returned ? (
+                <div className="p-3 rounded-xl border border-rose-500/30 bg-rose-50/70 dark:bg-rose-950/30 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-rose-800 dark:text-rose-300">
+                    <RotateCcw className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Pesanan Terkait Telah Diretur / Batal</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Faktur penjualan yang terhubung ke lead ini telah diproses retur di sistem. Nominal penjualannya tidak lagi dihitung ke dalam Net Revenue closing. Kakak dapat menautkan faktur pesanan baru di bawah jika konsumen memesan ulang.
+                  </p>
+                </div>
+              ) : manualClosingLead.is_closed && (
                 manualClosingLead.matched_order_id ? (
                   <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 text-xs space-y-1">
                     <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300">
@@ -2536,7 +2569,14 @@ export function ScalevLeadsPage() {
                             }`}
                           >
                             <div>
-                              <p className="font-semibold text-foreground">{ord.customer_name || "Tanpa Nama"}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-semibold text-foreground">{ord.customer_name || "Tanpa Nama"}</p>
+                                {ord.returned && (
+                                  <span className="text-[9px] px-1 py-0.2 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-semibold">
+                                    Retur
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[11px] text-muted-foreground font-mono">
                                 {ord.customer_phone || "-"} {ord.tracking_number ? `• Resi: ${ord.tracking_number}` : ""}
                               </p>

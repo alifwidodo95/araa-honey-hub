@@ -109,9 +109,11 @@ export const Route = createFileRoute('/api/scalev-webhook')({
           const phoneVariants = getPhoneVariants(customerPhone);
           const matchRes = await pool.query(
             `SELECT id, created_at FROM orders 
-             WHERE customer_phone = ANY($1) 
-               AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
-             ORDER BY created_at DESC LIMIT 1`,
+             WHERE (customer_phone = ANY($1) OR regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($1))
+               AND (returned IS NULL OR returned = false)
+               AND created_at >= ($2::timestamptz - INTERVAL '2 hours')
+               AND created_at <= ($2::timestamptz + INTERVAL '30 days')
+             ORDER BY created_at ASC LIMIT 1`,
             [phoneVariants, createdAtStr]
           );
 

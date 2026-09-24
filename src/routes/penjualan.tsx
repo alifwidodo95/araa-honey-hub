@@ -291,8 +291,8 @@ function Page() {
       const from = (currentPage - 1) * pageSize;
       const to = from + pageSize - 1;
       
-      const startIso = `${startDate}T00:00:00Z`;
-      const endIso = `${endDate}T23:59:59Z`;
+      const startIso = `${startDate}T00:00:00+07:00`;
+      const endIso = `${endDate}T23:59:59.999+07:00`;
 
       let query = supabase
         .from("orders")
@@ -438,11 +438,16 @@ function Page() {
       const finalShipping = editShipping === "" ? 0 : Number(editShipping);
       const netRevenue = (finalAmount !== null ? finalAmount : (subtotalGross - marketplaceFee)) - finalShipping;
 
+      let cleanEditPhone = editPhone ? editPhone.replace(/[^0-9]/g, "") : "";
+      if (cleanEditPhone && !cleanEditPhone.startsWith("0") && !cleanEditPhone.startsWith("62") && cleanEditPhone.startsWith("8")) {
+        cleanEditPhone = "0" + cleanEditPhone;
+      }
+
       const { error } = await supabase
         .from("orders")
         .update({
           customer_name: editName,
-          customer_phone: editPhone,
+          customer_phone: cleanEditPhone || null,
           tracking_number: editResi,
           expedition: editExpedition || null,
           payment_method: editPaymentMethod || null,
@@ -460,6 +465,7 @@ function Page() {
         toast.success("Pesanan berhasil diperbarui");
         setEditingOrder(null);
         qc.invalidateQueries();
+        runAutoMatchScalev().catch(() => {});
       }
     } catch (err: any) {
       toast.error("Gagal menyimpan perubahan");
@@ -532,6 +538,11 @@ function Page() {
       }
     }
 
+    let sanitizedPhone = customerPhone.replace(/[^0-9]/g, "");
+    if (sanitizedPhone && !sanitizedPhone.startsWith("0") && !sanitizedPhone.startsWith("62") && sanitizedPhone.startsWith("8")) {
+      sanitizedPhone = "0" + sanitizedPhone;
+    }
+
     const { error } = await supabase.rpc("create_order", {
       _channel: channel,
       _tier_id: (channel === "reseller" ? tierId : null) as any,
@@ -539,7 +550,7 @@ function Page() {
       _shipping_fee: channel === "whatsapp" ? shipping : 0,
       _customer_note: (note || null) as any,
       _customer_name: customerName.trim(),
-      _customer_phone: (customerPhone.trim() || null) as any,
+      _customer_phone: (sanitizedPhone || null) as any,
       _tracking_number: (trackingNumber.trim() || null) as any,
       _amount_received: (amountReceived === "" ? null : Number(amountReceived)) as any,
       _expedition: (expedition && expedition !== "-" ? expedition : null) as any,
@@ -700,7 +711,7 @@ function Page() {
 
       const customerName = String(getVal(["Recipient Name", "Penerima", "Nama Penerima", "Nama", "Customer", "Nama Lengkap"], 2) || "").trim();
       
-      let customerPhone = String(getVal(["No. HP", "No HP", "Telepon", "No. Telepon", "Phone", "Handphone", "No. Handphone", "Recipient Phone Number", "Recipient Phone"], 3) || "").trim();
+      let customerPhone = String(getVal(["No. HP", "No HP", "Telepon", "No. Telepon", "Phone", "Handphone", "No. Handphone", "Recipient Phone Number", "Recipient Phone"], 3) || "").replace(/[^0-9]/g, "").trim();
       if (customerPhone && !customerPhone.startsWith("0") && !customerPhone.startsWith("62") && customerPhone.startsWith("8")) {
         customerPhone = "0" + customerPhone;
       }

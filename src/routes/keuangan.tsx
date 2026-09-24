@@ -109,8 +109,8 @@ function Page() {
   const { data: orders } = useQuery({
     queryKey: ["fin-orders", startDate, endDate],
     queryFn: async () => {
-      const startIso = `${startDate}T00:00:00Z`;
-      const endIso = `${endDate}T23:59:59Z`;
+      const startIso = `${startDate}T00:00:00+07:00`;
+      const endIso = `${endDate}T23:59:59.999+07:00`;
       
       let allData: any[] = [];
       let from = 0;

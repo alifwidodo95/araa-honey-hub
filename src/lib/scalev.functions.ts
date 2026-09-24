@@ -45,10 +45,14 @@ export async function autoMatchScalevLeadsWithPool(pool: pg.Pool): Promise<numbe
         o.created_at AS order_created_at
       FROM scalev_leads sl
       JOIN orders o ON (
-        (o.customer_phone = sl.customer_phone 
-         OR o.customer_phone = ('0' || SUBSTRING(sl.customer_phone FROM 3))
-         OR ('62' || SUBSTRING(o.customer_phone FROM 2)) = sl.customer_phone
-         OR o.customer_phone = sl.customer_raw_phone)
+        o.customer_phone IS NOT NULL AND length(regexp_replace(o.customer_phone, '[^0-9]', '', 'g')) >= 8 AND (
+          regexp_replace(o.customer_phone, '[^0-9]', '', 'g') = sl.customer_phone 
+          OR regexp_replace(o.customer_phone, '[^0-9]', '', 'g') = ('0' || SUBSTRING(sl.customer_phone FROM 3))
+          OR ('62' || SUBSTRING(regexp_replace(o.customer_phone, '[^0-9]', '', 'g') FROM 2)) = sl.customer_phone
+          OR ('62' || regexp_replace(o.customer_phone, '[^0-9]', '', 'g')) = sl.customer_phone
+          OR regexp_replace(o.customer_phone, '[^0-9]', '', 'g') = regexp_replace(COALESCE(sl.customer_raw_phone, ''), '[^0-9]', '', 'g')
+        )
+        AND (o.returned IS NULL OR o.returned = false)
         AND o.created_at >= (sl.created_at - INTERVAL '2 hours')
         AND o.created_at <= (sl.created_at + INTERVAL '30 days')
       )
@@ -108,12 +112,16 @@ export const getScalevMetrics = createServerFn({ method: "GET" })
           COUNT(*) FILTER (WHERE sl.followed_up_at IS NOT NULL)::int AS followed_up_count,
           COALESCE(SUM(
             CASE 
-              WHEN sl.is_closed = true THEN COALESCE(o.net_revenue, o.amount_received, o.subtotal_gross, sl.gross_revenue, 0)
+              WHEN sl.is_closed = true AND (o.returned IS NULL OR o.returned = false) THEN COALESCE(o.net_revenue, o.amount_received, o.subtotal_gross, sl.gross_revenue, 0)
+              WHEN sl.is_closed = true AND o.returned = true THEN 0
               ELSE COALESCE(sl.gross_revenue, 0)
             END
           ), 0)::numeric AS total_revenue,
           COALESCE(SUM(
-            COALESCE(o.net_revenue, o.amount_received, o.subtotal_gross, sl.gross_revenue, 0)
+            CASE
+              WHEN (o.returned IS NULL OR o.returned = false) THEN COALESCE(o.net_revenue, o.amount_received, o.subtotal_gross, sl.gross_revenue, 0)
+              ELSE 0
+            END
           ) FILTER (WHERE sl.is_closed = true), 0)::numeric AS closed_revenue,
           COALESCE(SUM(sl.gross_revenue) FILTER (WHERE sl.is_closed = false), 0)::numeric AS unclosed_revenue
         FROM scalev_leads sl
@@ -216,7 +224,8 @@ export const getScalevLeads = createServerFn({ method: "GET" })
           COALESCE(sl.follow_up_step, sl.follow_up_count, 0) AS follow_up_step,
           sl.fu1_at, sl.fu2_at, sl.fu3_at, sl.last_fu_notes, sl.notes,
           o.net_revenue, o.subtotal_gross AS order_subtotal_gross, o.amount_received AS order_amount_received,
-          o.tracking_number AS matched_tracking_number
+          o.tracking_number AS matched_tracking_number,
+          COALESCE(o.returned, false) AS order_returned
         FROM scalev_leads sl
         LEFT JOIN orders o ON sl.matched_order_id = o.id
         WHERE ${whereStr}
@@ -716,19 +725,26 @@ export const searchOrdersForLinking = createServerFn({ method: "GET" })
       let params: any[] = [];
 
       if (q) {
-        params.push(`%${q.toLowerCase()}%`);
+        const cleanQuery = `%${q.toLowerCase()}%`;
+        const digitsOnly = q.replace(/[^0-9]/g, "");
+        params.push(cleanQuery);
+        let phoneCondition = "customer_phone LIKE $1";
+        if (digitsOnly.length >= 4) {
+          params.push(`%${digitsOnly}%`);
+          phoneCondition = `(customer_phone LIKE $1 OR regexp_replace(customer_phone, '[^0-9]', '', 'g') LIKE $${params.length})`;
+        }
         querySql = `
-          SELECT id, customer_name, customer_phone, tracking_number, COALESCE(net_revenue, amount_received, subtotal_gross, 0) as net_revenue, subtotal_gross, created_at
+          SELECT id, customer_name, customer_phone, tracking_number, COALESCE(net_revenue, amount_received, subtotal_gross, 0) as net_revenue, subtotal_gross, created_at, COALESCE(returned, false) as returned
           FROM orders
           WHERE LOWER(customer_name) LIKE $1 
-             OR customer_phone LIKE $1 
+             OR ${phoneCondition}
              OR LOWER(COALESCE(tracking_number, '')) LIKE $1
           ORDER BY created_at DESC
           LIMIT 15
         `;
       } else {
         querySql = `
-          SELECT id, customer_name, customer_phone, tracking_number, COALESCE(net_revenue, amount_received, subtotal_gross, 0) as net_revenue, subtotal_gross, created_at
+          SELECT id, customer_name, customer_phone, tracking_number, COALESCE(net_revenue, amount_received, subtotal_gross, 0) as net_revenue, subtotal_gross, created_at, COALESCE(returned, false) as returned
           FROM orders
           ORDER BY created_at DESC
           LIMIT 15
@@ -778,9 +794,11 @@ export const updateScalevLeadPhone = createServerFn({ method: "POST" })
         const variants = getPhoneVariants(cleanPhone);
         const matchRes = await pool.query(
           `SELECT id, created_at FROM orders 
-           WHERE customer_phone = ANY($1) 
-             AND created_at >= ($2::timestamptz - INTERVAL '30 minutes')
-           ORDER BY created_at DESC LIMIT 1`,
+           WHERE (customer_phone = ANY($1) OR regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($1))
+             AND (returned IS NULL OR returned = false)
+             AND created_at >= ($2::timestamptz - INTERVAL '2 hours')
+             AND created_at <= ($2::timestamptz + INTERVAL '30 days')
+           ORDER BY created_at ASC LIMIT 1`,
           [variants, lead.created_at]
         );
 
