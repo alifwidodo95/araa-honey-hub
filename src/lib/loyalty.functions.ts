@@ -33,6 +33,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           o.customer_phone as raw_phone_uncleaned,
           REGEXP_REPLACE(o.customer_phone, '[^0-9]', '', 'g') as raw_phone,
           o.subtotal_gross,
+          COALESCE(o.net_revenue, o.subtotal_gross) as net_revenue,
           o.created_at,
           TO_CHAR(o.created_at, 'YYYY-MM') as order_month,
           COALESCE(ow.honey_type, 'Madu Araa') as honey_type,
@@ -54,6 +55,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
             ELSE raw_phone
           END as phone,
           subtotal_gross,
+          net_revenue,
           created_at,
           order_month,
           honey_type,
@@ -73,9 +75,9 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           COALESCE(channel, 'waha_main') as channel,
           CASE 
             WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '0%' 
-              THEN '62' || SUBSTRING(REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') FROM 2)
+               THEN '62' || SUBSTRING(REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') FROM 2)
             WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '8%' 
-              THEN '62' || REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
+               THEN '62' || REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
             ELSE REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g')
           END as phone,
           sent_at,
@@ -95,7 +97,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           n.phone,
           MAX(n.customer_name) as name,
           COUNT(*)::int as order_count,
-          SUM(n.subtotal_gross)::numeric as total_spent,
+          SUM(n.net_revenue)::numeric as total_spent,
           MIN(n.created_at) as first_order_date,
           MAX(n.created_at) as last_order_date,
           EXTRACT(DAY FROM (NOW() - MAX(n.created_at)))::int as days_since_last_order,
@@ -117,8 +119,8 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           COUNT(*)::int as total_orders,
           COUNT(*) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') = n.order_month)::int as new_orders,
           COUNT(*) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') != n.order_month)::int as repeat_orders,
-          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') = n.order_month), 0)::numeric as new_omzet,
-          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') != n.order_month), 0)::numeric as repeat_omzet
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') = n.order_month), 0)::numeric as new_omzet,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE TO_CHAR(f.first_date, 'YYYY-MM') != n.order_month), 0)::numeric as repeat_omzet
         FROM normalized_orders n
         JOIN first_orders f ON n.phone = f.phone
         GROUP BY n.order_month
@@ -133,8 +135,16 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waba')::int as waba_sent,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_main')::int as wa1_sent,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_campaign')::int as wa2_sent,
+
           COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_customers,
-          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue
+          COUNT(DISTINCT n.phone) FILTER (WHERE s.channel = 'waba' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as waba_converted,
+          COUNT(DISTINCT n.phone) FILTER (WHERE s.channel = 'waha_main' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as wa1_converted,
+          COUNT(DISTINCT n.phone) FILTER (WHERE s.channel = 'waha_campaign' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as wa2_converted,
+
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE s.channel = 'waba' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as waba_revenue,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE s.channel = 'waha_main' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as wa1_revenue,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE s.channel = 'waha_campaign' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as wa2_revenue
         FROM sent_crm_normalized s
         LEFT JOIN normalized_orders n ON s.phone = n.phone
       ),
@@ -147,8 +157,16 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waba')::int as waba_sent_count,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_main')::int as wa1_sent_count,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_campaign')::int as wa2_sent_count,
+
           COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_count,
-          COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as revenue
+          COUNT(DISTINCT n.phone) FILTER (WHERE s.channel = 'waba' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as waba_converted_count,
+          COUNT(DISTINCT n.phone) FILTER (WHERE s.channel = 'waha_main' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as wa1_converted_count,
+          COUNT(DISTINCT n.phone) FILTER (WHERE s.channel = 'waha_campaign' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as wa2_converted_count,
+
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as revenue,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE s.channel = 'waba' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as waba_revenue,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE s.channel = 'waha_main' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as wa1_revenue,
+          COALESCE(SUM(n.net_revenue) FILTER (WHERE s.channel = 'waha_campaign' AND n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as wa2_revenue
         FROM sent_crm_normalized s
         LEFT JOIN normalized_orders n ON s.phone = n.phone
         GROUP BY s.send_date

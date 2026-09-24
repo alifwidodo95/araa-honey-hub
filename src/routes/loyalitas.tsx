@@ -516,7 +516,13 @@ function LoyaltyPage() {
       wa1_sent_count?: number;
       wa2_sent_count?: number;
       converted_count: number;
+      waba_converted_count?: number;
+      wa1_converted_count?: number;
+      wa2_converted_count?: number;
       revenue: number;
+      waba_revenue?: number;
+      wa1_revenue?: number;
+      wa2_revenue?: number;
     }> = crmDailyTrends || [];
 
     if (crmTimeframe === "all") {
@@ -526,10 +532,43 @@ function LoyaltyPage() {
       const wabaSent = Number(rawCrmStats.waba_sent) || 0;
       const wa1Sent = Number(rawCrmStats.wa1_sent) || 0;
       const wa2Sent = Number(rawCrmStats.wa2_sent) || 0;
+
       const converted = Number(rawCrmStats.converted_customers) || 0;
+      const wabaConverted = Number(rawCrmStats.waba_converted) || 0;
+      const wa1Converted = Number(rawCrmStats.wa1_converted) || 0;
+      const wa2Converted = Number(rawCrmStats.wa2_converted) || 0;
+
       const rev = Number(rawCrmStats.crm_revenue) || 0;
+      const wabaRevenue = Number(rawCrmStats.waba_revenue) || 0;
+      const wa1Revenue = Number(rawCrmStats.wa1_revenue) || 0;
+      const wa2Revenue = Number(rawCrmStats.wa2_revenue) || 0;
+
       const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
-      return { totalSent, loyaltySent, reaktivasiSent, wabaSent, wa1Sent, wa2Sent, converted, revenue: rev, rate, label: "Semua Waktu" };
+      const wabaRate = wabaSent > 0 ? Number(((wabaConverted / wabaSent) * 100).toFixed(1)) : 0;
+      const wa1Rate = wa1Sent > 0 ? Number(((wa1Converted / wa1Sent) * 100).toFixed(1)) : 0;
+      const wa2Rate = wa2Sent > 0 ? Number(((wa2Converted / wa2Sent) * 100).toFixed(1)) : 0;
+
+      return {
+        totalSent,
+        loyaltySent,
+        reaktivasiSent,
+        wabaSent,
+        wa1Sent,
+        wa2Sent,
+        converted,
+        wabaConverted,
+        wa1Converted,
+        wa2Converted,
+        revenue: rev,
+        wabaRevenue,
+        wa1Revenue,
+        wa2Revenue,
+        rate,
+        wabaRate,
+        wa1Rate,
+        wa2Rate,
+        label: "Semua Waktu",
+      };
     }
 
     // Time calculations in Asia/Jakarta (UTC+7)
@@ -574,11 +613,43 @@ function LoyaltyPage() {
     const wabaSent = matchingDays.reduce((acc, d) => acc + (Number(d.waba_sent_count) || 0), 0);
     const wa1Sent = matchingDays.reduce((acc, d) => acc + (Number(d.wa1_sent_count) || 0), 0);
     const wa2Sent = matchingDays.reduce((acc, d) => acc + (Number(d.wa2_sent_count) || 0), 0);
-    const converted = matchingDays.reduce((acc, d) => acc + (Number(d.converted_count) || 0), 0);
-    const revenue = matchingDays.reduce((acc, d) => acc + (Number(d.revenue) || 0), 0);
-    const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
 
-    return { totalSent, loyaltySent, reaktivasiSent, wabaSent, wa1Sent, wa2Sent, converted, revenue, rate, label };
+    const converted = matchingDays.reduce((acc, d) => acc + (Number(d.converted_count) || 0), 0);
+    const wabaConverted = matchingDays.reduce((acc, d) => acc + (Number(d.waba_converted_count) || 0), 0);
+    const wa1Converted = matchingDays.reduce((acc, d) => acc + (Number(d.wa1_converted_count) || 0), 0);
+    const wa2Converted = matchingDays.reduce((acc, d) => acc + (Number(d.wa2_converted_count) || 0), 0);
+
+    const revenue = matchingDays.reduce((acc, d) => acc + (Number(d.revenue) || 0), 0);
+    const wabaRevenue = matchingDays.reduce((acc, d) => acc + (Number(d.waba_revenue) || 0), 0);
+    const wa1Revenue = matchingDays.reduce((acc, d) => acc + (Number(d.wa1_revenue) || 0), 0);
+    const wa2Revenue = matchingDays.reduce((acc, d) => acc + (Number(d.wa2_revenue) || 0), 0);
+
+    const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
+    const wabaRate = wabaSent > 0 ? Number(((wabaConverted / wabaSent) * 100).toFixed(1)) : 0;
+    const wa1Rate = wa1Sent > 0 ? Number(((wa1Converted / wa1Sent) * 100).toFixed(1)) : 0;
+    const wa2Rate = wa2Sent > 0 ? Number(((wa2Converted / wa2Sent) * 100).toFixed(1)) : 0;
+
+    return {
+      totalSent,
+      loyaltySent,
+      reaktivasiSent,
+      wabaSent,
+      wa1Sent,
+      wa2Sent,
+      converted,
+      wabaConverted,
+      wa1Converted,
+      wa2Converted,
+      revenue,
+      wabaRevenue,
+      wa1Revenue,
+      wa2Revenue,
+      rate,
+      wabaRate,
+      wa1Rate,
+      wa2Rate,
+      label,
+    };
   }, [apiResponse, crmDailyTrends, crmTimeframe]);
 
   // Format message for a specific customer based on the active tab template
@@ -1227,9 +1298,30 @@ function LoyaltyPage() {
                 <p className="text-[10px] text-muted-foreground mt-0.5">Pelanggan beli kembali setelah di-WA</p>
               </div>
             </div>
-            <div className="pt-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Efektivitas Konversi:</span>
-              <span className="font-semibold text-amber-600 dark:text-amber-400">{filteredCrmStats.rate}% closing rate</span>
+
+            {/* Breakdown Closing & Tingkat Konversi per Jalur WA: WABA, WA 1, WA 2 */}
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50">
+              <div className="bg-emerald-500/10 dark:bg-emerald-500/15 rounded-lg px-2 py-1.5 border border-emerald-500/20 text-center">
+                <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">WABA</div>
+                <div className="text-sm font-extrabold text-foreground">
+                  {(filteredCrmStats.wabaConverted || 0).toLocaleString("id-ID")}
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 ml-1">({filteredCrmStats.wabaRate}%)</span>
+                </div>
+              </div>
+              <div className="bg-blue-500/10 dark:bg-blue-500/15 rounded-lg px-2 py-1.5 border border-blue-500/20 text-center">
+                <div className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">WA 1 (CS)</div>
+                <div className="text-sm font-extrabold text-foreground">
+                  {(filteredCrmStats.wa1Converted || 0).toLocaleString("id-ID")}
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 ml-1">({filteredCrmStats.wa1Rate}%)</span>
+                </div>
+              </div>
+              <div className="bg-purple-500/10 dark:bg-purple-500/15 rounded-lg px-2 py-1.5 border border-purple-500/20 text-center">
+                <div className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">WA 2 (Outreach)</div>
+                <div className="text-sm font-extrabold text-foreground">
+                  {(filteredCrmStats.wa2Converted || 0).toLocaleString("id-ID")}
+                  <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 ml-1">({filteredCrmStats.wa2Rate}%)</span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1241,18 +1333,39 @@ function LoyaltyPage() {
                 <Sparkles className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Omzet Dihasilkan dari CRM</p>
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Omzet Bersih CRM</p>
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.2 rounded border border-blue-500/20">Net Omzet</span>
+                </div>
                 <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
                   {formatIDR(filteredCrmStats.revenue)}
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Omzet repeat order terselamatkan oleh CRM</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  AOV Bersih: {filteredCrmStats.converted > 0 ? formatIDR(Math.round(filteredCrmStats.revenue / filteredCrmStats.converted)) : "Rp 0"}
+                </p>
               </div>
             </div>
-            <div className="pt-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Rata-rata Belanja (AOV):</span>
-              <span className="font-semibold text-blue-600 dark:text-blue-400">
-                {filteredCrmStats.converted > 0 ? formatIDR(Math.round(filteredCrmStats.revenue / filteredCrmStats.converted)) : "Rp 0"}
-              </span>
+
+            {/* Breakdown Omzet Bersih per Jalur WA: WABA, WA 1, WA 2 */}
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50">
+              <div className="bg-emerald-500/10 dark:bg-emerald-500/15 rounded-lg px-1.5 py-1.5 border border-emerald-500/20 text-center">
+                <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">WABA</div>
+                <div className="text-xs font-extrabold text-foreground truncate" title={formatIDR(filteredCrmStats.wabaRevenue || 0)}>
+                  {formatIDR(filteredCrmStats.wabaRevenue || 0)}
+                </div>
+              </div>
+              <div className="bg-blue-500/10 dark:bg-blue-500/15 rounded-lg px-1.5 py-1.5 border border-blue-500/20 text-center">
+                <div className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">WA 1 (CS)</div>
+                <div className="text-xs font-extrabold text-foreground truncate" title={formatIDR(filteredCrmStats.wa1Revenue || 0)}>
+                  {formatIDR(filteredCrmStats.wa1Revenue || 0)}
+                </div>
+              </div>
+              <div className="bg-purple-500/10 dark:bg-purple-500/15 rounded-lg px-1.5 py-1.5 border border-purple-500/20 text-center">
+                <div className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">WA 2 (Outreach)</div>
+                <div className="text-xs font-extrabold text-foreground truncate" title={formatIDR(filteredCrmStats.wa2Revenue || 0)}>
+                  {formatIDR(filteredCrmStats.wa2Revenue || 0)}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1289,7 +1402,7 @@ function LoyaltyPage() {
                     <TableHead className="py-2.5 text-center">Pesan Terkirim</TableHead>
                     <TableHead className="py-2.5 text-center">Closing / Repeat</TableHead>
                     <TableHead className="py-2.5 text-center">Tingkat Konversi</TableHead>
-                    <TableHead className="py-2.5 text-right pr-4">Omzet Dihasilkan</TableHead>
+                    <TableHead className="py-2.5 text-right pr-4">Omzet Bersih CRM</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1328,7 +1441,14 @@ function LoyaltyPage() {
                             )}
                           </TableCell>
                           <TableCell className="py-2.5 text-center font-bold text-amber-600 dark:text-amber-400">
-                            {conv.toLocaleString("id-ID")} Orang
+                            <div>{conv.toLocaleString("id-ID")} Orang</div>
+                            <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">WABA: {Number(d.waba_converted_count || 0)}</span>
+                              <span>•</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">WA 1: {Number(d.wa1_converted_count || 0)}</span>
+                              <span>•</span>
+                              <span className="text-purple-600 dark:text-purple-400 font-medium">WA 2: {Number(d.wa2_converted_count || 0)}</span>
+                            </div>
                           </TableCell>
                           <TableCell className="py-2.5 text-center">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${
@@ -1342,7 +1462,18 @@ function LoyaltyPage() {
                             </span>
                           </TableCell>
                           <TableCell className="py-2.5 text-right pr-4 font-bold text-foreground">
-                            {formatIDR(rev)}
+                            <div>{formatIDR(rev)}</div>
+                            <div className="flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">WABA: {formatIDR(Number(d.waba_revenue || 0))}</span>
+                              <span>•</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">WA 1: {formatIDR(Number(d.wa1_revenue || 0))}</span>
+                              {Number(d.wa2_revenue || 0) > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-purple-600 dark:text-purple-400 font-medium">WA 2: {formatIDR(Number(d.wa2_revenue || 0))}</span>
+                                </>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
