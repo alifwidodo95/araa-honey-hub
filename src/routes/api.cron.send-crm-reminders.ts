@@ -183,7 +183,7 @@ export const Route = createFileRoute('/api/cron/send-crm-reminders')({
             });
 
             if (sendResult.success) {
-              await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now(), error_message = null WHERE id = $1", [reminder.id]);
+              await pool.query("UPDATE crm_reminders SET status = 'sent', sent_at = now(), updated_at = now(), error_message = null, channel = $2 WHERE id = $1", [reminder.id, crmChannel]);
               results.push({ id: reminder.id, customer: reminder.customer_name, status: 'SUCCESS', channel: crmChannel });
               successCount++;
               try {

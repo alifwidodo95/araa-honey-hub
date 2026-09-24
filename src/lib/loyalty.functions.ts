@@ -70,6 +70,7 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
         SELECT 
           id,
           stage,
+          COALESCE(channel, 'waha_main') as channel,
           CASE 
             WHEN REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') LIKE '0%' 
               THEN '62' || SUBSTRING(REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') FROM 2)
@@ -129,6 +130,9 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           COUNT(DISTINCT s.phone)::int as total_crm_sent,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.stage IS DISTINCT FROM 'reaktivasi_2025')::int as loyalty_crm_sent,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.stage = 'reaktivasi_2025')::int as reaktivasi_crm_sent,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waba')::int as waba_sent,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_main')::int as wa1_sent,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_campaign')::int as wa2_sent,
           COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_customers,
           COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as crm_revenue
         FROM sent_crm_normalized s
@@ -140,6 +144,9 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
           COUNT(DISTINCT s.phone)::int as sent_count,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.stage IS DISTINCT FROM 'reaktivasi_2025')::int as loyalty_sent_count,
           COUNT(DISTINCT s.phone) FILTER (WHERE s.stage = 'reaktivasi_2025')::int as reaktivasi_sent_count,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waba')::int as waba_sent_count,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_main')::int as wa1_sent_count,
+          COUNT(DISTINCT s.phone) FILTER (WHERE s.channel = 'waha_campaign')::int as wa2_sent_count,
           COUNT(DISTINCT n.phone) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days')::int as converted_count,
           COALESCE(SUM(n.subtotal_gross) FILTER (WHERE n.created_at > s.sent_at AND n.created_at <= s.sent_at + INTERVAL '30 days'), 0)::numeric as revenue
         FROM sent_crm_normalized s
@@ -354,7 +361,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
         // Anti-double-chat sync: Update existing pending reminder if exists, otherwise insert a new record
         const updateRes = await pool.query(
           `UPDATE crm_reminders 
-           SET status = 'sent', sent_at = now(), updated_at = now() 
+           SET status = 'sent', sent_at = now(), updated_at = now(), channel = 'waba' 
            WHERE (
              customer_phone = $1 
              OR customer_phone = $2 
@@ -365,8 +372,8 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
 
         if ((updateRes.rowCount || 0) === 0) {
           await pool.query(
-            `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
-             VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'loyalitas')`,
+            `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage, channel)
+             VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'loyalitas', 'waba')`,
             [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
           );
         }
@@ -539,22 +546,23 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
       }
 
       // SINKRONISASI ANTI-DOUBLE-CHAT: Update existing pending reminder if exists, otherwise insert a new record
+      const crmChan = activeSession === "campaign" || activeSession === "waha_campaign" ? "waha_campaign" : "waha_main";
       const updateRes = await pool.query(
         `UPDATE crm_reminders 
-         SET status = 'sent', sent_at = now(), updated_at = now() 
+         SET status = 'sent', sent_at = now(), updated_at = now(), channel = $3 
          WHERE (
            customer_phone = $1 
            OR customer_phone = $2 
            OR REGEXP_REPLACE(customer_phone, '[^0-9]', '', 'g') = $1
          ) AND status = 'pending'`,
-        [rawPhone, "0" + rawPhone.slice(2)]
+        [rawPhone, "0" + rawPhone.slice(2), crmChan]
       );
 
       if ((updateRes.rowCount || 0) === 0) {
         await pool.query(
-          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
-           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'loyalitas')`,
-          [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa"]
+          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage, channel)
+           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'loyalitas', $4)`,
+          [data.customerName, rawPhone, data.favoriteHoney || "Madu Araa", crmChan]
         );
       }
 

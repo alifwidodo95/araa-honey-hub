@@ -349,8 +349,8 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
 
         // Record in crm_reminders as sent for cross-module sync
         await pool.query(
-          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
-           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'reaktivasi_2025')`,
+          `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage, channel)
+           VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'reaktivasi_2025', 'waba')`,
           [data.customerName, rawPhone, data.product || "Madu Araa"]
         );
 
@@ -540,10 +540,11 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
       );
 
       // Record in crm_reminders as sent for cross-module sync
+      const reaktivasiChannel = activeSession === "default" ? "waha_main" : "waha_campaign";
       await pool.query(
-        `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage)
-         VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'reaktivasi_2025')`,
-        [data.customerName, rawPhone, data.product || "Madu Araa"]
+        `INSERT INTO crm_reminders (customer_name, customer_phone, honey_type, scheduled_for, status, sent_at, created_at, updated_at, stage, channel)
+         VALUES ($1, $2, $3, CURRENT_DATE, 'sent', now(), now(), now(), 'reaktivasi_2025', $4)`,
+        [data.customerName, rawPhone, data.product || "Madu Araa", reaktivasiChannel]
       );
 
       // Record outgoing message in whatsapp_chat_logs for Live Chat Monitor

@@ -507,17 +507,29 @@ function LoyaltyPage() {
   // Dynamic CRM ROI Calculation based on selected timeframe
   const filteredCrmStats = useMemo(() => {
     const rawCrmStats = (apiResponse as any)?.crmStats || { total_crm_sent: 0, converted_customers: 0, crm_revenue: 0 };
-    const dailyList: Array<{ date: string; sent_count: number; loyalty_sent_count?: number; reaktivasi_sent_count?: number; converted_count: number; revenue: number }> = 
-      crmDailyTrends || [];
+    const dailyList: Array<{
+      date: string;
+      sent_count: number;
+      loyalty_sent_count?: number;
+      reaktivasi_sent_count?: number;
+      waba_sent_count?: number;
+      wa1_sent_count?: number;
+      wa2_sent_count?: number;
+      converted_count: number;
+      revenue: number;
+    }> = crmDailyTrends || [];
 
     if (crmTimeframe === "all") {
       const totalSent = Number(rawCrmStats.total_crm_sent) || 0;
       const loyaltySent = Number(rawCrmStats.loyalty_crm_sent ?? rawCrmStats.total_crm_sent) || 0;
       const reaktivasiSent = Number(rawCrmStats.reaktivasi_crm_sent) || 0;
+      const wabaSent = Number(rawCrmStats.waba_sent) || 0;
+      const wa1Sent = Number(rawCrmStats.wa1_sent) || 0;
+      const wa2Sent = Number(rawCrmStats.wa2_sent) || 0;
       const converted = Number(rawCrmStats.converted_customers) || 0;
       const rev = Number(rawCrmStats.crm_revenue) || 0;
       const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
-      return { totalSent, loyaltySent, reaktivasiSent, converted, revenue: rev, rate, label: "Semua Waktu" };
+      return { totalSent, loyaltySent, reaktivasiSent, wabaSent, wa1Sent, wa2Sent, converted, revenue: rev, rate, label: "Semua Waktu" };
     }
 
     // Time calculations in Asia/Jakarta (UTC+7)
@@ -559,11 +571,14 @@ function LoyaltyPage() {
     const totalSent = matchingDays.reduce((acc, d) => acc + (Number(d.sent_count) || 0), 0);
     const loyaltySent = matchingDays.reduce((acc, d) => acc + (Number(d.loyalty_sent_count ?? d.sent_count) || 0), 0);
     const reaktivasiSent = matchingDays.reduce((acc, d) => acc + (Number(d.reaktivasi_sent_count) || 0), 0);
+    const wabaSent = matchingDays.reduce((acc, d) => acc + (Number(d.waba_sent_count) || 0), 0);
+    const wa1Sent = matchingDays.reduce((acc, d) => acc + (Number(d.wa1_sent_count) || 0), 0);
+    const wa2Sent = matchingDays.reduce((acc, d) => acc + (Number(d.wa2_sent_count) || 0), 0);
     const converted = matchingDays.reduce((acc, d) => acc + (Number(d.converted_count) || 0), 0);
     const revenue = matchingDays.reduce((acc, d) => acc + (Number(d.revenue) || 0), 0);
     const rate = totalSent > 0 ? Number(((converted / totalSent) * 100).toFixed(1)) : 0;
 
-    return { totalSent, loyaltySent, reaktivasiSent, converted, revenue, rate, label };
+    return { totalSent, loyaltySent, reaktivasiSent, wabaSent, wa1Sent, wa2Sent, converted, revenue, rate, label };
   }, [apiResponse, crmDailyTrends, crmTimeframe]);
 
   // Format message for a specific customer based on the active tab template
@@ -1153,59 +1168,91 @@ function LoyaltyPage() {
       </div>
 
       {/* 3 KPI Cards: Metrik Hasil Nyata & Konversi CRM WhatsApp (ROI) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-emerald-500/30 bg-gradient-to-br from-card to-emerald-500/[0.04] shadow-2xs">
-          <CardContent className="p-4 flex items-center gap-3.5">
-            <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <Send className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Pesan WA Terkirim</p>
-              <div className="text-xl font-extrabold text-foreground flex items-baseline gap-1.5 flex-wrap">
-                <span>{filteredCrmStats.loyaltySent.toLocaleString("id-ID")}</span>
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Pesan Loyalitas</span>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-stretch">
+        <Card className="border-emerald-500/30 bg-gradient-to-br from-card to-emerald-500/[0.04] shadow-2xs flex flex-col justify-between">
+          <CardContent className="p-4 flex flex-col justify-between h-full gap-3">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
+                <Send className="w-5 h-5" />
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                Periode: {filteredCrmStats.label}
-                {filteredCrmStats.reaktivasiSent > 0 && (
-                  <span className="ml-1 text-sky-600 dark:text-sky-400 font-medium">
-                    (+{filteredCrmStats.reaktivasiSent.toLocaleString("id-ID")} Reaktivasi)
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Total Pesan WA Terkirim</p>
+                <div className="text-xl font-extrabold text-foreground flex items-baseline gap-1.5 flex-wrap">
+                  <span>{filteredCrmStats.loyaltySent.toLocaleString("id-ID")}</span>
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Pesan Loyalitas</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Periode: {filteredCrmStats.label}
+                  {filteredCrmStats.reaktivasiSent > 0 && (
+                    <span className="ml-1 text-sky-600 dark:text-sky-400 font-medium">
+                      (+{filteredCrmStats.reaktivasiSent.toLocaleString("id-ID")} Reaktivasi)
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Breakdown Jalur Pengiriman WA: WABA, WA 1, WA 2 */}
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50">
+              <div className="bg-emerald-500/10 dark:bg-emerald-500/15 rounded-lg px-2 py-1.5 border border-emerald-500/20 text-center">
+                <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">WABA</div>
+                <div className="text-sm font-extrabold text-foreground">{(filteredCrmStats.wabaSent || 0).toLocaleString("id-ID")}</div>
+              </div>
+              <div className="bg-blue-500/10 dark:bg-blue-500/15 rounded-lg px-2 py-1.5 border border-blue-500/20 text-center">
+                <div className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">WA 1 (CS)</div>
+                <div className="text-sm font-extrabold text-foreground">{(filteredCrmStats.wa1Sent || 0).toLocaleString("id-ID")}</div>
+              </div>
+              <div className="bg-purple-500/10 dark:bg-purple-500/15 rounded-lg px-2 py-1.5 border border-purple-500/20 text-center">
+                <div className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">WA 2 (Outreach)</div>
+                <div className="text-sm font-extrabold text-foreground">{(filteredCrmStats.wa2Sent || 0).toLocaleString("id-ID")}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-500/30 bg-gradient-to-br from-card to-amber-500/[0.04] shadow-2xs flex flex-col justify-between">
+          <CardContent className="p-4 flex flex-col justify-between h-full gap-3">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                <Target className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Repeat Pasca WA</p>
+                <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                  {filteredCrmStats.converted.toLocaleString("id-ID")} Orang
+                  <span className="text-xs px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold">
+                    {filteredCrmStats.rate}%
                   </span>
-                )}
-              </p>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Pelanggan beli kembali setelah di-WA</p>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Efektivitas Konversi:</span>
+              <span className="font-semibold text-amber-600 dark:text-amber-400">{filteredCrmStats.rate}% closing rate</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-amber-500/30 bg-gradient-to-br from-card to-amber-500/[0.04] shadow-2xs">
-          <CardContent className="p-4 flex items-center gap-3.5">
-            <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-              <Target className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Repeat Pasca WA</p>
-              <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                {filteredCrmStats.converted.toLocaleString("id-ID")} Orang
-                <span className="text-xs px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold">
-                  {filteredCrmStats.rate}%
-                </span>
+        <Card className="border-blue-500/30 bg-gradient-to-br from-card to-blue-500/[0.04] shadow-2xs flex flex-col justify-between">
+          <CardContent className="p-4 flex flex-col justify-between h-full gap-3">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+                <Sparkles className="w-5 h-5" />
               </div>
-              <p className="text-[10px] text-muted-foreground">Pelanggan beli kembali setelah di-WA</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-blue-500/30 bg-gradient-to-br from-card to-blue-500/[0.04] shadow-2xs">
-          <CardContent className="p-4 flex items-center gap-3.5">
-            <div className="p-2.5 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Omzet Dihasilkan dari CRM</p>
-              <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
-                {formatIDR(filteredCrmStats.revenue)}
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Omzet Dihasilkan dari CRM</p>
+                <div className="text-xl font-extrabold text-blue-600 dark:text-blue-400">
+                  {formatIDR(filteredCrmStats.revenue)}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Omzet repeat order terselamatkan oleh CRM</p>
               </div>
-              <p className="text-[10px] text-muted-foreground">Omzet repeat order terselamatkan oleh CRM</p>
+            </div>
+            <div className="pt-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Rata-rata Belanja (AOV):</span>
+              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                {filteredCrmStats.converted > 0 ? formatIDR(Math.round(filteredCrmStats.revenue / filteredCrmStats.converted)) : "Rp 0"}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -1267,6 +1314,13 @@ function LoyaltyPage() {
                           </TableCell>
                           <TableCell className="py-2.5 text-center font-semibold text-foreground">
                             <div>{Number(d.loyalty_sent_count ?? d.sent_count).toLocaleString("id-ID")} Pesan</div>
+                            <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">WABA: {Number(d.waba_sent_count || 0)}</span>
+                              <span>•</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">WA 1: {Number(d.wa1_sent_count || 0)}</span>
+                              <span>•</span>
+                              <span className="text-purple-600 dark:text-purple-400 font-medium">WA 2: {Number(d.wa2_sent_count || 0)}</span>
+                            </div>
                             {Number(d.reaktivasi_sent_count) > 0 && (
                               <div className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">
                                 +{Number(d.reaktivasi_sent_count).toLocaleString("id-ID")} Reaktivasi
