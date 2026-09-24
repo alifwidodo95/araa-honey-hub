@@ -163,7 +163,7 @@ function LoyaltyPage() {
       while (true) {
         const { data, error } = await supabase
           .from("orders")
-          .select("id, customer_name, customer_phone, subtotal_gross, created_at, returned")
+          .select("id, customer_name, customer_phone, subtotal_gross, net_revenue, amount_received, created_at, returned")
           .eq("returned", false)
           .not("customer_phone", "is", null)
           .range(from, from + step - 1);
@@ -183,14 +183,14 @@ function LoyaltyPage() {
 
       const sorted = [...allOrders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-      sorted.forEach((o) => {
+      sorted.forEach((o: any) => {
         let p = (o.customer_phone || "").replace(/[^0-9]/g, "");
         if (p.startsWith("0")) p = "62" + p.slice(1);
         else if (p.startsWith("8")) p = "62" + p;
         if (p.length < 9) return;
 
         const m = o.created_at.slice(0, 7);
-        const gross = Number(o.subtotal_gross) || 0;
+        const rev = Number(o.net_revenue !== null && o.net_revenue !== undefined ? o.net_revenue : (o.amount_received ?? o.subtotal_gross)) || 0;
 
         if (!monthBuckets[m]) {
           monthBuckets[m] = { month: m, total_orders: 0, new_orders: 0, repeat_orders: 0, new_omzet: 0, repeat_omzet: 0 };
@@ -200,10 +200,10 @@ function LoyaltyPage() {
         if (!firstSeenMap[p]) {
           firstSeenMap[p] = m;
           monthBuckets[m].new_orders += 1;
-          monthBuckets[m].new_omzet += gross;
+          monthBuckets[m].new_omzet += rev;
         } else {
           monthBuckets[m].repeat_orders += 1;
-          monthBuckets[m].repeat_omzet += gross;
+          monthBuckets[m].repeat_omzet += rev;
         }
 
         if (!customerMap[p]) {
@@ -220,7 +220,7 @@ function LoyaltyPage() {
         }
 
         customerMap[p].order_count += 1;
-        customerMap[p].total_spent += gross;
+        customerMap[p].total_spent += rev;
         customerMap[p].last_order_date = o.created_at;
       });
 

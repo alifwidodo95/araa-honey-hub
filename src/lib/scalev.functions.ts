@@ -674,7 +674,7 @@ export const searchOrdersForLinking = createServerFn({ method: "GET" })
       if (q) {
         params.push(`%${q.toLowerCase()}%`);
         querySql = `
-          SELECT id, customer_name, customer_phone, tracking_number, subtotal_gross, created_at
+          SELECT id, customer_name, customer_phone, tracking_number, COALESCE(net_revenue, amount_received, subtotal_gross, 0) as net_revenue, subtotal_gross, created_at
           FROM orders
           WHERE LOWER(customer_name) LIKE $1 
              OR customer_phone LIKE $1 
@@ -684,7 +684,7 @@ export const searchOrdersForLinking = createServerFn({ method: "GET" })
         `;
       } else {
         querySql = `
-          SELECT id, customer_name, customer_phone, tracking_number, subtotal_gross, created_at
+          SELECT id, customer_name, customer_phone, tracking_number, COALESCE(net_revenue, amount_received, subtotal_gross, 0) as net_revenue, subtotal_gross, created_at
           FROM orders
           ORDER BY created_at DESC
           LIMIT 15

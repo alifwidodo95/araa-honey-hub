@@ -2507,7 +2507,7 @@ export function ScalevLeadsPage() {
                                 </p>
                               </div>
                               <div className="text-right">
-                                <p className="font-bold text-emerald-600">{formatIDR(ord.subtotal_gross || 0)}</p>
+                                <p className="font-bold text-emerald-600">{formatIDR(ord.net_revenue ?? ord.subtotal_gross ?? 0)}</p>
                                 <p className="text-[10px] text-muted-foreground">{formatDateIndo(ord.created_at)}</p>
                               </div>
                             </div>

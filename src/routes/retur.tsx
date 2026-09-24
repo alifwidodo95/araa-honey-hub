@@ -124,7 +124,7 @@ function Page() {
       while (true) {
         const { data, error } = await supabase
           .from("orders")
-          .select("id, returned, subtotal_gross, cogs_total, expedition")
+          .select("id, returned, net_revenue, amount_received, subtotal_gross, cogs_total, expedition")
           .gte("created_at", startDate)
           .lte("created_at", endDate)
           .range(from, from + step - 1);
@@ -140,8 +140,9 @@ function Page() {
       const returnedOrders = orders.filter((o: any) => o.returned).length;
       const deliveredOrders = totalOrders - returnedOrders;
       const returnRate = totalOrders > 0 ? (returnedOrders / totalOrders) * 100 : 0;
-      const totalGross = orders.reduce((sum: number, o: any) => sum + (Number(o.subtotal_gross) || 0), 0);
-      const returnedGross = orders.filter((o: any) => o.returned).reduce((sum: number, o: any) => sum + (Number(o.subtotal_gross) || 0), 0);
+      const getNet = (o: any) => Number(o.net_revenue !== null && o.net_revenue !== undefined ? o.net_revenue : (o.amount_received ?? o.subtotal_gross)) || 0;
+      const totalGross = orders.reduce((sum: number, o: any) => sum + getNet(o), 0);
+      const returnedGross = orders.filter((o: any) => o.returned).reduce((sum: number, o: any) => sum + getNet(o), 0);
       const returnedCogs = orders.filter((o: any) => o.returned).reduce((sum: number, o: any) => sum + (Number(o.cogs_total) || 0), 0);
 
       // Group by courier / expedition
@@ -431,7 +432,7 @@ function Page() {
                   </div>
                   <div className="text-2xl font-bold">{cohortStats?.totalOrders.toLocaleString("id-ID") ?? 0}</div>
                   <div className="text-[11px] text-muted-foreground">
-                    Omzet Terbit: {formatIDR(cohortStats?.totalGross ?? 0)}
+                    Omzet Bersih Terbit: {formatIDR(cohortStats?.totalGross ?? 0)}
                   </div>
                 </div>
 
@@ -481,7 +482,7 @@ function Page() {
                 {/* 4. Dampak Finansial Retur */}
                 <div className="p-4 rounded-xl bg-card border border-muted/50 space-y-1 shadow-2xs">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Omzet Retur (Batal)</span>
+                    <span>Omzet Bersih Batal (Retur)</span>
                     <DollarSign className="w-4 h-4 text-amber-500" />
                   </div>
                   <div className="text-xl font-bold text-foreground">
