@@ -35,8 +35,61 @@ function formatWibFilterEnd(dateStr: string): string {
   return `${clean} 23:59:59.999+07`;
 }
 
+// Helper: Auto-delete older duplicate unclosed leads when a customer fills form multiple times within 7 days (Pilihan 3)
+export async function cleanDuplicateScalevLeadsWithPool(pool: pg.Pool): Promise<number> {
+  // Preserve notes or follow-up status to newer lead if exists
+  try {
+    await pool.query(`
+      UPDATE scalev_leads sl_newer
+      SET notes = COALESCE(sl_newer.notes, sl_older.notes),
+          followed_up_at = COALESCE(sl_newer.followed_up_at, sl_older.followed_up_at),
+          follow_up_step = COALESCE(sl_newer.follow_up_step, sl_older.follow_up_step),
+          fu1_at = COALESCE(sl_newer.fu1_at, sl_older.fu1_at),
+          fu2_at = COALESCE(sl_newer.fu2_at, sl_older.fu2_at),
+          fu3_at = COALESCE(sl_newer.fu3_at, sl_older.fu3_at)
+      FROM scalev_leads sl_older
+      WHERE sl_older.id != sl_newer.id
+        AND sl_older.is_closed = false
+        AND LENGTH(regexp_replace(sl_older.customer_phone, '[^0-9]', '', 'g')) >= 8
+        AND (
+          sl_older.customer_phone = sl_newer.customer_phone
+          OR regexp_replace(sl_older.customer_phone, '[^0-9]', '', 'g') = regexp_replace(sl_newer.customer_phone, '[^0-9]', '', 'g')
+        )
+        AND sl_newer.created_at > sl_older.created_at
+        AND sl_older.created_at >= (sl_newer.created_at - INTERVAL '7 days')
+        AND (sl_older.notes IS NOT NULL OR sl_older.followed_up_at IS NOT NULL);
+    `);
+  } catch (mergeErr) {
+    console.error("[cleanDuplicateScalevLeads Preserve Notes Error]:", mergeErr);
+  }
+
+  const deleteSql = `
+    DELETE FROM scalev_leads sl_older
+    USING scalev_leads sl_newer
+    WHERE sl_older.id != sl_newer.id
+      AND sl_older.is_closed = false
+      AND LENGTH(regexp_replace(sl_older.customer_phone, '[^0-9]', '', 'g')) >= 8
+      AND (
+        sl_older.customer_phone = sl_newer.customer_phone
+        OR regexp_replace(sl_older.customer_phone, '[^0-9]', '', 'g') = regexp_replace(sl_newer.customer_phone, '[^0-9]', '', 'g')
+      )
+      AND sl_newer.created_at > sl_older.created_at
+      AND sl_older.created_at >= (sl_newer.created_at - INTERVAL '7 days')
+    RETURNING sl_older.id;
+  `;
+  const res = await pool.query(deleteSql);
+  return res.rowCount || 0;
+}
+
 // Helper: Auto-match unclosed leads with orders (Nearest order within -2 hours to +30 days, anti-double claim)
 export async function autoMatchScalevLeadsWithPool(pool: pg.Pool): Promise<number> {
+  // Pre-clean older unclosed duplicate leads
+  try {
+    await cleanDuplicateScalevLeadsWithPool(pool);
+  } catch (cleanErr) {
+    console.error("[cleanDuplicateScalevLeads Pre-Match Error]:", cleanErr);
+  }
+
   const matchSql = `
     WITH matched AS (
       SELECT DISTINCT ON (sl.id)
@@ -74,6 +127,14 @@ export async function autoMatchScalevLeadsWithPool(pool: pg.Pool): Promise<numbe
     RETURNING scalev_leads.id
   `;
   const res = await pool.query(matchSql);
+
+  // Post-clean duplicate leads that might remain for newly closed leads
+  try {
+    await cleanDuplicateScalevLeadsWithPool(pool);
+  } catch (cleanErr) {
+    console.error("[cleanDuplicateScalevLeads Post-Match Error]:", cleanErr);
+  }
+
   return res.rowCount || 0;
 }
 
@@ -395,6 +456,13 @@ export const syncScalevHistory = createServerFn({ method: "POST" })
         nextCursor = json.next_cursor;
       }
 
+      // Run auto-match & auto-clean duplicates (Pilihan 3)
+      try {
+        await autoMatchScalevLeadsWithPool(pool);
+      } catch (matchErr) {
+        console.error("[autoMatch in syncScalevHistory Error]:", matchErr);
+      }
+
       await pool.end();
       return { totalSynced, newlyInserted, newlyClosed };
     } catch (err: any) {
@@ -691,6 +759,13 @@ export const manualToggleScalevClosing = createServerFn({ method: "POST" })
            WHERE id = $3`,
           [matchedOrderId, closedAt, data.leadId]
         );
+
+        // Auto-clean any unclosed duplicate leads for this customer (Pilihan 3)
+        try {
+          await cleanDuplicateScalevLeadsWithPool(pool);
+        } catch (cleanErr) {
+          console.error("[cleanDuplicateScalevLeads in manualToggleScalevClosing Error]:", cleanErr);
+        }
       } else {
         await pool.query(
           `UPDATE scalev_leads 

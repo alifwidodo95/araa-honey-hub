@@ -158,6 +158,45 @@ export const Route = createFileRoute('/api/scalev-webhook')({
             ]
           );
 
+          // 6. Auto-delete older unclosed duplicate leads for this customer within 7 days (Pilihan 3)
+          if (customerPhone && customerPhone.length >= 8) {
+            try {
+              const digits = customerPhone.replace(/[^0-9]/g, '');
+              // Preserve notes / follow-up to newest lead if older had them
+              await pool.query(
+                `UPDATE scalev_leads
+                 SET notes = COALESCE(scalev_leads.notes, sl_older.notes),
+                     followed_up_at = COALESCE(scalev_leads.followed_up_at, sl_older.followed_up_at),
+                     follow_up_step = COALESCE(scalev_leads.follow_up_step, sl_older.follow_up_step),
+                     fu1_at = COALESCE(scalev_leads.fu1_at, sl_older.fu1_at),
+                     fu2_at = COALESCE(scalev_leads.fu2_at, sl_older.fu2_at),
+                     fu3_at = COALESCE(scalev_leads.fu3_at, sl_older.fu3_at)
+                 FROM scalev_leads sl_older
+                 WHERE scalev_leads.scalev_order_id = $1
+                   AND sl_older.scalev_order_id != $1
+                   AND (sl_older.customer_phone = $2 OR regexp_replace(sl_older.customer_phone, '[^0-9]', '', 'g') = $3)
+                   AND sl_older.is_closed = false
+                   AND sl_older.created_at < $4::timestamptz
+                   AND sl_older.created_at >= ($4::timestamptz - INTERVAL '7 days')
+                   AND (sl_older.notes IS NOT NULL OR sl_older.followed_up_at IS NOT NULL)`,
+                [scalevOrderId, customerPhone, digits, createdAtStr]
+              );
+
+              // Delete older duplicate unclosed leads
+              await pool.query(
+                `DELETE FROM scalev_leads
+                 WHERE (customer_phone = $1 OR regexp_replace(customer_phone, '[^0-9]', '', 'g') = $2)
+                   AND scalev_order_id != $3
+                   AND is_closed = false
+                   AND created_at < $4::timestamptz
+                   AND created_at >= ($4::timestamptz - INTERVAL '7 days')`,
+                [customerPhone, digits, scalevOrderId, createdAtStr]
+              );
+            } catch (dupErr) {
+              console.error('[Scalev Webhook Auto-Delete Duplicates Error]:', dupErr);
+            }
+          }
+
           await pool.end();
 
           return new Response(JSON.stringify({
