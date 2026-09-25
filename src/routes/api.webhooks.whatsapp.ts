@@ -2,6 +2,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { createFileRoute } from '@tanstack/react-router';
 import pg from 'pg';
 import { sendWhatsAppMessage } from '@/lib/whatsapp-service';
+import { processFUReply } from '@/lib/hermes-fu-classifier';
 
 export const Route = createFileRoute('/api/webhooks/whatsapp')({
   server: {
@@ -210,7 +211,39 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', $6, now())
                   `, [userId, chatId, customerPhone, customerName, incomingText, mediaId]);
 
+                  // === HERMES FASE 1: FU Reply Classifier ===
+                  // Check if this is a reply from a Scalev lead being followed up
+                  // If so, classify intent and handle autonomously (skip AI generic reply)
+                  let hermesHandled = false;
+                  if (messageType !== 'reaction' && incomingText) {
+                    try {
+                      const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
+                      const wabaConfig = wabaConfigRes.rows[0]?.value || {};
+                      const fuResult = await processFUReply({
+                        customerPhone,
+                        customerName,
+                        message: incomingText,
+                        channel: 'waba',
+                        pool,
+                        deepseekApiKey: aiSettings.deepseek_api_key,
+                        openaiApiKey: undefined,
+                        wabaConfig: {
+                          phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || '1289613457572802',
+                          permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+                        },
+                      });
+                      if (fuResult.handled) {
+                        hermesHandled = true;
+                        console.log(`[WABA Webhook] Hermes FU classified: phone=${customerPhone} intent=${fuResult.intent} leadId=${fuResult.leadId}`);
+                      }
+                    } catch (hermesErr) {
+                      console.error('[WABA Webhook] Hermes FU classifier error:', hermesErr);
+                    }
+                  }
+                  // =========================================
+
                   // Check if AI auto-reply is active (do not auto-reply to reaction emoji)
+                  // Skip AI reply if Hermes already handled this message
                   const {
                     deepseek_api_key: deepseekApiKey,
                     system_prompt: systemPrompt,
@@ -219,7 +252,7 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     biteship_origin_name: biteshipOriginName
                   } = aiSettings;
 
-                  if (isActive && messageType !== 'reaction') {
+                  if (isActive && messageType !== 'reaction' && !hermesHandled) {
                     let biteshipRatesText = '';
                     const lowercaseInput = incomingText.toLowerCase();
                     const asksForOngkir = 
@@ -552,6 +585,41 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
             INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, created_at)
             VALUES ($1, $2, $3, $4, $5, 'incoming', $6, now())
           `, [userId, chatId, customerPhone, customerName, incomingLoggedText, channelName]);
+
+          // === HERMES FASE 1: FU Reply Classifier (WAHA) ===
+          let hermesHandledWaha = false;
+          if (processedInputText && messageType !== 'reaction') {
+            try {
+              const globalWahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
+              const globalWahaConfig = globalWahaConfigRes.rows[0]?.value || {};
+              const fuResultWaha = await processFUReply({
+                customerPhone,
+                customerName,
+                message: processedInputText,
+                channel: channelName as 'waha_main' | 'waha_campaign',
+                pool,
+                deepseekApiKey: deepseekApiKey,
+                openaiApiKey: openaiApiKey || undefined,
+                wahaConfig: {
+                  wahaUrl: customWahaUrl || globalWahaConfig.wahaUrl,
+                  apiKey: customWahaApiKey || globalWahaConfig.apiKey,
+                  sessionName: session,
+                },
+              });
+              if (fuResultWaha.handled) {
+                hermesHandledWaha = true;
+                console.log(`[WAHA Webhook] Hermes FU classified: phone=${customerPhone} intent=${fuResultWaha.intent} leadId=${fuResultWaha.leadId}`);
+              }
+            } catch (hermesWahaErr) {
+              console.error('[WAHA Webhook] Hermes FU classifier error:', hermesWahaErr);
+            }
+          }
+          // =================================================
+
+          if (hermesHandledWaha) {
+            await pool.end();
+            return new Response('OK (Hermes FU handled)', { status: 200 });
+          }
 
           // Biteship Ongkir Check
           let biteshipRatesText = '';

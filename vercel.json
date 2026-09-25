@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/send-crm-reminders",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/hermes-fu-loop",
+      "schedule": "0 1,3,5,7,9,11 * * *"
     }
   ]
 }
