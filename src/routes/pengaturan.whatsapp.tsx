@@ -194,6 +194,9 @@ function WhatsAppPage() {
   const [crmTemplate, setCrmTemplate] = useState(`Halo Kak {customer_name},\n\nSemoga sehat selalu ya Kak. 🍯😊\n\nSekadar mengingatkan, Kakak terakhir kali memesan {honey_type} pada sekitar 45 hari yang lalu.\n\nJika persediaan madu Araa Honey di rumah sudah mulai menipis, Kakak bisa langsung membalas chat ini untuk memesan kembali ya. Terima kasih banyak Kak!`);
   const crmTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Hermes Agent State
+  const [hermesEnabled, setHermesEnabled] = useState(false);
+
   // Handle uploading flyer image to Supabase Storage
   const handleUploadFlyer = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -378,6 +381,43 @@ function WhatsAppPage() {
       el.focus();
       el.setSelectionRange(start + ph.length, start + ph.length);
     }, 0);
+  };
+
+  // Fetch Hermes Config from Supabase
+  const { data: dbHermesConfig, refetch: refetchHermesConfig } = useQuery({
+    queryKey: ["hermes-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "hermes_config")
+        .maybeSingle();
+      if (error) throw error;
+      return data?.value as any || null;
+    }
+  });
+
+  // Sync Hermes config to state on load
+  useEffect(() => {
+    if (dbHermesConfig) {
+      if (dbHermesConfig.enabled !== undefined) setHermesEnabled(dbHermesConfig.enabled);
+    }
+  }, [dbHermesConfig]);
+
+  // Immediate toggle for Hermes Agent
+  const handleToggleHermes = async (checked: boolean) => {
+    setHermesEnabled(checked);
+    try {
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert({ key: "hermes_config", value: { enabled: checked } });
+      if (error) throw error;
+      toast.success(checked ? "🤖 Hermes Agent diaktifkan!" : "⏸️ Hermes Agent dinonaktifkan.");
+      refetchHermesConfig();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memperbarui status Hermes Agent.");
+      setHermesEnabled(!checked);
+    }
   };
 
   const [backfilling, setBackfilling] = useState(false);
@@ -2184,6 +2224,76 @@ function WhatsAppPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* ===== HERMES AGENT CARD ===== */}
+            <Card className={`border-2 transition-all duration-300 ${hermesEnabled ? "border-violet-400/60 shadow-violet-100 dark:shadow-violet-900/20 shadow-md" : "border-border/40"}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg">🤖</span>
+                    <span>Hermes Agent</span>
+                    <Badge
+                      variant="outline"
+                      className={hermesEnabled
+                        ? "border-violet-400 text-violet-600 bg-violet-50 dark:bg-violet-950/30 text-[10px] font-bold animate-pulse"
+                        : "border-slate-300 text-slate-400 bg-slate-50 dark:bg-slate-900/30 text-[10px]"
+                      }
+                    >
+                      {hermesEnabled ? "● AKTIF" : "○ NONAKTIF"}
+                    </Badge>
+                  </span>
+                  <Switch
+                    id="hermes-enabled"
+                    checked={hermesEnabled}
+                    onCheckedChange={handleToggleHermes}
+                  />
+                </CardTitle>
+                <CardDescription className="text-[11px] leading-relaxed">
+                  AI autonomous agent untuk follow-up leads Scalev — baca balasan customer, klasifikasi intent, dan kirim auto-reply cerdas tanpa campur tangan manual.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className={`rounded-lg p-3 text-[10px] space-y-1.5 transition-colors ${hermesEnabled ? "bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/40" : "bg-muted/50 border border-border/40"}`}>
+                  <p className={`font-bold text-[11px] ${hermesEnabled ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}>
+                    Kemampuan Hermes Agent (Fase 1):
+                  </p>
+                  <div className="space-y-1 text-muted-foreground">
+                    {[
+                      "Deteksi balasan customer yang sedang di-follow up",
+                      "Klasifikasi intent: minat, tanya harga, sudah bayar, batalkan, reschedule",
+                      "Auto-reply cerdas per intent (harga, rekening, konfirmasi, dll)",
+                      "Lanjutkan FU Step 1→2→3 otomatis untuk leads yang tidak reply",
+                      "Flag 'Klaim Bayar' ke notes lead untuk verifikasi CS",
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        <span className={hermesEnabled ? "text-violet-500" : "text-slate-400"}>✦</span>
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {hermesEnabled && (
+                  <div className="border-t pt-3 space-y-2">
+                    <Label className="text-xs font-semibold text-muted-foreground">Info Cron FU Loop (setiap 2 jam):</Label>
+                    <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded border border-border/80 text-[10px] space-y-1 font-mono select-all">
+                      <div className="text-slate-500 dark:text-slate-400 break-all font-semibold">GET https://app.araahoney.my.id/api/cron/hermes-fu-loop</div>
+                      <div className="text-slate-400 dark:text-slate-500 break-all">Header: Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground leading-normal">
+                      Daftarkan URL di atas ke <strong>cron-job.org</strong> dengan interval <strong>setiap 2 jam</strong> pada jam 08:00–21:00 WIB agar FU loop berjalan otomatis.
+                    </p>
+                  </div>
+                )}
+
+                {!hermesEnabled && (
+                  <p className="text-[10px] text-muted-foreground text-center py-1 italic">
+                    Aktifkan switch di atas untuk menggunakan Hermes Agent 🤖
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            {/* ============================= */}
 
             <Card>
               <CardHeader className="pb-3">
