@@ -54,6 +54,7 @@ import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-m
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
 import { Route as ApiCronSendCrmRemindersRouteImport } from './routes/api.cron.send-crm-reminders'
 import { Route as ApiCronSendAdsReportRouteImport } from './routes/api.cron.send-ads-report'
+import { Route as ApiCronHermesFuLoopRouteImport } from './routes/api.cron.hermes-fu-loop'
 import { Route as ApiBiteshipSearchAreaRouteImport } from './routes/api.biteship.search-area'
 import { Route as ApiAiAnalyzeAdsRouteImport } from './routes/api.ai.analyze-ads'
 
@@ -283,6 +284,11 @@ const ApiCronSendAdsReportRoute = ApiCronSendAdsReportRouteImport.update({
   path: '/api/cron/send-ads-report',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronHermesFuLoopRoute = ApiCronHermesFuLoopRouteImport.update({
+  id: '/api/cron/hermes-fu-loop',
+  path: '/api/cron/hermes-fu-loop',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBiteshipSearchAreaRoute = ApiBiteshipSearchAreaRouteImport.update({
   id: '/api/biteship/search-area',
   path: '/api/biteship/search-area',
@@ -328,6 +334,7 @@ export interface FileRoutesByFullPath {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/ai/analyze-ads': typeof ApiAiAnalyzeAdsRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/hermes-fu-loop': typeof ApiCronHermesFuLoopRoute
   '/api/cron/send-ads-report': typeof ApiCronSendAdsReportRoute
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
@@ -377,6 +384,7 @@ export interface FileRoutesByTo {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/ai/analyze-ads': typeof ApiAiAnalyzeAdsRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/hermes-fu-loop': typeof ApiCronHermesFuLoopRoute
   '/api/cron/send-ads-report': typeof ApiCronSendAdsReportRoute
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
@@ -427,6 +435,7 @@ export interface FileRoutesById {
   '/stok/pindah-wadah': typeof StokPindahWadahRoute
   '/api/ai/analyze-ads': typeof ApiAiAnalyzeAdsRoute
   '/api/biteship/search-area': typeof ApiBiteshipSearchAreaRoute
+  '/api/cron/hermes-fu-loop': typeof ApiCronHermesFuLoopRoute
   '/api/cron/send-ads-report': typeof ApiCronSendAdsReportRoute
   '/api/cron/send-crm-reminders': typeof ApiCronSendCrmRemindersRoute
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
@@ -478,6 +487,7 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/ai/analyze-ads'
     | '/api/biteship/search-area'
+    | '/api/cron/hermes-fu-loop'
     | '/api/cron/send-ads-report'
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
@@ -527,6 +537,7 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/ai/analyze-ads'
     | '/api/biteship/search-area'
+    | '/api/cron/hermes-fu-loop'
     | '/api/cron/send-ads-report'
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
@@ -576,6 +587,7 @@ export interface FileRouteTypes {
     | '/stok/pindah-wadah'
     | '/api/ai/analyze-ads'
     | '/api/biteship/search-area'
+    | '/api/cron/hermes-fu-loop'
     | '/api/cron/send-ads-report'
     | '/api/cron/send-crm-reminders'
     | '/api/cron/send-resi'
@@ -626,6 +638,7 @@ export interface RootRouteChildren {
   StokPindahWadahRoute: typeof StokPindahWadahRoute
   ApiAiAnalyzeAdsRoute: typeof ApiAiAnalyzeAdsRoute
   ApiBiteshipSearchAreaRoute: typeof ApiBiteshipSearchAreaRoute
+  ApiCronHermesFuLoopRoute: typeof ApiCronHermesFuLoopRoute
   ApiCronSendAdsReportRoute: typeof ApiCronSendAdsReportRoute
   ApiCronSendCrmRemindersRoute: typeof ApiCronSendCrmRemindersRoute
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
@@ -959,6 +972,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSendAdsReportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/hermes-fu-loop': {
+      id: '/api/cron/hermes-fu-loop'
+      path: '/api/cron/hermes-fu-loop'
+      fullPath: '/api/cron/hermes-fu-loop'
+      preLoaderRoute: typeof ApiCronHermesFuLoopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/biteship/search-area': {
       id: '/api/biteship/search-area'
       path: '/api/biteship/search-area'
@@ -1010,6 +1030,7 @@ const rootRouteChildren: RootRouteChildren = {
   StokPindahWadahRoute: StokPindahWadahRoute,
   ApiAiAnalyzeAdsRoute: ApiAiAnalyzeAdsRoute,
   ApiBiteshipSearchAreaRoute: ApiBiteshipSearchAreaRoute,
+  ApiCronHermesFuLoopRoute: ApiCronHermesFuLoopRoute,
   ApiCronSendAdsReportRoute: ApiCronSendAdsReportRoute,
   ApiCronSendCrmRemindersRoute: ApiCronSendCrmRemindersRoute,
   ApiCronSendResiRoute: ApiCronSendResiRoute,

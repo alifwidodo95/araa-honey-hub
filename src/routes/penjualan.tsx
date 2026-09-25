@@ -1248,7 +1248,8 @@ function Page() {
                 <TableHead>No. HP</TableHead>
                 <TableHead>Saluran</TableHead>
                 <TableHead>Resi</TableHead>
-                <TableHead className="text-right">Nominal Bersih</TableHead>
+                <TableHead className="text-right whitespace-nowrap">Net Revenue</TableHead>
+                <TableHead className="text-right whitespace-nowrap">Net Profit</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
@@ -1318,6 +1319,31 @@ function Page() {
                   <TableCell className="font-mono text-xs">{o.tracking_number ?? "-"}</TableCell>
                   <TableCell className="text-right font-bold text-foreground">{formatIDR(o.net_revenue)}</TableCell>
                   <TableCell className="text-right">
+                    {o.returned ? (
+                      <span className="text-xs text-muted-foreground italic select-none">Retur</span>
+                    ) : (
+                      (() => {
+                        const netRev = Number(o.net_revenue || 0);
+                        const cogs = Number(o.cogs_total || 0);
+                        const profit = netRev - cogs;
+                        const isPositive = profit >= 0;
+                        const marginPct = netRev > 0 ? Math.round((profit / netRev) * 100) : 0;
+                        return (
+                          <div className="flex flex-col items-end">
+                            <span className={`font-bold text-xs ${isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                              {isPositive ? "+" : ""}{formatIDR(profit)}
+                            </span>
+                            {cogs > 0 && (
+                              <span className="text-[10px] text-muted-foreground font-medium">
+                                HPP {formatIDR(cogs)} {netRev > 0 ? `(${marginPct}%)` : ""}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {!o.returned ? (
                         <>
@@ -1335,7 +1361,7 @@ function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!orders?.length && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
+              {!orders?.length && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-6">Belum ada pesanan</TableCell></TableRow>}
             </TableBody>
           </Table>
 
