@@ -217,24 +217,33 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                   let hermesHandled = false;
                   if (messageType !== 'reaction' && incomingText) {
                     try {
-                      const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
-                      const wabaConfig = wabaConfigRes.rows[0]?.value || {};
-                      const fuResult = await processFUReply({
-                        customerPhone,
-                        customerName,
-                        message: incomingText,
-                        channel: 'waba',
-                        pool,
-                        deepseekApiKey: aiSettings.deepseek_api_key,
-                        openaiApiKey: undefined,
-                        wabaConfig: {
-                          phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || '1289613457572802',
-                          permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
-                        },
-                      });
-                      if (fuResult.handled) {
-                        hermesHandled = true;
-                        console.log(`[WABA Webhook] Hermes FU classified: phone=${customerPhone} intent=${fuResult.intent} leadId=${fuResult.leadId}`);
+                      // Read Hermes enabled switch from app_settings
+                      const hermesCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'hermes_config'");
+                      const hermesCfg = hermesCfgRes.rows[0]?.value || {};
+                      const hermesEnabled = hermesCfg.enabled !== false; // default: ON if not explicitly set to false
+
+                      if (hermesEnabled) {
+                        const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
+                        const wabaConfig = wabaConfigRes.rows[0]?.value || {};
+                        const fuResult = await processFUReply({
+                          customerPhone,
+                          customerName,
+                          message: incomingText,
+                          channel: 'waba',
+                          pool,
+                          deepseekApiKey: aiSettings.deepseek_api_key,
+                          openaiApiKey: undefined,
+                          wabaConfig: {
+                            phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || '1289613457572802',
+                            permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+                          },
+                        });
+                        if (fuResult.handled) {
+                          hermesHandled = true;
+                          console.log(`[WABA Webhook] Hermes FU classified: phone=${customerPhone} intent=${fuResult.intent} leadId=${fuResult.leadId}`);
+                        }
+                      } else {
+                        console.log('[WABA Webhook] Hermes FU Agent is DISABLED via hermes_config.');
                       }
                     } catch (hermesErr) {
                       console.error('[WABA Webhook] Hermes FU classifier error:', hermesErr);
@@ -590,25 +599,34 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
           let hermesHandledWaha = false;
           if (processedInputText && messageType !== 'reaction') {
             try {
-              const globalWahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
-              const globalWahaConfig = globalWahaConfigRes.rows[0]?.value || {};
-              const fuResultWaha = await processFUReply({
-                customerPhone,
-                customerName,
-                message: processedInputText,
-                channel: channelName as 'waha_main' | 'waha_campaign',
-                pool,
-                deepseekApiKey: deepseekApiKey,
-                openaiApiKey: openaiApiKey || undefined,
-                wahaConfig: {
-                  wahaUrl: customWahaUrl || globalWahaConfig.wahaUrl,
-                  apiKey: customWahaApiKey || globalWahaConfig.apiKey,
-                  sessionName: session,
-                },
-              });
-              if (fuResultWaha.handled) {
-                hermesHandledWaha = true;
-                console.log(`[WAHA Webhook] Hermes FU classified: phone=${customerPhone} intent=${fuResultWaha.intent} leadId=${fuResultWaha.leadId}`);
+              // Read Hermes enabled switch from app_settings
+              const hermesCfgResWaha = await pool.query("SELECT value FROM app_settings WHERE key = 'hermes_config'");
+              const hermesCfgWaha = hermesCfgResWaha.rows[0]?.value || {};
+              const hermesEnabledWaha = hermesCfgWaha.enabled !== false; // default: ON
+
+              if (hermesEnabledWaha) {
+                const globalWahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
+                const globalWahaConfig = globalWahaConfigRes.rows[0]?.value || {};
+                const fuResultWaha = await processFUReply({
+                  customerPhone,
+                  customerName,
+                  message: processedInputText,
+                  channel: channelName as 'waha_main' | 'waha_campaign',
+                  pool,
+                  deepseekApiKey: deepseekApiKey,
+                  openaiApiKey: openaiApiKey || undefined,
+                  wahaConfig: {
+                    wahaUrl: customWahaUrl || globalWahaConfig.wahaUrl,
+                    apiKey: customWahaApiKey || globalWahaConfig.apiKey,
+                    sessionName: session,
+                  },
+                });
+                if (fuResultWaha.handled) {
+                  hermesHandledWaha = true;
+                  console.log(`[WAHA Webhook] Hermes FU classified: phone=${customerPhone} intent=${fuResultWaha.intent} leadId=${fuResultWaha.leadId}`);
+                }
+              } else {
+                console.log('[WAHA Webhook] Hermes FU Agent is DISABLED via hermes_config.');
               }
             } catch (hermesWahaErr) {
               console.error('[WAHA Webhook] Hermes FU classifier error:', hermesWahaErr);

@@ -42,6 +42,19 @@ export const Route = createFileRoute('/api/cron/hermes-fu-loop')({
 
           pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
 
+          // Check Hermes enabled switch
+          const hermesCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'hermes_config'");
+          const hermesCfg = hermesCfgRes.rows[0]?.value || {};
+          const hermesEnabled = hermesCfg.enabled !== false; // default: ON if not explicitly set to false
+
+          if (!hermesEnabled) {
+            await pool.end();
+            return new Response(JSON.stringify({
+              message: 'Hermes FU Agent is DISABLED via hermes_config. Skipped.',
+              processed: 0,
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+
           // Fetch Scalev config for sender session info
           const cfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
           const scalevCfg = cfgRes.rows[0]?.value || {};
