@@ -2226,20 +2226,20 @@ function WhatsAppPage() {
             </Card>
 
             {/* ===== HERMES AGENT CARD ===== */}
-            <Card className={`border-2 transition-all duration-300 ${hermesEnabled ? "border-violet-400/60 shadow-violet-100 dark:shadow-violet-900/20 shadow-md" : "border-border/40"}`}>
+            <Card className={`border-2 transition-all duration-300 ${hermesEnabled ? "border-violet-400/60 shadow-md" : "border-border/40"}`}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center justify-between">
                   <span className="flex items-center gap-2">
-                    <span className="text-lg">🤖</span>
+                    <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold ${hermesEnabled ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-300" : "bg-muted text-muted-foreground"}`}>AI</span>
                     <span>Hermes Agent</span>
                     <Badge
                       variant="outline"
                       className={hermesEnabled
-                        ? "border-violet-400 text-violet-600 bg-violet-50 dark:bg-violet-950/30 text-[10px] font-bold animate-pulse"
+                        ? "border-violet-400 text-violet-600 bg-violet-50 dark:bg-violet-950/30 text-[10px] font-bold"
                         : "border-slate-300 text-slate-400 bg-slate-50 dark:bg-slate-900/30 text-[10px]"
                       }
                     >
-                      {hermesEnabled ? "● AKTIF" : "○ NONAKTIF"}
+                      {hermesEnabled ? "AKTIF" : "NONAKTIF"}
                     </Badge>
                   </span>
                   <Switch
@@ -2249,7 +2249,7 @@ function WhatsAppPage() {
                   />
                 </CardTitle>
                 <CardDescription className="text-[11px] leading-relaxed">
-                  AI autonomous agent untuk follow-up leads Scalev — baca balasan customer, klasifikasi intent, dan kirim auto-reply cerdas tanpa campur tangan manual.
+                  AI autonomous agent untuk follow-up leads Scalev secara otomatis — baca balasan customer, klasifikasi intent, dan kirim auto-reply cerdas tanpa campur tangan manual.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -2262,11 +2262,11 @@ function WhatsAppPage() {
                       "Deteksi balasan customer yang sedang di-follow up",
                       "Klasifikasi intent: minat, tanya harga, sudah bayar, batalkan, reschedule",
                       "Auto-reply cerdas per intent (harga, rekening, konfirmasi, dll)",
-                      "Lanjutkan FU Step 1→2→3 otomatis untuk leads yang tidak reply",
-                      "Flag 'Klaim Bayar' ke notes lead untuk verifikasi CS",
+                      "Lanjutkan FU Step 1, 2, 3 otomatis untuk leads yang tidak reply",
+                      "Flag Klaim Bayar ke notes lead untuk verifikasi CS",
                     ].map((item, i) => (
                       <div key={i} className="flex items-start gap-1.5">
-                        <span className={hermesEnabled ? "text-violet-500" : "text-slate-400"}>✦</span>
+                        <span className={`mt-0.5 ${hermesEnabled ? "text-violet-500" : "text-slate-400"}`}>-</span>
                         <span>{item}</span>
                       </div>
                     ))}
@@ -2278,17 +2278,17 @@ function WhatsAppPage() {
                     <Label className="text-xs font-semibold text-muted-foreground">Info Cron FU Loop (setiap 2 jam):</Label>
                     <div className="bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded border border-border/80 text-[10px] space-y-1 font-mono select-all">
                       <div className="text-slate-500 dark:text-slate-400 break-all font-semibold">GET https://app.araahoney.my.id/api/cron/hermes-fu-loop</div>
-                      <div className="text-slate-400 dark:text-slate-500 break-all">Header: Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
+                      <div className="text-slate-400 dark:text-slate-500 break-all">Authorization: Bearer 5b8ab0ab88d7cbe1f85d7ca34e68a2ac</div>
                     </div>
                     <p className="text-[9px] text-muted-foreground leading-normal">
-                      Daftarkan URL di atas ke <strong>cron-job.org</strong> dengan interval <strong>setiap 2 jam</strong> pada jam 08:00–21:00 WIB agar FU loop berjalan otomatis.
+                      Daftarkan URL di atas ke <strong>cron-job.org</strong> dengan interval <strong>setiap 2 jam</strong> pada jam 08:00 hingga 21:00 WIB agar FU loop berjalan otomatis.
                     </p>
                   </div>
                 )}
 
                 {!hermesEnabled && (
                   <p className="text-[10px] text-muted-foreground text-center py-1 italic">
-                    Aktifkan switch di atas untuk menggunakan Hermes Agent 🤖
+                    Aktifkan switch di atas untuk menggunakan Hermes Agent.
                   </p>
                 )}
               </CardContent>
