@@ -2095,6 +2095,38 @@ function WhatsAppPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* CRM Left Column: Configurations */}
           <div className="space-y-6 lg:col-span-1">
+
+            {/* ===== HERMES AGENT CARD (TOP) ===== */}
+            <Card className={`border-2 transition-all duration-300 ${hermesEnabled ? "border-violet-400/60 shadow-md" : "border-border/40"}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold ${hermesEnabled ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-300" : "bg-muted text-muted-foreground"}`}>AI</span>
+                    <span>Hermes Agent</span>
+                    <Badge variant="outline" className={hermesEnabled ? "border-violet-400 text-violet-600 bg-violet-50 dark:bg-violet-950/30 text-[10px] font-bold" : "border-slate-300 text-slate-400 bg-slate-50 dark:bg-slate-900/30 text-[10px]"}>
+                      {hermesEnabled ? "AKTIF" : "NONAKTIF"}
+                    </Badge>
+                  </span>
+                  <Switch id="hermes-enabled" checked={hermesEnabled} onCheckedChange={handleToggleHermes} />
+                </CardTitle>
+                <CardDescription className="text-[11px] leading-relaxed">
+                  AI autonomous agent untuk follow-up leads Scalev — klasifikasi intent balasan customer dan kirim auto-reply tanpa campur tangan manual.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className={`rounded-lg p-3 text-[10px] space-y-1 ${hermesEnabled ? "bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/40" : "bg-muted/50 border border-border/40"}`}>
+                  {["Deteksi balasan FU lead secara otomatis", "Klasifikasi intent: minat, tanya harga, bayar, batalkan", "Auto-reply cerdas per intent", "Lanjutkan FU Step 1-2-3 untuk leads yang diam"].map((item, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-muted-foreground">
+                      <span className={hermesEnabled ? "text-violet-500" : "text-slate-400"}>-</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+                {!hermesEnabled && <p className="text-[10px] text-muted-foreground text-center italic">Aktifkan switch untuk menggunakan Hermes Agent.</p>}
+              </CardContent>
+            </Card>
+            {/* ================================== */}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
