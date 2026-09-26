@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays, Printer, Receipt } from "lucide-react";
+import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays, Printer, Receipt, Package } from "lucide-react";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import {
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import * as XLSX from "xlsx";
 import { runAutoMatchScalev } from "@/lib/scalev.functions";
 import { ReceiptDialog } from "@/components/receipt-dialog";
@@ -357,8 +358,16 @@ function Page() {
   // BULK DELETE STATES
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [deletingBulk, setDeletingBulk] = useState(false);
+
+  const activeVariants = useMemo(() => {
+    const list = (variants ?? []).map((v: any) => v.name);
+    return list.length > 0 ? list : ["Akasia", "Randu", "Karet", "Lainnya"];
+  }, [variants]);
+
+  // EDIT ORDER STATES
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editAddress, setEditAddress] = useState("");
   const [editResi, setEditResi] = useState("");
   const [editExpedition, setEditExpedition] = useState("");
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
@@ -366,12 +375,24 @@ function Page() {
   const [editShipping, setEditShipping] = useState<number | "">("");
   const [editAmount, setEditAmount] = useState<number | "">("");
   const [editNote, setEditNote] = useState("");
+  const [editItems, setEditItems] = useState<{ size_id: string; qty: number; unit_price: number; honey_type: string }[]>([]);
   const [saving, setSaving] = useState(false);
+
+  const getPriceForEditing = (size_id: string, honey_type: string, targetOrder?: any) => {
+    const ord = targetOrder || editingOrder;
+    if (ord?.channel === "reseller" && ord?.reseller_tier_id) {
+      const match = resellerPrices?.find((r: any) => r.tier_id === ord.reseller_tier_id && r.size_id === size_id && r.honey_type === honey_type);
+      if (match?.price !== undefined) return Number(match.price);
+    }
+    const ret = retail?.find((r: any) => r.size_id === size_id && r.honey_type === honey_type);
+    return ret?.price !== undefined ? Number(ret.price) : 0;
+  };
 
   const startEdit = (o: any) => {
     setEditingOrder(o);
     setEditName(o.customer_name ?? "");
     setEditPhone(o.customer_phone ?? "");
+    setEditAddress(o.customer_address ?? "");
     setEditResi(o.tracking_number ?? "");
     setEditExpedition(o.expedition ?? "");
     setEditPaymentMethod(o.payment_method ?? "");
@@ -379,7 +400,83 @@ function Page() {
     setEditShipping(o.shipping_fee ?? 0);
     setEditAmount(o.amount_received ?? "");
     setEditNote(o.customer_note ?? "");
+
+    if (o.order_items && o.order_items.length > 0) {
+      setEditItems(
+        o.order_items.map((it: any) => ({
+          size_id: it.size_id,
+          qty: it.qty || 1,
+          unit_price: Number(it.unit_price) || 0,
+          honey_type: it.honey_type || "Akasia",
+        }))
+      );
+    } else {
+      const firstSize: any = sizes?.[0];
+      const firstVariant = activeVariants[0] || "Akasia";
+      if (firstSize?.id) {
+        setEditItems([
+          {
+            size_id: firstSize.id,
+            qty: 1,
+            unit_price: getPriceForEditing(firstSize.id, firstVariant, o),
+            honey_type: firstVariant,
+          },
+        ]);
+      } else {
+        setEditItems([]);
+      }
+    }
   };
+
+  const addEditItem = () => {
+    const firstSize: any = sizes?.[0];
+    const firstVariant = activeVariants[0] || "Akasia";
+    if (!firstSize?.id) return;
+    setEditItems((prev) => [
+      ...prev,
+      {
+        size_id: firstSize.id,
+        qty: 1,
+        unit_price: getPriceForEditing(firstSize.id, firstVariant),
+        honey_type: firstVariant,
+      },
+    ]);
+  };
+
+  const updateEditItem = (index: number, patch: Partial<{ size_id: string; qty: number; unit_price: number; honey_type: string }>) => {
+    setEditItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const next = { ...item, ...patch };
+        if (patch.size_id || patch.honey_type) {
+          next.unit_price = getPriceForEditing(next.size_id, next.honey_type);
+        }
+        return next;
+      })
+    );
+  };
+
+  const removeEditItem = (index: number) => {
+    if (editItems.length <= 1) {
+      toast.error("Pesanan minimal harus memiliki 1 item produk!");
+      return;
+    }
+    setEditItems((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const editSubtotal = useMemo(() => {
+    return editItems.reduce((acc, it) => acc + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+  }, [editItems]);
+
+  const editTotalKg = useMemo(() => {
+    return (
+      editItems.reduce((acc, it) => {
+        const sz = sizes?.find((s: any) => s.id === it.size_id);
+        const weightG = sz?.weight_grams || 0;
+        return acc + weightG * (Number(it.qty) || 0);
+      }, 0) / 1000
+    );
+  }, [editItems, sizes]);
 
   const handleDeleteClick = async (orderId: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus pesanan ini? Seluruh stok madu dan kemasan akan dikembalikan secara otomatis.")) return;
@@ -430,6 +527,21 @@ function Page() {
 
   const handleSaveEdit = async () => {
     if (!editingOrder) return;
+    if (editItems.length === 0) {
+      toast.error("Pesanan harus memiliki minimal 1 item produk!");
+      return;
+    }
+    for (const it of editItems) {
+      if (!it.size_id) {
+        toast.error("Semua item harus memilih ukuran kemasan!");
+        return;
+      }
+      if (!it.qty || it.qty <= 0) {
+        toast.error("Jumlah item (qty) harus lebih besar dari 0!");
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const cleanEditResi = editResi ? editResi.trim() : "";
@@ -447,52 +559,50 @@ function Page() {
         }
       }
 
-      const subtotalGross = Number(editingOrder.subtotal_gross);
-      const marketplaceFee = Number(editingOrder.marketplace_fee);
       const finalAmount = editAmount === "" ? null : Number(editAmount);
       const finalShipping = editShipping === "" ? 0 : Number(editShipping);
-      const netRevenue = (finalAmount !== null ? finalAmount : (subtotalGross - marketplaceFee)) - finalShipping;
 
       let cleanEditPhone = editPhone ? editPhone.replace(/[^0-9]/g, "") : "";
       if (cleanEditPhone && !cleanEditPhone.startsWith("0") && !cleanEditPhone.startsWith("62") && cleanEditPhone.startsWith("8")) {
         cleanEditPhone = "0" + cleanEditPhone;
       }
 
-      const { error } = await supabase
-        .from("orders")
-        .update({
-          customer_name: editName,
-          customer_phone: cleanEditPhone || null,
-          tracking_number: editResi,
-          expedition: editExpedition || null,
-          payment_method: editPaymentMethod || null,
-          transfer_bank: editPaymentMethod === "TRANSFER" ? (editTransferBank || null) : null,
-          shipping_fee: finalShipping,
-          amount_received: finalAmount,
-          net_revenue: netRevenue,
-          customer_note: editNote,
-        })
-        .eq("id", editingOrder.id);
-      
+      const formattedItems = editItems.map((it) => ({
+        size_id: it.size_id,
+        qty: Number(it.qty) || 1,
+        unit_price: Number(it.unit_price) || 0,
+        honey_type: it.honey_type || "Akasia",
+      }));
+
+      const { error } = await (supabase.rpc as any)("update_order", {
+        _order_id: editingOrder.id,
+        _customer_name: editName || "Pelanggan",
+        _customer_phone: cleanEditPhone || null,
+        _tracking_number: cleanEditResi || null,
+        _expedition: editExpedition || null,
+        _payment_method: editPaymentMethod || null,
+        _transfer_bank: editPaymentMethod === "TRANSFER" ? (editTransferBank || null) : null,
+        _shipping_fee: finalShipping,
+        _amount_received: finalAmount,
+        _customer_note: editNote || null,
+        _customer_address: editAddress ? editAddress.trim() : null,
+        _items: formattedItems,
+      });
+
       if (error) {
-        toast.error(error.message);
+        toast.error(error.message || "Gagal memperbarui pesanan");
       } else {
-        toast.success("Pesanan berhasil diperbarui");
+        toast.success("Pesanan & stok gudang berhasil diperbarui dan disinkronkan!");
         setEditingOrder(null);
         qc.invalidateQueries();
         runAutoMatchScalev().catch(() => {});
       }
     } catch (err: any) {
-      toast.error("Gagal menyimpan perubahan");
+      toast.error(err?.message || "Gagal menyimpan perubahan");
     } finally {
       setSaving(false);
     }
   };
-
-  const activeVariants = useMemo(() => {
-    const list = (variants ?? []).map((v: any) => v.name);
-    return list.length > 0 ? list : ["Akasia", "Randu", "Karet", "Lainnya"];
-  }, [variants]);
 
   const showPhone = channel === "whatsapp" || channel === "reseller" || channel === "offline";
 
@@ -1309,8 +1419,23 @@ function Page() {
                         </span>
                       )}
                     </div>
+                    {o.customer_address && (
+                      <div className="text-[10px] text-muted-foreground truncate max-w-[200px] mt-0.5" title={o.customer_address}>
+                        📍 {o.customer_address}
+                      </div>
+                    )}
                     {o.order_items && o.order_items.length > 0 && (
-                      <div className="mt-1.5 p-1.5 bg-slate-50/60 dark:bg-slate-900/40 rounded-md border border-slate-200/80 dark:border-slate-800/80 shadow-sm max-w-[200px] space-y-1">
+                      <div
+                        onClick={() => startEdit(o)}
+                        title="Klik untuk edit produk pesanan ini"
+                        className="mt-1.5 p-1.5 bg-slate-50/60 dark:bg-slate-900/40 hover:bg-honey/10 dark:hover:bg-honey/15 rounded-md border border-slate-200/80 dark:border-slate-800/80 hover:border-honey/60 shadow-xs max-w-[210px] space-y-1 cursor-pointer transition-all group"
+                      >
+                        <div className="flex items-center justify-between text-[9px] text-muted-foreground group-hover:text-honey-dark font-medium pb-0.5 border-b border-border/30">
+                          <span>Item Pesanan</span>
+                          <span className="opacity-0 group-hover:opacity-100 text-[8px] font-semibold text-honey transition-opacity flex items-center gap-0.5">
+                            <Pencil className="h-2 w-2" /> Edit
+                          </span>
+                        </div>
                         {o.order_items.map((item: any) => (
                           <div key={item.id} className="flex gap-1.5 items-center text-[10px] leading-tight">
                             <span className="bg-honey/15 text-honey-dark dark:text-honey px-1 py-0.5 rounded text-[9px] font-bold border border-honey/20 select-none">
@@ -1480,154 +1605,348 @@ function Page() {
       </Card>
 
       <Dialog open={!!editingOrder} onOpenChange={(open) => !open && setEditingOrder(null)}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Detail Pesanan</DialogTitle>
-            <DialogDescription>
-              Ubah data pengiriman dan penerimaan uang. Untuk mengubah varian/jumlah item, silakan hapus pesanan ini dan input ulang agar stok dandang & packaging disesuaikan dengan benar.
-            </DialogDescription>
+        <DialogContent className="sm:max-w-2xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b bg-muted/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-base font-bold flex items-center gap-2">
+                  <span>Edit Detail & Item Pesanan</span>
+                  {editingOrder && (
+                    <span className="uppercase text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-honey/15 text-honey-dark dark:text-honey border border-honey/30">
+                      {editingOrder.channel}
+                    </span>
+                  )}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-1">
+                  Ubah item madu, kemasan, atau data pengiriman. Stok dandang & packaging serta laba otomatis disinkronkan.
+                </DialogDescription>
+              </div>
+              {editingOrder && (
+                <div className="text-right hidden sm:block">
+                  <span className="text-[10px] text-muted-foreground block">Tanggal Pesanan:</span>
+                  <span className="text-xs font-semibold">{formatDateIndo(editingOrder.created_at?.slice(0, 10))}</span>
+                </div>
+              )}
+            </div>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-name" className="text-right text-xs font-semibold">Pelanggan</Label>
-              <Input
-                id="edit-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="col-span-3 h-9"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-phone" className="text-right text-xs font-semibold">No. HP</Label>
-              <Input
-                id="edit-phone"
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                className="col-span-3 h-9"
-                placeholder="08xxxxxxxxxx"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-resi" className="text-right text-xs font-semibold">No. Resi</Label>
-              <Input
-                id="edit-resi"
-                value={editResi}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setEditResi(val);
-                  const detected = detectCourier(val);
-                  if (detected) {
-                    setEditExpedition(detected);
-                  }
-                }}
-                className="col-span-3 h-9"
-                placeholder="Nomor resi pengiriman"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-expedition" className="text-right text-xs font-semibold">Ekspedisi</Label>
-              <div className="col-span-3">
-                <Select value={editExpedition || "-"} onValueChange={(val) => setEditExpedition(val === "-" ? "" : val)}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Pilih Ekspedisi" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="-">— Tidak Ada / Lainnya —</SelectItem>
-                    <SelectItem value="ID EXPRESS">ID EXPRESS</SelectItem>
-                    <SelectItem value="SPX">SPX</SelectItem>
-                    <SelectItem value="JNE">JNE</SelectItem>
-                    <SelectItem value="J&T">J&T</SelectItem>
-                    <SelectItem value="LION PARCEL">LION PARCEL</SelectItem>
-                    <SelectItem value="SICEPAT">SICEPAT</SelectItem>
-                    <SelectItem value="ANTERAJA">ANTERAJA</SelectItem>
-                    <SelectItem value="SAP EXPRESS">SAP EXPRESS</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-payment" className="text-right text-xs font-semibold">Pembayaran</Label>
-              <div className="col-span-3">
-                <Select 
-                  value={editPaymentMethod || "-"} 
-                  onValueChange={(val) => {
-                    const nextVal = val === "-" ? "" : val;
-                    setEditPaymentMethod(nextVal);
-                    if (nextVal !== "TRANSFER") {
-                      setEditTransferBank("");
-                    }
-                  }}
+
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+            {/* BAGIAN 1: ITEM PRODUK PESANAN */}
+            <div className="space-y-2 border rounded-lg p-3.5 bg-card shadow-xs">
+              <div className="flex items-center justify-between pb-2 border-b">
+                <span className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                  <Package className="h-4 w-4 text-honey" />
+                  Item Produk Pesanan ({editItems.length})
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addEditItem}
+                  className="h-7 text-xs border-dashed gap-1 hover:border-honey hover:text-honey font-semibold"
                 >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Pilih Metode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="-">— Tidak Ada —</SelectItem>
-                    <SelectItem value="COD">COD</SelectItem>
-                    <SelectItem value="TRANSFER">TRANSFER</SelectItem>
-                    <SelectItem value="CASH">CASH</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Plus className="h-3.5 w-3.5" />
+                  Tambah Produk
+                </Button>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                {editItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-12 gap-2 items-center bg-muted/40 hover:bg-muted/60 p-2.5 rounded-md border text-xs transition-colors"
+                  >
+                    {/* Varian */}
+                    <div className="col-span-12 sm:col-span-3">
+                      <Label className="text-[10px] text-muted-foreground font-semibold mb-1 block">Varian Madu</Label>
+                      <Select
+                        value={item.honey_type}
+                        onValueChange={(val) => updateEditItem(idx, { honey_type: val })}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-background">
+                          <SelectValue placeholder="Pilih Varian" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeVariants.map((v: string) => (
+                            <SelectItem key={v} value={v}>
+                              {v}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Ukuran Kemasan */}
+                    <div className="col-span-12 sm:col-span-3">
+                      <Label className="text-[10px] text-muted-foreground font-semibold mb-1 block">Ukuran / Berat</Label>
+                      <Select
+                        value={item.size_id}
+                        onValueChange={(val) => updateEditItem(idx, { size_id: val })}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-background">
+                          <SelectValue placeholder="Pilih Kemasan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(sizes ?? []).map((sz: any) => (
+                            <SelectItem key={sz.id} value={sz.id}>
+                              {sz.name} ({sz.weight_grams}g)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Qty */}
+                    <div className="col-span-4 sm:col-span-2">
+                      <Label className="text-[10px] text-muted-foreground font-semibold mb-1 block">Qty</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={item.qty}
+                        onChange={(e) => updateEditItem(idx, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
+                        className="h-8 text-xs bg-background text-center font-bold"
+                      />
+                    </div>
+
+                    {/* Harga Satuan */}
+                    <div className="col-span-6 sm:col-span-3">
+                      <Label className="text-[10px] text-muted-foreground font-semibold mb-1 block">Harga Satuan (Rp)</Label>
+                      <Input
+                        type="number"
+                        value={item.unit_price}
+                        onChange={(e) => updateEditItem(idx, { unit_price: Number(e.target.value) || 0 })}
+                        className="h-8 text-xs bg-background text-right font-medium"
+                      />
+                    </div>
+
+                    {/* Tombol Hapus */}
+                    <div className="col-span-2 sm:col-span-1 flex items-center justify-end pt-3 sm:pt-4">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeEditItem(idx)}
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        title="Hapus baris item"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ringkasan Subtotal Item */}
+              <div className="flex flex-wrap items-center justify-between pt-2 px-1 text-xs border-t bg-muted/20 rounded-b-md">
+                <span className="text-muted-foreground text-[11px]">
+                  Total Madu: <strong className="text-foreground font-bold">{editTotalKg.toFixed(2)} kg</strong>
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-[11px]">Subtotal Item:</span>
+                  <span className="text-sm font-extrabold text-honey-dark dark:text-honey">{formatIDR(editSubtotal)}</span>
+                </div>
               </div>
             </div>
-            {editPaymentMethod === "TRANSFER" && (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-bank" className="text-right text-xs font-semibold">Rekening Bank</Label>
-                <div className="col-span-3">
-                  <Select value={editTransferBank || "-"} onValueChange={(val) => setEditTransferBank(val === "-" ? "" : val)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Pilih Bank" />
+
+            {/* BAGIAN 2: DATA PELANGGAN & PENGIRIMAN */}
+            <div className="space-y-3 border rounded-lg p-3.5 bg-card shadow-xs">
+              <span className="text-xs font-bold text-foreground block border-b pb-1.5">
+                Data Pelanggan & Pengiriman
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="edit-name" className="text-xs font-semibold">Nama Pelanggan</Label>
+                  <Input
+                    id="edit-name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="h-8.5 text-xs"
+                    placeholder="Nama pelanggan"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-phone" className="text-xs font-semibold">No. HP / WhatsApp</Label>
+                  <Input
+                    id="edit-phone"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="h-8.5 text-xs"
+                    placeholder="08xxxxxxxxxx"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="edit-address" className="text-xs font-semibold">Alamat Pengiriman</Label>
+                <Textarea
+                  id="edit-address"
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  placeholder="Alamat lengkap (nama jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kota/kab, kode pos)"
+                  rows={2}
+                  className="text-xs resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="edit-resi" className="text-xs font-semibold">No. Resi Pengiriman</Label>
+                  <Input
+                    id="edit-resi"
+                    value={editResi}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditResi(val);
+                      const detected = detectCourier(val);
+                      if (detected) {
+                        setEditExpedition(detected);
+                      }
+                    }}
+                    className="h-8.5 text-xs"
+                    placeholder="Nomor resi tracking"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-expedition" className="text-xs font-semibold">Ekspedisi</Label>
+                  <Select value={editExpedition || "-"} onValueChange={(val) => setEditExpedition(val === "-" ? "" : val)}>
+                    <SelectTrigger className="h-8.5 text-xs">
+                      <SelectValue placeholder="Pilih Ekspedisi" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="-">— Pilih Bank —</SelectItem>
-                      <SelectItem value="BRI">BRI</SelectItem>
-                      <SelectItem value="BCA">BCA</SelectItem>
-                      <SelectItem value="MANDIRI">MANDIRI</SelectItem>
-                      <SelectItem value="BNI">BNI</SelectItem>
-                      <SelectItem value="BSI">BSI</SelectItem>
+                      <SelectItem value="-">— Tidak Ada / Lainnya —</SelectItem>
+                      <SelectItem value="ID EXPRESS">ID EXPRESS</SelectItem>
+                      <SelectItem value="SPX">SPX</SelectItem>
+                      <SelectItem value="JNE">JNE</SelectItem>
+                      <SelectItem value="J&T">J&T</SelectItem>
+                      <SelectItem value="LION PARCEL">LION PARCEL</SelectItem>
+                      <SelectItem value="SICEPAT">SICEPAT</SelectItem>
+                      <SelectItem value="ANTERAJA">ANTERAJA</SelectItem>
+                      <SelectItem value="SAP EXPRESS">SAP EXPRESS</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-            )}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-shipping" className="text-right text-xs font-semibold">Ongkir (Rp)</Label>
-              <Input
-                id="edit-shipping"
-                type="number"
-                value={editShipping}
-                onChange={(e) => setEditShipping(e.target.value === "" ? "" : Number(e.target.value))}
-                className="col-span-3 h-9"
-              />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-amount" className="text-right text-xs font-semibold">Uang Diterima</Label>
-              <Input
-                id="edit-amount"
-                type="number"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value === "" ? "" : Number(e.target.value))}
-                className="col-span-3 h-9"
-                placeholder="Kosongkan jika sesuai subtotal"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-note" className="text-right text-xs font-semibold">Catatan</Label>
-              <Input
-                id="edit-note"
-                value={editNote}
-                onChange={(e) => setEditNote(e.target.value)}
-                className="col-span-3 h-9"
-              />
+
+            {/* BAGIAN 3: PEMBAYARAN & KEUANGAN */}
+            <div className="space-y-3 border rounded-lg p-3.5 bg-card shadow-xs">
+              <span className="text-xs font-bold text-foreground block border-b pb-1.5">
+                Pembayaran & Keuangan
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="edit-payment" className="text-xs font-semibold">Metode Pembayaran</Label>
+                  <Select 
+                    value={editPaymentMethod || "-"} 
+                    onValueChange={(val) => {
+                      const nextVal = val === "-" ? "" : val;
+                      setEditPaymentMethod(nextVal);
+                      if (nextVal !== "TRANSFER") {
+                        setEditTransferBank("");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8.5 text-xs">
+                      <SelectValue placeholder="Pilih Metode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="-">— Tidak Ada —</SelectItem>
+                      <SelectItem value="COD">COD</SelectItem>
+                      <SelectItem value="TRANSFER">TRANSFER</SelectItem>
+                      <SelectItem value="CASH">CASH</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {editPaymentMethod === "TRANSFER" ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-bank" className="text-xs font-semibold">Rekening Bank</Label>
+                    <Select value={editTransferBank || "-"} onValueChange={(val) => setEditTransferBank(val === "-" ? "" : val)}>
+                      <SelectTrigger className="h-8.5 text-xs">
+                        <SelectValue placeholder="Pilih Bank" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="-">— Pilih Bank —</SelectItem>
+                        <SelectItem value="BRI">BRI</SelectItem>
+                        <SelectItem value="BCA">BCA</SelectItem>
+                        <SelectItem value="MANDIRI">MANDIRI</SelectItem>
+                        <SelectItem value="BNI">BNI</SelectItem>
+                        <SelectItem value="BSI">BSI</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-shipping" className="text-xs font-semibold">Ongkos Kirim (Rp)</Label>
+                    <Input
+                      id="edit-shipping"
+                      type="number"
+                      value={editShipping}
+                      onChange={(e) => setEditShipping(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="h-8.5 text-xs"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {editPaymentMethod === "TRANSFER" && (
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-shipping" className="text-xs font-semibold">Ongkos Kirim (Rp)</Label>
+                    <Input
+                      id="edit-shipping"
+                      type="number"
+                      value={editShipping}
+                      onChange={(e) => setEditShipping(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="h-8.5 text-xs"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="edit-amount" className="text-xs font-semibold">Uang Diterima / Bayar (Rp)</Label>
+                    <button
+                      type="button"
+                      onClick={() => setEditAmount(editSubtotal)}
+                      className="text-[10px] text-honey hover:underline font-semibold"
+                    >
+                      Samakan Subtotal
+                    </button>
+                  </div>
+                  <Input
+                    id="edit-amount"
+                    type="number"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="h-8.5 text-xs font-semibold"
+                    placeholder={`Otomatis (${formatIDR(editSubtotal)})`}
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit-note" className="text-xs font-semibold">Catatan Pesanan</Label>
+                  <Input
+                    id="edit-note"
+                    value={editNote}
+                    onChange={(e) => setEditNote(e.target.value)}
+                    className="h-8.5 text-xs"
+                    placeholder="Catatan tambahan untuk pesanan..."
+                  />
+                </div>
+              </div>
             </div>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="px-6 py-3 border-t bg-muted/10 gap-2">
             <Button variant="outline" onClick={() => setEditingOrder(null)} disabled={saving} className="h-9 text-xs">
               Batal
             </Button>
-            <Button onClick={handleSaveEdit} disabled={saving} className="h-9 text-xs gap-2">
+            <Button onClick={handleSaveEdit} disabled={saving} className="h-9 text-xs bg-honey hover:bg-honey-hover text-white font-bold gap-2">
               {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Simpan Perubahan
+              Simpan & Sinkronkan Perubahan
             </Button>
           </DialogFooter>
         </DialogContent>
