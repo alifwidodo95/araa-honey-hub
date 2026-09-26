@@ -288,3 +288,41 @@ export const saveWabaTemplateImage = createServerFn({ method: "POST" })
       throw new Error(err.message || "Gagal menyimpan gambar template");
     }
   });
+
+// 5. Get default WABA template name
+export const getDefaultWabaTemplate = createServerFn({ method: "GET" }).handler(async () => {
+  let pool: pg.Pool | null = null;
+  try {
+    pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+    const res = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_default_template'");
+    await pool.end();
+    return (res.rows[0]?.value?.template_name || "repeat_order") as string;
+  } catch (err) {
+    if (pool) try { await pool.end(); } catch (e) {}
+    console.error("[getDefaultWabaTemplate Error]:", err);
+    return "repeat_order";
+  }
+});
+
+// 6. Save default WABA template name
+export const saveDefaultWabaTemplate = createServerFn({ method: "POST" })
+  .validator((d: { templateName: string }) => d)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+      await pool.query(
+        `INSERT INTO app_settings (key, value, updated_at)
+         VALUES ('waba_default_template', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+        [JSON.stringify({ template_name: data.templateName })]
+      );
+      await pool.end();
+      return { success: true, defaultTemplate: data.templateName };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[saveDefaultWabaTemplate Error]:", err);
+      throw new Error(err.message || "Gagal menyimpan template default");
+    }
+  });
+

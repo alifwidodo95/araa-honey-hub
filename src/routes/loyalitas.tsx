@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ import {
   saveLoyaltyTemplates, 
   sendDirectLoyaltyWhatsApp 
 } from "@/lib/loyalty.functions";
-import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
+import { getMetaMessageTemplates, getDefaultWabaTemplate } from "@/lib/waba-templates.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -132,7 +132,37 @@ function LoyaltyPage() {
     return (metaTemplatesData?.templates || []).filter((t: any) => t.status === "APPROVED");
   }, [metaTemplatesData]);
 
-  const [selectedMetaTemplateName, setSelectedMetaTemplateName] = useState<string>("repeat_order");
+  // Fetch Default Template from app_settings
+  const { data: defaultTemplateName } = useQuery({
+    queryKey: ["waba-default-template"],
+    queryFn: async () => {
+      try {
+        const tpl = await getDefaultWabaTemplate();
+        if (tpl) {
+          localStorage.setItem("waba_default_template", tpl);
+          return tpl;
+        }
+      } catch (e) {
+        console.warn("Could not fetch default template:", e);
+      }
+      return localStorage.getItem("waba_default_template") || "repeat_order";
+    },
+    staleTime: 60000,
+  });
+
+  const [selectedMetaTemplateName, setSelectedMetaTemplateName] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("waba_default_template") || "repeat_order";
+    }
+    return "repeat_order";
+  });
+
+  // Sync when defaultTemplateName loads from server
+  useEffect(() => {
+    if (defaultTemplateName) {
+      setSelectedMetaTemplateName(defaultTemplateName);
+    }
+  }, [defaultTemplateName]);
 
   const activeMetaTemplate = useMemo(() => {
     if (!approvedMetaTemplates.length) return null;

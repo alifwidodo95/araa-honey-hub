@@ -25,13 +25,15 @@ import {
   MessageSquare, Settings, QrCode, Play, Pause, RefreshCw, 
   CheckCircle, AlertTriangle, Send, LogOut, FileSpreadsheet,
   XCircle, Trash2, Clock, Calendar, Bell, Upload, Image as ImageIcon, Loader2,
-  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink, Layers, FileText, Check, Sparkles, Search
+  Building2, Rocket, Smartphone, ShieldCheck, ExternalLink, Layers, FileText, Check, Sparkles, Search, Star
 } from "lucide-react";
 import {
   getMetaMessageTemplates,
   sendMetaTemplateMessage,
   getWabaTemplateImages,
   saveWabaTemplateImage,
+  getDefaultWabaTemplate,
+  saveDefaultWabaTemplate,
   MetaTemplateItem
 } from "@/lib/waba-templates.functions";
 
@@ -159,6 +161,36 @@ function WhatsAppPage() {
     },
     onError: (err: any) => {
       toast.error(err.message || "Gagal menyimpan gambar template.");
+    }
+  });
+
+  // Default WABA Template Query & Mutation
+  const { data: defaultWabaTemplate = "repeat_order", refetch: refetchDefaultTemplate } = useQuery({
+    queryKey: ["waba-default-template"],
+    queryFn: async () => {
+      try {
+        const tpl = await getDefaultWabaTemplate();
+        if (tpl) {
+          localStorage.setItem("waba_default_template", tpl);
+          return tpl;
+        }
+      } catch (e) {
+        console.warn("Could not fetch default waba template:", e);
+      }
+      return localStorage.getItem("waba_default_template") || "repeat_order";
+    },
+    staleTime: 60000,
+  });
+
+  const saveDefaultTemplateMutation = useMutation({
+    mutationFn: (templateName: string) => saveDefaultWabaTemplate({ data: { templateName } }),
+    onSuccess: (res, templateName) => {
+      localStorage.setItem("waba_default_template", templateName);
+      toast.success(`Template "${templateName}" berhasil disetel sebagai default untuk Loyalitas & Reaktivasi! ★`);
+      qc.invalidateQueries({ queryKey: ["waba-default-template"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Gagal menyetel template default.");
     }
   });
 
@@ -2843,6 +2875,26 @@ function WhatsAppPage() {
                   </p>
                 </div>
 
+                {/* Active Default Template Bar */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-500/30 text-xs shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                      <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-foreground">Template Default Aktif:</span>
+                        <Badge className="bg-emerald-600 text-white font-mono font-bold text-xs px-2 py-0.5 border-none shadow-xs">
+                          {defaultWabaTemplate}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Template ini otomatis langsung terpilih saat membuka menu <strong>Loyalitas Pelanggan</strong> & <strong>Reaktivasi 2025</strong>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Templates Grid/List */}
                 {loadingMetaTemplates ? (
                   <div className="py-12 text-center text-muted-foreground space-y-2">
@@ -2866,19 +2918,32 @@ function WhatsAppPage() {
                       const buttonsComp = tpl.components.find((c) => c.type === "BUTTONS");
 
                       const isApproved = tpl.status === "APPROVED";
+                      const isDefault = defaultWabaTemplate === tpl.name;
 
                       return (
                         <div
                           key={tpl.id}
-                          className="rounded-xl border border-border/80 bg-card p-4 space-y-3 flex flex-col justify-between hover:border-emerald-500/40 transition-colors shadow-2xs"
+                          className={`rounded-xl border bg-card p-4 space-y-3 flex flex-col justify-between transition-all shadow-2xs ${
+                            isDefault 
+                              ? "border-emerald-500/60 ring-2 ring-emerald-500/20 bg-emerald-500/[0.02]" 
+                              : "border-border/80 hover:border-emerald-500/40"
+                          }`}
                         >
                           <div className="space-y-2.5">
                             {/* Template Header Badges */}
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <h4 className="font-mono font-bold text-xs text-foreground truncate max-w-[200px]" title={tpl.name}>
-                                  {tpl.name}
-                                </h4>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="font-mono font-bold text-xs text-foreground truncate max-w-[170px]" title={tpl.name}>
+                                    {tpl.name}
+                                  </h4>
+                                  {isDefault && (
+                                    <Badge className="bg-emerald-600 text-white font-bold text-[9px] gap-1 border-none px-1.5 py-0.5 shrink-0 shadow-2xs">
+                                      <Star className="w-2.5 h-2.5 fill-amber-300 text-amber-300" />
+                                      DEFAULT
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                   <Badge variant="outline" className={`text-[9px] font-semibold uppercase ${
                                     tpl.category === "MARKETING"
@@ -2979,10 +3044,30 @@ function WhatsAppPage() {
                           </div>
 
                           {/* Quick Actions */}
-                          <div className="pt-2 flex items-center justify-between border-t border-border/50 gap-2">
-                            <span className="text-[10px] font-mono text-muted-foreground">
-                              ID: {tpl.id}
-                            </span>
+                          <div className="pt-2 flex items-center justify-between border-t border-border/50 gap-2 flex-wrap">
+                            <div>
+                              {isApproved ? (
+                                isDefault ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-2 py-1 rounded-md border border-emerald-500/30">
+                                    <Check className="w-3.5 h-3.5" />
+                                    Template Default
+                                  </span>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => saveDefaultTemplateMutation.mutate(tpl.name)}
+                                    disabled={saveDefaultTemplateMutation.isPending}
+                                    className="h-7 px-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-emerald-700 hover:bg-emerald-500/10 hover:border-emerald-500/40 gap-1.5 border-border/80 transition-all cursor-pointer"
+                                  >
+                                    <Star className="w-3.5 h-3.5 text-amber-500" />
+                                    <span>Pilih Default</span>
+                                  </Button>
+                                )
+                              ) : (
+                                <span className="text-[10px] font-mono text-muted-foreground">ID: {tpl.id}</span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5">
                               {headerComp?.format === "IMAGE" && (
                                 <Button
