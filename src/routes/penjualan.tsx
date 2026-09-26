@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays } from "lucide-react";
+import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays, Printer, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import * as XLSX from "xlsx";
 import { runAutoMatchScalev } from "@/lib/scalev.functions";
+import { ReceiptDialog } from "@/components/receipt-dialog";
 
 export const Route = createFileRoute("/penjualan")({ component: () => <RequireAuth><Page /></RequireAuth> });
 
@@ -338,6 +339,20 @@ function Page() {
   const [importResults, setImportResults] = useState<{ success: number; failed: { name: string; tracking: string; msg: string }[] } | null>(null);
 
   const [editingOrder, setEditingOrder] = useState<any>(null);
+
+  // RECEIPT DIALOG STATES
+  const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+
+  const handleOpenReceipt = (o: any) => {
+    setReceiptOrder(o);
+    setReceiptDialogOpen(true);
+  };
+
+  const handleOpenNewReceipt = () => {
+    setReceiptOrder(null);
+    setReceiptDialogOpen(true);
+  };
   
   // BULK DELETE STATES
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -922,15 +937,27 @@ function Page() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-wrap gap-2">
           <CardTitle>Pesanan Baru</CardTitle>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={() => setIsImportOpen(true)}
-            className="gap-2 border-honey hover:bg-honey/10 text-honey hover:text-honey-hover transition-all duration-300"
-          >
-            <Upload className="h-4 w-4" />
-            Impor Massal Excel
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={handleOpenNewReceipt}
+              className="gap-1.5 border-emerald-500/40 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold transition-all duration-200"
+              title="Buat dan cetak struk pembelian resmi (manual/langsung)"
+            >
+              <Printer className="h-4 w-4 text-emerald-600" />
+              Cetak Struk Manual
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => setIsImportOpen(true)}
+              className="gap-2 border-honey hover:bg-honey/10 text-honey hover:text-honey-hover transition-all duration-300"
+            >
+              <Upload className="h-4 w-4" />
+              Impor Massal Excel
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1347,10 +1374,19 @@ function Page() {
                     <div className="flex items-center justify-end gap-1">
                       {!o.returned ? (
                         <>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-primary hover:text-primary/80" onClick={() => startEdit(o)}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                            onClick={() => handleOpenReceipt(o)}
+                            title="Cetak Struk Resmi Pembelian"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-primary hover:text-primary/80" onClick={() => startEdit(o)} title="Edit Pesanan">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive/80" onClick={() => handleDeleteClick(o.id)}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive/80" onClick={() => handleDeleteClick(o.id)} title="Hapus Pesanan">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </>
@@ -1838,6 +1874,16 @@ function Page() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* DIALOG CETAK STRUK PEMBELIAN RESMI */}
+      <ReceiptDialog
+        open={receiptDialogOpen}
+        onOpenChange={setReceiptDialogOpen}
+        order={receiptOrder}
+        onOrderUpdated={(orderId, updatedAddress) => {
+          qc.invalidateQueries({ queryKey: ["orders-recent"] });
+        }}
+      />
     </div>
   );
 }
