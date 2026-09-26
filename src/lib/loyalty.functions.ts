@@ -206,6 +206,166 @@ export const getLoyaltyStats = createServerFn({ method: "GET" }).handler(async (
   }
 });
 
+// 1.1 Server function to get detailed list of CRM converted customers (pasca WA repeat orders)
+export const getCrmConvertedCustomers = createServerFn({ method: "POST" })
+  .validator((data: { timeframe?: string; channel?: string }) =>
+    z
+      .object({
+        timeframe: z.string().default("today"),
+        channel: z.string().optional().default("all"),
+      })
+      .parse(data)
+  )
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      let dateFilter = "";
+      if (data.timeframe === "today") {
+        dateFilter = "AND (s.sent_at AT TIME ZONE 'Asia/Jakarta')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date";
+      } else if (data.timeframe === "yesterday") {
+        dateFilter = "AND (s.sent_at AT TIME ZONE 'Asia/Jakarta')::date = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - INTERVAL '1 day')::date";
+      } else if (data.timeframe === "7d") {
+        dateFilter = "AND (s.sent_at AT TIME ZONE 'Asia/Jakarta')::date >= ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - INTERVAL '7 days')::date";
+      } else if (data.timeframe === "30d") {
+        dateFilter = "AND (s.sent_at AT TIME ZONE 'Asia/Jakarta')::date >= ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date - INTERVAL '30 days')::date";
+      } else if (data.timeframe === "this_month") {
+        dateFilter = "AND TO_CHAR(s.sent_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM') = TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM')";
+      }
+
+      let channelFilter = "";
+      const queryParams: any[] = [];
+      if (data.channel && data.channel !== "all") {
+        queryParams.push(data.channel);
+        channelFilter = `WHERE crm_channel = $${queryParams.length}`;
+      }
+
+      const query = `
+        WITH order_weights AS (
+          SELECT 
+            oi.order_id,
+            SUM(oi.qty * COALESCE(ps.weight_grams, 1000)) as order_grams,
+            MAX(oi.honey_type) as honey_type
+          FROM order_items oi
+          LEFT JOIN product_sizes ps ON ps.id = oi.size_id
+          GROUP BY oi.order_id
+        ),
+        cleaned_orders AS (
+          SELECT 
+            o.id,
+            o.customer_name,
+            o.customer_phone as raw_phone,
+            CASE 
+              WHEN REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g') LIKE '0%' 
+                 THEN '62' || SUBSTRING(REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g') FROM 2)
+              WHEN REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g') LIKE '8%' 
+                 THEN '62' || REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g')
+              ELSE REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g')
+            END as phone,
+            o.created_at,
+            COALESCE(o.net_revenue, o.subtotal_gross) as net_revenue,
+            o.channel as order_channel,
+            o.tracking_number,
+            COALESCE(ow.honey_type, 'Madu Araa') as honey_type
+          FROM orders o
+          LEFT JOIN order_weights ow ON ow.order_id = o.id
+          WHERE o.returned = false
+        ),
+        sent_crm AS (
+          SELECT 
+            c.id as crm_id,
+            c.customer_name,
+            c.stage,
+            COALESCE(c.channel, 'waha_main') as channel,
+            CASE 
+              WHEN REGEXP_REPLACE(c.customer_phone, '[^0-9]', '', 'g') LIKE '0%' 
+                 THEN '62' || SUBSTRING(REGEXP_REPLACE(c.customer_phone, '[^0-9]', '', 'g') FROM 2)
+              WHEN REGEXP_REPLACE(c.customer_phone, '[^0-9]', '', 'g') LIKE '8%' 
+                 THEN '62' || REGEXP_REPLACE(c.customer_phone, '[^0-9]', '', 'g')
+              ELSE REGEXP_REPLACE(c.customer_phone, '[^0-9]', '', 'g')
+            END as phone,
+            c.sent_at,
+            (c.sent_at AT TIME ZONE 'Asia/Jakarta')::date::text as send_date
+          FROM crm_reminders c
+          WHERE c.status = 'sent' AND c.sent_at IS NOT NULL
+        ),
+        conversions AS (
+          SELECT 
+            DISTINCT ON (s.phone, o.id)
+            s.channel as crm_channel,
+            s.stage as crm_stage,
+            s.sent_at as crm_sent_at,
+            s.send_date,
+            COALESCE(o.customer_name, s.customer_name, 'Pelanggan') as customer_name,
+            s.phone,
+            o.id as order_id,
+            o.created_at as order_created_at,
+            o.net_revenue::numeric as net_revenue,
+            o.order_channel,
+            o.tracking_number,
+            COALESCE(o.honey_type, 'Madu Araa') as honey_type,
+            ROUND(EXTRACT(EPOCH FROM (o.created_at - s.sent_at)) / 60) as minutes_after_crm
+          FROM sent_crm s
+          JOIN cleaned_orders o ON s.phone = o.phone
+          WHERE o.created_at > s.sent_at 
+            AND o.created_at <= s.sent_at + INTERVAL '30 days'
+            ${dateFilter}
+          ORDER BY s.phone, o.id, o.created_at DESC
+        )
+        SELECT 
+          json_build_object(
+            'total', COUNT(*),
+            'unique_customers', COUNT(DISTINCT phone),
+            'total_revenue', COALESCE(SUM(net_revenue), 0),
+            'waba_count', COUNT(*) FILTER (WHERE crm_channel = 'waba'),
+            'waba_revenue', COALESCE(SUM(net_revenue) FILTER (WHERE crm_channel = 'waba'), 0),
+            'wa1_count', COUNT(*) FILTER (WHERE crm_channel = 'waha_main'),
+            'wa1_revenue', COALESCE(SUM(net_revenue) FILTER (WHERE crm_channel = 'waha_main'), 0),
+            'wa2_count', COUNT(*) FILTER (WHERE crm_channel = 'waha_campaign'),
+            'wa2_revenue', COALESCE(SUM(net_revenue) FILTER (WHERE crm_channel = 'waha_campaign'), 0)
+          ) as summary,
+          COALESCE(
+            (
+              SELECT json_agg(c ORDER BY c.order_created_at DESC)
+              FROM (
+                SELECT * FROM conversions
+                ${channelFilter}
+              ) c
+            ),
+            '[]'::json
+          ) as orders
+        FROM conversions;
+      `;
+
+      const res = await pool.query(query, queryParams);
+      await pool.end();
+
+      return {
+        summary: res.rows[0]?.summary || {
+          total: 0,
+          unique_customers: 0,
+          total_revenue: 0,
+          waba_count: 0,
+          waba_revenue: 0,
+          wa1_count: 0,
+          wa1_revenue: 0,
+          wa2_count: 0,
+          wa2_revenue: 0,
+        },
+        orders: res.rows[0]?.orders || [],
+      };
+    } catch (err: any) {
+      if (pool) {
+        try {
+          await pool.end();
+        } catch (e) {}
+      }
+      console.error("[getCrmConvertedCustomers Error]:", err);
+      throw new Error(err.message || "Gagal memuat daftar konsumen konversi");
+    }
+  });
+
 // 2. Server function to get loyalty CRM message templates (including image URLs)
 export const getLoyaltyTemplates = createServerFn({ method: "GET" }).handler(async () => {
   let pool: pg.Pool | null = null;

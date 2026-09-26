@@ -18,14 +18,15 @@ import {
   Sparkles, HeartHandshake, ShoppingBag, 
   ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Settings2,
   Send, CheckCircle2, Loader2, Calendar, ArrowUpDown, Target, ShieldAlert, ShieldCheck, CheckSquare, Square, Filter, PackageCheck,
-  Smartphone, ExternalLink, Image as ImageIcon
+  Smartphone, ExternalLink, Image as ImageIcon, Copy
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { 
   getLoyaltyStats, 
   getLoyaltyTemplates, 
   saveLoyaltyTemplates, 
-  sendDirectLoyaltyWhatsApp 
+  sendDirectLoyaltyWhatsApp,
+  getCrmConvertedCustomers
 } from "@/lib/loyalty.functions";
 import { getMetaMessageTemplates, getDefaultWabaTemplate } from "@/lib/waba-templates.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
@@ -69,6 +70,19 @@ function formatDateIndo(dateStr: string) {
   }
 }
 
+function formatDateTimeIndo(dateStr: string) {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} ${hours}:${minutes}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 function LoyaltyPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -103,6 +117,28 @@ function LoyaltyPage() {
   // CRM Performance Timeframe Filter State
   const [crmTimeframe, setCrmTimeframe] = useState<"all" | "today" | "yesterday" | "7d" | "30d" | "this_month">("all");
   const [showDailyTable, setShowDailyTable] = useState(false);
+
+  // CRM Converted Repeat Customers Modal State
+  const [convertedModalOpen, setConvertedModalOpen] = useState(false);
+  const [convertedModalChannel, setConvertedModalChannel] = useState<"all" | "waba" | "waha_main" | "waha_campaign">("all");
+  const [convertedSearchQuery, setConvertedSearchQuery] = useState("");
+
+  const {
+    data: convertedCustomersData,
+    isLoading: isConvertedLoading,
+    isFetching: isConvertedFetching,
+    refetch: refetchConverted,
+  } = useQuery({
+    queryKey: ["crm-converted-customers", crmTimeframe, convertedModalChannel],
+    queryFn: () => getCrmConvertedCustomers({ data: { timeframe: crmTimeframe, channel: convertedModalChannel } }),
+    enabled: convertedModalOpen,
+  });
+
+  const handleOpenConvertedModal = (channel: "all" | "waba" | "waha_main" | "waha_campaign" = "all") => {
+    setConvertedModalChannel(channel);
+    setConvertedSearchQuery("");
+    setConvertedModalOpen(true);
+  };
 
   // Send Confirmation / Preview Dialog State
   const [previewDialogCustomer, setPreviewDialogCustomer] = useState<any | null>(null);
@@ -681,6 +717,21 @@ function LoyaltyPage() {
       label,
     };
   }, [apiResponse, crmDailyTrends, crmTimeframe]);
+
+  // Filtered Converted Orders based on Search Term inside Modal
+  const filteredConvertedOrders = useMemo(() => {
+    const list = (convertedCustomersData?.orders || []) as any[];
+    if (!convertedSearchQuery.trim()) return list;
+    const q = convertedSearchQuery.toLowerCase();
+    return list.filter(
+      (o: any) =>
+        (o.customer_name || "").toLowerCase().includes(q) ||
+        (o.phone || "").includes(q) ||
+        (o.tracking_number || "").toLowerCase().includes(q) ||
+        (o.honey_type || "").toLowerCase().includes(q) ||
+        (o.order_channel || "").toLowerCase().includes(q)
+    );
+  }, [convertedCustomersData?.orders, convertedSearchQuery]);
 
   // Format message for a specific customer based on the active tab template
   const formatCustomerMessage = (c: any, tabKey = activeTab) => {
@@ -1313,12 +1364,21 @@ function LoyaltyPage() {
 
         <Card className="border-amber-500/30 bg-gradient-to-br from-card to-amber-500/[0.04] shadow-2xs flex flex-col justify-between">
           <CardContent className="p-4 flex flex-col justify-between h-full gap-3">
-            <div className="flex items-start gap-3.5">
-              <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+            <div 
+              className="flex items-start gap-3.5 cursor-pointer group rounded-xl p-1.5 -m-1.5 transition-colors hover:bg-amber-500/[0.08]"
+              onClick={() => handleOpenConvertedModal("all")}
+              title="Klik untuk melihat daftar semua konsumen yang beli ulang"
+            >
+              <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
                 <Target className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Repeat Pasca WA</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Repeat Pasca WA</p>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold group-hover:underline flex items-center gap-0.5">
+                    Lihat daftar ({filteredCrmStats.converted}) <ChevronRight className="w-3 h-3" />
+                  </span>
+                </div>
                 <div className="text-xl font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-2">
                   {filteredCrmStats.converted.toLocaleString("id-ID")} Orang
                   <span className="text-xs px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold">
@@ -1331,27 +1391,56 @@ function LoyaltyPage() {
 
             {/* Breakdown Closing & Tingkat Konversi per Jalur WA: WABA, WA 1, WA 2 */}
             <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50">
-              <div className="bg-emerald-500/10 dark:bg-emerald-500/15 rounded-lg px-2 py-1.5 border border-emerald-500/20 text-center">
-                <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">WABA</div>
+              <button
+                type="button"
+                onClick={() => handleOpenConvertedModal("waba")}
+                className="bg-emerald-500/10 dark:bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/30 rounded-lg px-2 py-1.5 border border-emerald-500/30 text-center transition-all hover:scale-[1.03] active:scale-[0.97] cursor-pointer group focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                title="Klik untuk melihat daftar pembeli pasca WABA"
+              >
+                <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-1">
+                  <span>WABA</span>
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <div className="text-sm font-extrabold text-foreground">
                   {(filteredCrmStats.wabaConverted || 0).toLocaleString("id-ID")}
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 ml-1">({filteredCrmStats.wabaRate}%)</span>
                 </div>
-              </div>
-              <div className="bg-blue-500/10 dark:bg-blue-500/15 rounded-lg px-2 py-1.5 border border-blue-500/20 text-center">
-                <div className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">WA 1 (CS)</div>
+                <div className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 font-medium">Buka daftar ↗</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenConvertedModal("waha_main")}
+                className="bg-blue-500/10 dark:bg-blue-500/15 hover:bg-blue-500/25 active:bg-blue-500/30 rounded-lg px-2 py-1.5 border border-blue-500/30 text-center transition-all hover:scale-[1.03] active:scale-[0.97] cursor-pointer group focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                title="Klik untuk melihat daftar pembeli pasca WA 1 (CS)"
+              >
+                <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300 flex items-center justify-center gap-1">
+                  <span>WA 1 (CS)</span>
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <div className="text-sm font-extrabold text-foreground">
                   {(filteredCrmStats.wa1Converted || 0).toLocaleString("id-ID")}
                   <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 ml-1">({filteredCrmStats.wa1Rate}%)</span>
                 </div>
-              </div>
-              <div className="bg-purple-500/10 dark:bg-purple-500/15 rounded-lg px-2 py-1.5 border border-purple-500/20 text-center">
-                <div className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">WA 2 (Outreach)</div>
+                <div className="text-[9px] text-blue-600/80 dark:text-blue-400/80 font-medium">Buka daftar ↗</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenConvertedModal("waha_campaign")}
+                className="bg-purple-500/10 dark:bg-purple-500/15 hover:bg-purple-500/25 active:bg-purple-500/30 rounded-lg px-2 py-1.5 border border-purple-500/30 text-center transition-all hover:scale-[1.03] active:scale-[0.97] cursor-pointer group focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                title="Klik untuk melihat daftar pembeli pasca WA 2 (Outreach)"
+              >
+                <div className="text-[11px] font-bold text-purple-700 dark:text-purple-300 flex items-center justify-center gap-1">
+                  <span>WA 2 (Outreach)</span>
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <div className="text-sm font-extrabold text-foreground">
                   {(filteredCrmStats.wa2Converted || 0).toLocaleString("id-ID")}
                   <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 ml-1">({filteredCrmStats.wa2Rate}%)</span>
                 </div>
-              </div>
+                <div className="text-[9px] text-purple-600/80 dark:text-purple-400/80 font-medium">Buka daftar ↗</div>
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -2480,6 +2569,301 @@ function LoyaltyPage() {
                   {selectedSenderSession === "waba" ? "Kirim via WABA Resmi (HSM) 🚀" : "Kirim Sekarang 🚀"}
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 3. Modal Dialog: Detail Konsumen Beli Ulang Pasca WA (Konversi CRM) */}
+      <Dialog open={convertedModalOpen} onOpenChange={setConvertedModalOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          {/* Header */}
+          <DialogHeader className="p-5 pb-3 border-b border-border/60 bg-muted/20">
+            <div className="flex items-center justify-between pr-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2 flex-wrap">
+                    <span>Daftar Konsumen Beli Ulang Pasca WA</span>
+                    <Badge variant="outline" className="text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                      Periode: {filteredCrmStats.label}
+                    </Badge>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                    Konsumen yang melakukan order belanja dalam kurun 30 hari setelah menerima pesan CRM WhatsApp.
+                  </DialogDescription>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchConverted()}
+                disabled={isConvertedFetching}
+                className="h-8 text-xs gap-1.5 shrink-0 hidden sm:flex"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isConvertedFetching ? "animate-spin" : ""}`} />
+                Perbarui
+              </Button>
+            </div>
+
+            {/* Filter Tabs per Jalur CRM */}
+            <div className="flex items-center gap-1.5 pt-3 overflow-x-auto pb-1">
+              <Button
+                size="sm"
+                variant={convertedModalChannel === "all" ? "default" : "outline"}
+                onClick={() => setConvertedModalChannel("all")}
+                className={`h-8 text-xs px-3 rounded-lg font-semibold shrink-0 ${
+                  convertedModalChannel === "all"
+                    ? "bg-amber-600 hover:bg-amber-700 text-white shadow-2xs"
+                    : "border-muted/80 text-muted-foreground"
+                }`}
+              >
+                Semua Saluran
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] bg-black/15 dark:bg-white/20">
+                  {convertedCustomersData?.summary?.total ?? filteredCrmStats.converted}
+                </span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant={convertedModalChannel === "waba" ? "default" : "outline"}
+                onClick={() => setConvertedModalChannel("waba")}
+                className={`h-8 text-xs px-3 rounded-lg font-semibold shrink-0 ${
+                  convertedModalChannel === "waba"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+                    : "border-muted/80 text-muted-foreground hover:text-emerald-700 dark:hover:text-emerald-300"
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                WABA Resmi Meta
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] bg-black/15 dark:bg-white/20">
+                  {convertedCustomersData?.summary?.waba_count ?? filteredCrmStats.wabaConverted}
+                </span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant={convertedModalChannel === "waha_main" ? "default" : "outline"}
+                onClick={() => setConvertedModalChannel("waha_main")}
+                className={`h-8 text-xs px-3 rounded-lg font-semibold shrink-0 ${
+                  convertedModalChannel === "waha_main"
+                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-2xs"
+                    : "border-muted/80 text-muted-foreground hover:text-blue-700 dark:hover:text-blue-300"
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5 mr-1" />
+                WA 1 (CS Utama)
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] bg-black/15 dark:bg-white/20">
+                  {convertedCustomersData?.summary?.wa1_count ?? filteredCrmStats.wa1Converted}
+                </span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant={convertedModalChannel === "waha_campaign" ? "default" : "outline"}
+                onClick={() => setConvertedModalChannel("waha_campaign")}
+                className={`h-8 text-xs px-3 rounded-lg font-semibold shrink-0 ${
+                  convertedModalChannel === "waha_campaign"
+                    ? "bg-purple-600 hover:bg-purple-700 text-white shadow-2xs"
+                    : "border-muted/80 text-muted-foreground hover:text-purple-700 dark:hover:text-purple-300"
+                }`}
+              >
+                <Send className="w-3.5 h-3.5 mr-1" />
+                WA 2 (Outreach)
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] bg-black/15 dark:bg-white/20">
+                  {convertedCustomersData?.summary?.wa2_count ?? filteredCrmStats.wa2Converted}
+                </span>
+              </Button>
+            </div>
+          </DialogHeader>
+
+          {/* Subheader / Summary Stats & Search Filter */}
+          <div className="px-5 py-3 bg-muted/10 border-b border-border/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <div className="bg-background px-3 py-1.5 rounded-lg border border-border/60 shadow-2xs flex items-center gap-1.5">
+                <span className="text-muted-foreground">Order Konversi:</span>
+                <strong className="text-foreground font-bold">
+                  {filteredConvertedOrders.length} Order
+                </strong>
+              </div>
+              <div className="bg-background px-3 py-1.5 rounded-lg border border-border/60 shadow-2xs flex items-center gap-1.5">
+                <span className="text-muted-foreground">Total Net Revenue:</span>
+                <strong className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  {formatIDR(
+                    filteredConvertedOrders.reduce((sum, o: any) => sum + (Number(o.net_revenue) || 0), 0)
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            <div className="relative min-w-[240px]">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+              <Input
+                placeholder="Cari nama, no. HP, atau resi..."
+                value={convertedSearchQuery}
+                onChange={(e) => setConvertedSearchQuery(e.target.value)}
+                className="h-8 pl-8 text-xs bg-background"
+              />
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="flex-1 overflow-y-auto max-h-[50vh] p-5 pt-0">
+            {isConvertedLoading ? (
+              <div className="py-16 text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
+                <p className="text-xs text-muted-foreground font-medium">Memuat daftar konsumen beli ulang...</p>
+              </div>
+            ) : filteredConvertedOrders.length === 0 ? (
+              <div className="py-16 text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-muted/60 text-muted-foreground flex items-center justify-center mx-auto">
+                  <PackageCheck className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-foreground">Tidak Ada Data Konversi</h4>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  {convertedSearchQuery
+                    ? `Tidak ditemukan pesanan yang sesuai dengan pencarian "${convertedSearchQuery}".`
+                    : `Belum ada pesanan beli ulang pasca WA untuk saluran dan periode ini.`}
+                </p>
+              </div>
+            ) : (
+              <div className="border border-border/60 rounded-xl overflow-hidden shadow-2xs mt-4">
+                <Table>
+                  <TableHeader className="bg-muted/40 text-[11px]">
+                    <TableRow>
+                      <TableHead className="w-10 text-center">#</TableHead>
+                      <TableHead>Konsumen & Kontak</TableHead>
+                      <TableHead>Jalur WA & Jam Kirim</TableHead>
+                      <TableHead>Order Beli Ulang</TableHead>
+                      <TableHead>Saluran & Resi</TableHead>
+                      <TableHead className="text-right">Net Revenue</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="text-xs">
+                    {filteredConvertedOrders.map((ord: any, idx: number) => {
+                      const minutes = Number(ord.minutes_after_crm) || 0;
+                      let durationText = "";
+                      if (minutes < 60) {
+                        durationText = `${minutes} menit pasca WA`;
+                      } else if (minutes < 1440) {
+                        const h = Math.floor(minutes / 60);
+                        const m = minutes % 60;
+                        durationText = `${h} jam ${m > 0 ? `${m} mnt ` : ""}pasca WA`;
+                      } else {
+                        const d = Math.floor(minutes / 1440);
+                        const h = Math.floor((minutes % 1440) / 60);
+                        durationText = `${d} hari ${h > 0 ? `${h} jam ` : ""}pasca WA`;
+                      }
+
+                      const cleanPhone = (ord.phone || "").replace(/[^0-9]/g, "");
+
+                      return (
+                        <TableRow key={ord.order_id + idx} className="hover:bg-muted/25 transition-colors">
+                          <TableCell className="text-center font-mono text-[11px] text-muted-foreground">
+                            {idx + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-bold text-foreground flex items-center gap-1.5">
+                              <span>{ord.customer_name || "Pelanggan"}</span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                              <a
+                                href={`https://wa.me/${cleanPhone}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5 font-mono"
+                                title="Buka WhatsApp Pelanggan"
+                              >
+                                {ord.phone}
+                                <ExternalLink className="w-2.5 h-2.5 inline" />
+                              </a>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] font-semibold py-0.5 px-2 ${
+                                  ord.crm_channel === "waba"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                    : ord.crm_channel === "waha_main"
+                                    ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                    : "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                                }`}
+                              >
+                                {ord.crm_channel === "waba"
+                                  ? "WABA Resmi Meta"
+                                  : ord.crm_channel === "waha_main"
+                                  ? "WA 1 (CS)"
+                                  : "WA 2 (Outreach)"}
+                              </Badge>
+                              <div className="text-[11px] text-muted-foreground">
+                                {formatDateTimeIndo(ord.crm_sent_at)}
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div>
+                              <div className="font-semibold text-foreground">
+                                {formatDateTimeIndo(ord.order_created_at)}
+                              </div>
+                              <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5">
+                                <Sparkles className="w-3 h-3 shrink-0" />
+                                <span>{durationText}</span>
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <Badge variant="outline" className="text-[10px] uppercase font-mono py-0 px-1.5">
+                                  {ord.order_channel || "whatsapp"}
+                                </Badge>
+                                {ord.honey_type && (
+                                  <span className="text-[11px] text-muted-foreground font-medium">
+                                    {ord.honey_type}
+                                  </span>
+                                )}
+                              </div>
+                              {ord.tracking_number && (
+                                <div className="text-[10px] font-mono text-muted-foreground flex items-center gap-1">
+                                  <span>Resi: {ord.tracking_number}</span>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="text-right">
+                            <div className="font-extrabold text-emerald-600 dark:text-emerald-400 text-sm">
+                              {formatIDR(Number(ord.net_revenue) || 0)}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <DialogFooter className="p-3 px-5 border-t border-border/60 bg-muted/20 flex flex-row items-center justify-between sm:justify-between">
+            <div className="text-xs text-muted-foreground">
+              Menampilkan <b>{filteredConvertedOrders.length}</b> pesanan beli ulang
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConvertedModalOpen(false)}
+              className="text-xs h-8"
+            >
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>
