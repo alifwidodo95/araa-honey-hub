@@ -1785,6 +1785,7 @@ function WhatsAppAiPage() {
                     const chatDateTooltip = formatMessageTooltip(chat.latestLog.created_at);
                     const isGoodName = chat.customer_name && chat.customer_name !== "Pelanggan" && chat.customer_name !== "Meta Status";
                     const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
+                    const isLastIncoming = chat.latestLog.direction === "incoming";
                     const currentChatTag = chatTagsMap.get(chat.customer_phone);
                     const isOrdered = currentChatTag === "order";
                     const isDone = currentChatTag === "done";
