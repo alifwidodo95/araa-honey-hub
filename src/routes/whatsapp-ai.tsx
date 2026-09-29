@@ -541,7 +541,7 @@ function WhatsAppAiPage() {
   const [sendingReply, setSendingReply] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<ChatLog[]>([]);
   const [chatSearch, setChatSearch] = useState("");
-  const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order" | "pinned">("all");
+  const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order" | "done" | "pinned">("all");
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinDialogChat, setPinDialogChat] = useState<{
@@ -782,26 +782,30 @@ function WhatsAppAiPage() {
     return map;
   }, [chatTags]);
 
-  // Toggle Order Tag Handler
-  const handleToggleOrderTag = async (phone: string, shouldTag: boolean) => {
+  // Chat Tag Handler (order, done, null)
+  const handleSetChatTag = async (phone: string, tag: "order" | "done" | null) => {
     const cleanPhone = phone.replace(/[^0-9]/g, "");
     if (!cleanPhone) return;
 
     setUpdatingTagPhone(cleanPhone);
     try {
-      if (shouldTag) {
+      if (tag) {
         const { error } = await supabase
           .from("whatsapp_chat_tags" as any)
-          .upsert({ phone: cleanPhone, tag: "order", updated_at: new Date().toISOString() });
+          .upsert({ phone: cleanPhone, tag: tag, updated_at: new Date().toISOString() });
         if (error) throw error;
-        toast.success("Kontak berhasil diberi label Order! 🛒");
+        if (tag === "order") {
+          toast.success("Kontak berhasil diberi label Order! 🛒");
+        } else if (tag === "done") {
+          toast.success("Order ditandai Selesai! ✅");
+        }
       } else {
         const { error } = await supabase
           .from("whatsapp_chat_tags" as any)
           .delete()
           .eq("phone", cleanPhone);
         if (error) throw error;
-        toast.success("Label Order berhasil dilepas.");
+        toast.success("Label berhasil dilepas.");
       }
       refetchTags();
     } catch (err: any) {
@@ -809,6 +813,10 @@ function WhatsAppAiPage() {
     } finally {
       setUpdatingTagPhone(null);
     }
+  };
+
+  const handleToggleOrderTag = (phone: string, shouldTag: boolean) => {
+    return handleSetChatTag(phone, shouldTag ? "order" : null);
   };
 
   // 4b. Fetch Pinned Chats & Follow-up Reminders from whatsapp_pinned_chats
@@ -1235,14 +1243,16 @@ function WhatsAppAiPage() {
     return Array.from(chatsMap.values());
   }, [chatLogs, pendingMessages]);
 
-  // Response status statistics for WABA (all, unread, order, pinned)
+  // Response status statistics for WABA (all, unread, order, done, pinned)
   const responseCounts = useMemo(() => {
     let unread = 0;
     let order = 0;
+    let done = 0;
     let pinned = 0;
     uniqueChats.forEach(c => {
-      const isTaggedOrder = chatTagsMap.get(c.customer_phone) === "order";
-      if (isTaggedOrder) order++;
+      const tag = chatTagsMap.get(c.customer_phone);
+      if (tag === "order") order++;
+      if (tag === "done") done++;
       if (c.isUnread) unread++;
       if (pinnedMap.has(c.customer_phone) || (c.chat_id && pinnedMap.has(c.chat_id))) {
         pinned++;
@@ -1252,6 +1262,7 @@ function WhatsAppAiPage() {
       all: uniqueChats.length,
       unread,
       order,
+      done,
       pinned,
     };
   }, [uniqueChats, chatTagsMap, pinnedMap]);
@@ -1261,10 +1272,12 @@ function WhatsAppAiPage() {
     let list = uniqueChats;
 
     if (responseFilter === "unread") {
-      // Pilihan 3: Tetap munculkan chat yang sedang dibuka (selectedChatId) agar tidak lenyap mendadak saat admin membaca/membalas
+      // Tetap munculkan chat yang sedang dibuka (selectedChatId) agar tidak lenyap mendadak saat admin membaca/membalas
       list = list.filter(c => c.isUnread || c.chat_id === selectedChatId);
     } else if (responseFilter === "order") {
       list = list.filter(c => chatTagsMap.get(c.customer_phone) === "order");
+    } else if (responseFilter === "done") {
+      list = list.filter(c => chatTagsMap.get(c.customer_phone) === "done");
     } else if (responseFilter === "pinned") {
       list = list.filter(c => pinnedMap.has(c.customer_phone) || (c.chat_id && pinnedMap.has(c.chat_id)));
     }
@@ -1659,60 +1672,77 @@ function WhatsAppAiPage() {
                 </Button>
               </div>
 
-              {/* Response Status Filter Pills (Semua, Belum Dibaca, Order, Follow-up) */}
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
+              {/* Response Status Filter Pills (Semua, Belum Dibaca, Order, Selesai, Follow-up) */}
+              <div className="grid grid-cols-5 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
                 <button
                   type="button"
                   onClick={() => setResponseFilter("all")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
                     responseFilter === "all"
                       ? "bg-white text-slate-900 shadow-xs font-bold"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
                   }`}
+                  title="Tampilkan semua obrolan"
                 >
                   <span>Semua</span>
-                  <span className="text-[10px] opacity-75">({responseCounts.all})</span>
+                  <span className="text-[9.5px] opacity-75">({responseCounts.all})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setResponseFilter("unread")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
                     responseFilter === "unread"
                       ? "bg-emerald-600 text-white shadow-xs font-bold"
                       : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
                   }`}
+                  title="Obrolan belum dibaca"
                 >
                   {responseCounts.unread > 0 && (
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse shrink-0" />
                   )}
                   <span>Belum</span>
-                  <span className={`text-[10px] ${responseCounts.unread > 0 ? "font-bold bg-white/20 px-1 py-0.2 rounded-full" : "opacity-80"}`}>
+                  <span className={`text-[9.5px] ${responseCounts.unread > 0 ? "font-bold bg-white/20 px-1 py-0.2 rounded-full" : "opacity-80"}`}>
                     ({responseCounts.unread})
                   </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setResponseFilter("order")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
                     responseFilter === "order"
                       ? "bg-amber-500 text-white shadow-xs font-bold"
                       : "text-amber-800 hover:bg-amber-100/70 font-semibold"
                   }`}
+                  title="Obrolan dengan pesanan aktif (perlu dikerjakan)"
                 >
                   <span>🛒 Order</span>
-                  <span className="text-[10px] opacity-90 font-bold">({responseCounts.order})</span>
+                  <span className="text-[9.5px] opacity-90 font-bold">({responseCounts.order})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResponseFilter("done")}
+                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
+                    responseFilter === "done"
+                      ? "bg-emerald-700 text-white shadow-xs font-bold"
+                      : "text-emerald-900 hover:bg-emerald-100/80 font-semibold"
+                  }`}
+                  title="Pesanan yang sudah selesai dikerjakan"
+                >
+                  <span>✅ Selesai</span>
+                  <span className="text-[9.5px] opacity-90 font-bold">({responseCounts.done})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setResponseFilter("pinned")}
-                  className={`py-1.5 px-1 rounded-md font-medium text-[11px] flex items-center justify-center gap-1 transition-all ${
+                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
                     responseFilter === "pinned"
                       ? "bg-sky-600 text-white shadow-xs font-bold"
                       : "text-sky-800 hover:bg-sky-100/70 font-semibold"
                   }`}
+                  title="Obrolan yang di-pin"
                 >
                   <span>📌 Pin</span>
-                  <span className="text-[10px] opacity-90 font-bold">({responseCounts.pinned})</span>
+                  <span className="text-[9.5px] opacity-90 font-bold">({responseCounts.pinned})</span>
                 </button>
               </div>
 
@@ -1755,8 +1785,9 @@ function WhatsAppAiPage() {
                     const chatDateTooltip = formatMessageTooltip(chat.latestLog.created_at);
                     const isGoodName = chat.customer_name && chat.customer_name !== "Pelanggan" && chat.customer_name !== "Meta Status";
                     const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
-                    const isLastIncoming = chat.latestLog.direction === "incoming";
-                    const isOrdered = chatTagsMap.get(chat.customer_phone) === "order";
+                    const currentChatTag = chatTagsMap.get(chat.customer_phone);
+                    const isOrdered = currentChatTag === "order";
+                    const isDone = currentChatTag === "done";
                     const pinData = pinnedMap.get(chat.customer_phone) || (chat.chat_id ? pinnedMap.get(chat.chat_id) : undefined);
                     const isPinned = !!pinData;
 
@@ -1894,32 +1925,75 @@ function WhatsAppAiPage() {
                                 <div className="h-px bg-slate-100 my-1" />
 
                                 {isOrdered ? (
-                                  <DropdownMenuItem
-                                    onClick={() => handleToggleOrderTag(chat.customer_phone, false)}
-                                    className="text-xs text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer font-medium gap-2 py-2"
-                                  >
-                                    <XCircle className="h-4 w-4 text-rose-500" />
-                                    <span>Lepas Label Order</span>
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => handleSetChatTag(chat.customer_phone, "done")}
+                                      className="text-xs text-emerald-700 focus:text-emerald-800 focus:bg-emerald-50 cursor-pointer font-bold gap-2 py-2"
+                                    >
+                                      <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                      <span>✅ Tandai Selesai</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleSetChatTag(chat.customer_phone, null)}
+                                      className="text-xs text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer font-medium gap-2 py-1.5"
+                                    >
+                                      <XCircle className="h-4 w-4 text-rose-500" />
+                                      <span>Lepas Label Order</span>
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : isDone ? (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => handleSetChatTag(chat.customer_phone, "order")}
+                                      className="text-xs text-amber-700 focus:text-amber-800 focus:bg-amber-50 cursor-pointer font-semibold gap-2 py-2"
+                                    >
+                                      <ShoppingCart className="h-4 w-4 text-amber-500" />
+                                      <span>🛒 Kembalikan ke Order</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleSetChatTag(chat.customer_phone, null)}
+                                      className="text-xs text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer font-medium gap-2 py-1.5"
+                                    >
+                                      <XCircle className="h-4 w-4 text-rose-500" />
+                                      <span>Hapus Tanda Selesai</span>
+                                    </DropdownMenuItem>
+                                  </>
                                 ) : (
-                                  <DropdownMenuItem
-                                    onClick={() => handleToggleOrderTag(chat.customer_phone, true)}
-                                    className="text-xs text-amber-700 focus:text-amber-800 focus:bg-amber-50 cursor-pointer font-semibold gap-2 py-2"
-                                  >
-                                    <ShoppingCart className="h-4 w-4 text-amber-500" />
-                                    <span>Beri Label Order</span>
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => handleSetChatTag(chat.customer_phone, "order")}
+                                      className="text-xs text-amber-700 focus:text-amber-800 focus:bg-amber-50 cursor-pointer font-semibold gap-2 py-2"
+                                    >
+                                      <ShoppingCart className="h-4 w-4 text-amber-500" />
+                                      <span>🛒 Beri Label Order</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleSetChatTag(chat.customer_phone, "done")}
+                                      className="text-xs text-emerald-700 focus:text-emerald-800 focus:bg-emerald-50 cursor-pointer font-semibold gap-2 py-2"
+                                    >
+                                      <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                      <span>✅ Beri Tanda Selesai</span>
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
 
-                          {/* Bottom Row: Minimalist Order Badge (Only visible when tagged Order) */}
+                          {/* Bottom Row: Minimalist Order / Selesai Badge */}
                           {isOrdered && (
                             <div className="flex items-center gap-1 justify-end">
                               <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs flex items-center gap-1">
                                 <ShoppingCart className="h-2.5 w-2.5" />
                                 <span>Order</span>
+                              </Badge>
+                            </div>
+                          )}
+                          {isDone && (
+                            <div className="flex items-center gap-1 justify-end">
+                              <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs flex items-center gap-1">
+                                <CheckCircle className="h-2.5 w-2.5" />
+                                <span>Selesai</span>
                               </Badge>
                             </div>
                           )}
@@ -1941,7 +2015,9 @@ function WhatsAppAiPage() {
                   const isGoodName = activeChat?.customer_name && activeChat.customer_name !== "Pelanggan" && activeChat.customer_name !== "Meta Status";
                   const displayName = isGoodName ? activeChat.customer_name : "Pelanggan";
                   const displayPhone = activeChat?.formatted_phone || formatDisplayPhone(selectedChatId.replace(/[^0-9]/g, ""));
-                  const isCurrentOrdered = activeChat ? chatTagsMap.get(activeChat.customer_phone) === "order" : false;
+                  const currentChatTag = activeChat ? chatTagsMap.get(activeChat.customer_phone) : null;
+                  const isCurrentOrdered = currentChatTag === "order";
+                  const isCurrentDone = currentChatTag === "done";
                   const currentPin = activeChat ? (pinnedMap.get(activeChat.customer_phone) || (activeChat.chat_id ? pinnedMap.get(activeChat.chat_id) : undefined)) : undefined;
 
                   return (
@@ -1987,6 +2063,12 @@ function WhatsAppAiPage() {
                                 <span>Order</span>
                               </Badge>
                             )}
+                            {isCurrentDone && (
+                              <Badge className="bg-emerald-600 text-white text-[10px] flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                <span>Selesai</span>
+                              </Badge>
+                            )}
                           </CardTitle>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             Jalur: Meta Cloud API (+62 856-4540-6949)
@@ -2009,34 +2091,143 @@ function WhatsAppAiPage() {
                             <span>{currentPin ? "📌 Follow-up" : "Pin Follow-up"}</span>
                           </Button>
 
-                          {/* Order Toggle Button in Header */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={updatingTagPhone === activeChat?.customer_phone}
-                            onClick={() => activeChat && handleToggleOrderTag(activeChat.customer_phone, !isCurrentOrdered)}
-                            className={`h-7 px-2.5 text-[11px] gap-1.5 font-semibold shadow-2xs transition-all cursor-pointer ${
-                              isCurrentOrdered
-                                ? "bg-amber-50 hover:bg-rose-50 text-amber-800 hover:text-rose-700 border-amber-300 hover:border-rose-300"
-                                : "text-slate-600 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200"
-                            }`}
-                            title={isCurrentOrdered ? "Klik untuk melepas label order" : "Klik untuk menandai order"}
-                          >
-                            <ShoppingCart className={`h-3.5 w-3.5 ${isCurrentOrdered ? "text-amber-600" : "text-slate-400"}`} />
-                            <span>{isCurrentOrdered ? "🛒 Order (Lepas)" : "Tandai Order"}</span>
-                          </Button>
+                          {/* Order / Selesai Tag Action Buttons in Header */}
+                          {isCurrentOrdered ? (
+                            <div className="flex items-center gap-1.5">
+                              {/* Direct One-Click Button to complete order */}
+                              <Button
+                                size="sm"
+                                variant="default"
+                                disabled={updatingTagPhone === activeChat?.customer_phone}
+                                onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "done")}
+                                className="h-7 px-2.5 text-[11px] gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                                title="Klik bila pesanan konsumen ini sudah selesai dikerjakan / dikirim"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5" />
+                                <span>Tandai Selesai</span>
+                              </Button>
 
-                          {activeChat?.latestLog?.direction === "incoming" && (
+                              {/* Order Dropdown for options */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[11px] gap-1 font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-2xs cursor-pointer"
+                                    title="Status: Order (Klik untuk opsi)"
+                                  >
+                                    <ShoppingCart className="h-3.5 w-3.5 text-amber-600" />
+                                    <span>Order</span>
+                                    <ChevronDown className="h-3 w-3 opacity-60" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 p-1 shadow-lg bg-white border border-slate-200 z-50">
+                                  <DropdownMenuItem
+                                    onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "done")}
+                                    className="text-xs text-emerald-700 font-bold gap-2 cursor-pointer py-1.5"
+                                  >
+                                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                    <span>✅ Tandai Selesai</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, null)}
+                                    className="text-xs text-rose-600 font-medium gap-2 cursor-pointer py-1.5"
+                                  >
+                                    <XCircle className="h-4 w-4 text-rose-500" />
+                                    <span>Lepas Label Order</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          ) : isCurrentDone ? (
+                            /* Selesai Dropdown */
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2.5 text-[11px] gap-1.5 font-bold bg-emerald-50 text-emerald-900 border-emerald-400 hover:bg-emerald-100 shadow-2xs cursor-pointer"
+                                  title="Pesanan sudah selesai dikerjakan. Klik untuk opsi."
+                                >
+                                  <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                                  <span>✅ Order Selesai</span>
+                                  <ChevronDown className="h-3 w-3 opacity-60" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-52 p-1 shadow-lg bg-white border border-slate-200 z-50">
+                                <DropdownMenuItem
+                                  onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "order")}
+                                  className="text-xs text-amber-800 font-semibold gap-2 cursor-pointer py-1.5"
+                                >
+                                  <ShoppingCart className="h-4 w-4 text-amber-600" />
+                                  <span>🛒 Kembalikan ke Order</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, null)}
+                                  className="text-xs text-rose-600 font-medium gap-2 cursor-pointer py-1.5"
+                                >
+                                  <XCircle className="h-4 w-4 text-rose-500" />
+                                  <span>Hapus Tanda Selesai</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            /* Default: No Tag yet -> Tandai Order with dropdown */
+                            <DropdownMenu>
+                              <div className="inline-flex rounded-md shadow-2xs">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={updatingTagPhone === activeChat?.customer_phone}
+                                  onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "order")}
+                                  className="h-7 px-2.5 text-[11px] gap-1.5 font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200 rounded-r-none cursor-pointer"
+                                  title="Tandai kontak ini sedang order"
+                                >
+                                  <ShoppingCart className="h-3.5 w-3.5 text-slate-400" />
+                                  <span>Tandai Order</span>
+                                </Button>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-1.5 text-[11px] text-slate-500 hover:text-slate-800 border-l-0 border-slate-200 rounded-l-none cursor-pointer"
+                                    title="Pilihan label"
+                                  >
+                                    <ChevronDown className="h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                              </div>
+                              <DropdownMenuContent align="end" className="w-48 p-1 shadow-lg bg-white border border-slate-200 z-50">
+                                <DropdownMenuItem
+                                  onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "order")}
+                                  className="text-xs text-amber-800 font-semibold gap-2 cursor-pointer py-1.5"
+                                >
+                                  <ShoppingCart className="h-4 w-4 text-amber-500" />
+                                  <span>🛒 Beri Label Order</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "done")}
+                                  className="text-xs text-emerald-800 font-semibold gap-2 cursor-pointer py-1.5"
+                                >
+                                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                                  <span>✅ Langsung Selesai</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+
+                          {/* Quick Mark Read button if chat is unread */}
+                          {activeChat?.isUnread && (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={markingHandled}
                               onClick={() => handleMarkAsHandled(activeChat)}
-                              className="h-7 px-2.5 text-[11px] gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold shadow-2xs transition-all active:scale-95 cursor-pointer"
-                              title="Tandai chat ini sudah dibaca/ditangani agar notifikasi di sidebar berkurang"
+                              className="h-7 px-2 text-[11px] gap-1 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300 font-medium shadow-2xs transition-all active:scale-95 cursor-pointer"
+                              title="Tandai pesan baru ini sudah dibaca agar notifikasi hijau hilang"
                             >
-                              <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
-                              <span>{markingHandled ? "Menandai..." : "Tandai Selesai"}</span>
+                              <Check className="h-3.5 w-3.5 text-slate-500" />
+                              <span>{markingHandled ? "..." : "Tandai Dibaca"}</span>
                             </Button>
                           )}
                         </div>
