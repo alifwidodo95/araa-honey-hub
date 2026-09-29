@@ -39,6 +39,7 @@ import { Route as ApiWahaProxyRouteImport } from './routes/api.waha-proxy'
 import { Route as ApiTelegramWebhookRouteImport } from './routes/api.telegram-webhook'
 import { Route as ApiScalevWebhookRouteImport } from './routes/api.scalev-webhook'
 import { Route as ApiLoyaltyStatsRouteImport } from './routes/api.loyalty-stats'
+import { Route as ApiHermesRouteImport } from './routes/api.hermes'
 import { Route as ApiHealthRouteImport } from './routes/api.health'
 import { Route as ApiWhatsappSendRouteImport } from './routes/api.whatsapp.send'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api.webhooks.whatsapp'
@@ -208,6 +209,11 @@ const ApiLoyaltyStatsRoute = ApiLoyaltyStatsRouteImport.update({
   path: '/api/loyalty-stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHermesRoute = ApiHermesRouteImport.update({
+  id: '/api/hermes',
+  path: '/api/hermes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
   path: '/api/health',
@@ -318,6 +324,7 @@ export interface FileRoutesByFullPath {
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/hermes': typeof ApiHermesRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -368,6 +375,7 @@ export interface FileRoutesByTo {
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/hermes': typeof ApiHermesRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -419,6 +427,7 @@ export interface FileRoutesById {
   '/retur': typeof ReturRoute
   '/whatsapp-ai': typeof WhatsappAiRoute
   '/api/health': typeof ApiHealthRoute
+  '/api/hermes': typeof ApiHermesRoute
   '/api/loyalty-stats': typeof ApiLoyaltyStatsRoute
   '/api/scalev-webhook': typeof ApiScalevWebhookRoute
   '/api/telegram-webhook': typeof ApiTelegramWebhookRoute
@@ -471,6 +480,7 @@ export interface FileRouteTypes {
     | '/retur'
     | '/whatsapp-ai'
     | '/api/health'
+    | '/api/hermes'
     | '/api/loyalty-stats'
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
@@ -521,6 +531,7 @@ export interface FileRouteTypes {
     | '/retur'
     | '/whatsapp-ai'
     | '/api/health'
+    | '/api/hermes'
     | '/api/loyalty-stats'
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
@@ -571,6 +582,7 @@ export interface FileRouteTypes {
     | '/retur'
     | '/whatsapp-ai'
     | '/api/health'
+    | '/api/hermes'
     | '/api/loyalty-stats'
     | '/api/scalev-webhook'
     | '/api/telegram-webhook'
@@ -622,6 +634,7 @@ export interface RootRouteChildren {
   ReturRoute: typeof ReturRoute
   WhatsappAiRoute: typeof WhatsappAiRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiHermesRoute: typeof ApiHermesRoute
   ApiLoyaltyStatsRoute: typeof ApiLoyaltyStatsRoute
   ApiScalevWebhookRoute: typeof ApiScalevWebhookRoute
   ApiTelegramWebhookRoute: typeof ApiTelegramWebhookRoute
@@ -867,6 +880,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLoyaltyStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/hermes': {
+      id: '/api/hermes'
+      path: '/api/hermes'
+      fullPath: '/api/hermes'
+      preLoaderRoute: typeof ApiHermesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/health': {
       id: '/api/health'
       path: '/api/health'
@@ -1014,6 +1034,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReturRoute: ReturRoute,
   WhatsappAiRoute: WhatsappAiRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiHermesRoute: ApiHermesRoute,
   ApiLoyaltyStatsRoute: ApiLoyaltyStatsRoute,
   ApiScalevWebhookRoute: ApiScalevWebhookRoute,
   ApiTelegramWebhookRoute: ApiTelegramWebhookRoute,
