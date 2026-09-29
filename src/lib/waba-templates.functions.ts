@@ -164,29 +164,45 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
               headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
             }
           }
+        } else if (headerComp?.format !== "VIDEO") {
+          headerImageUrl = undefined;
+        }
+
+        // Extract expected body parameters from template
+        const bodyComp = currentTpl.components?.find((c) => c.type === "BODY");
+        const bodyText = bodyComp?.text || "";
+        const expectedKeys: string[] = [];
+        if ((bodyComp as any)?.example?.body_text_named_params) {
+          for (const item of (bodyComp as any).example.body_text_named_params) {
+            if (item.param_name) expectedKeys.push(item.param_name);
+          }
+        } else if (bodyText) {
+          const matches = bodyText.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g);
+          for (const m of matches) {
+            if (!expectedKeys.includes(m[1])) expectedKeys.push(m[1]);
+          }
         }
 
         // If template uses NAMED parameter format but bodyParameters array was passed
         if (currentTpl.parameter_format === "NAMED" && !namedParameters && data.bodyParameters) {
-          const bodyComp = currentTpl.components?.find((c) => c.type === "BODY");
-          const namedParamKeys: string[] = [];
-          if ((bodyComp as any)?.example?.body_text_named_params) {
-            for (const item of (bodyComp as any).example.body_text_named_params) {
-              if (item.param_name) namedParamKeys.push(item.param_name);
-            }
-          } else if (bodyComp?.text) {
-            const matches = bodyComp.text.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g);
-            for (const m of matches) {
-              if (!namedParamKeys.includes(m[1])) namedParamKeys.push(m[1]);
-            }
-          }
-
-          if (namedParamKeys.length > 0) {
+          if (expectedKeys.length > 0) {
             namedParameters = {};
-            namedParamKeys.forEach((key, idx) => {
+            expectedKeys.forEach((key, idx) => {
               namedParameters![key] = data.bodyParameters![idx] || "";
             });
           }
+        }
+
+        // Sanitize: If template expects 0 parameters, omit body parameters completely!
+        if (expectedKeys.length === 0) {
+          namedParameters = undefined;
+          data.bodyParameters = undefined;
+        } else if (namedParameters) {
+          const filtered: Record<string, string> = {};
+          expectedKeys.forEach((k) => {
+            if (namedParameters![k] !== undefined) filtered[k] = namedParameters![k];
+          });
+          namedParameters = Object.keys(filtered).length > 0 ? filtered : undefined;
         }
       }
 

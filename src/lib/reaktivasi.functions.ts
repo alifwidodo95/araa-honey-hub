@@ -305,6 +305,49 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
             }
           }
 
+          // Sanitize body parameters & header format against template definition
+          let filteredNamedParams = data.namedParameters;
+          try {
+            const tplRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_cached_templates'");
+            const tpls: any[] = tplRes.rows[0]?.value || [];
+            const matchedTpl = tpls.find((t: any) => t.name === data.templateName);
+            if (matchedTpl) {
+              const headerComp = matchedTpl.components?.find((c: any) => c.type === "HEADER");
+              if (headerComp?.format !== "IMAGE" && headerComp?.format !== "VIDEO") {
+                headerImageUrl = undefined;
+              }
+
+              const bodyComp = matchedTpl.components?.find((c: any) => c.type === "BODY");
+              const bodyText = bodyComp?.text || "";
+              const expectedKeys: string[] = [];
+              if (bodyComp?.example?.body_text_named_params) {
+                for (const p of bodyComp.example.body_text_named_params) {
+                  if (p.param_name) expectedKeys.push(p.param_name);
+                }
+              } else if (bodyText) {
+                const matches = Array.from(bodyText.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g));
+                for (const m of matches) {
+                  if (!expectedKeys.includes(m[1])) expectedKeys.push(m[1]);
+                }
+              }
+
+              // If template expects 0 parameters, omit body parameters completely
+              if (expectedKeys.length === 0) {
+                filteredNamedParams = undefined;
+              } else if (data.namedParameters) {
+                const clean: Record<string, string> = {};
+                expectedKeys.forEach((k) => {
+                  if (data.namedParameters![k] !== undefined) {
+                    clean[k] = data.namedParameters![k];
+                  }
+                });
+                filteredNamedParams = Object.keys(clean).length > 0 ? clean : undefined;
+              }
+            }
+          } catch (sanitizeErr) {
+            console.warn("Could not sanitize WABA template parameters:", sanitizeErr);
+          }
+
           res = await sendWhatsAppMessage({
             to: rawPhone,
             message: `[Template: ${data.templateName}]`,
@@ -312,7 +355,7 @@ export const sendDirectReaktivasiWhatsApp = createServerFn({ method: "POST" })
             template: {
               name: data.templateName,
               language: data.templateLanguage || "id",
-              namedParameters: data.namedParameters,
+              namedParameters: filteredNamedParams,
               headerImageUrl,
             },
             wabaConfig: {

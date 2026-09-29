@@ -196,6 +196,44 @@ function ReaktivasiPage() {
     );
   }, [approvedMetaTemplates, selectedMetaTemplateName]);
 
+  const extractTemplateParameters = (template: any): string[] => {
+    if (!template) return [];
+    const bodyComp = template.components?.find((c: any) => c.type === "BODY");
+    if (!bodyComp || !bodyComp.text) return [];
+
+    if (bodyComp.example?.body_text_named_params) {
+      return bodyComp.example.body_text_named_params
+        .map((p: any) => p.param_name)
+        .filter(Boolean);
+    }
+
+    const matches = Array.from(bodyComp.text.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g));
+    const keys: string[] = [];
+    for (const m of matches as any) {
+      if (!keys.includes(m[1])) {
+        keys.push(m[1]);
+      }
+    }
+    return keys;
+  };
+
+  const buildTemplateNamedParameters = (template: any, customer: { name?: string; order_date_2025?: string }) => {
+    const keys = extractTemplateParameters(template);
+    if (keys.length === 0) return undefined;
+    const res: Record<string, string> = {};
+    keys.forEach((k) => {
+      const lower = k.toLowerCase();
+      if (lower.includes("nama") || lower === "1") {
+        res[k] = customer.name || "Pelanggan";
+      } else if (lower.includes("tanggal") || lower.includes("order") || lower.includes("tgl") || lower === "2") {
+        res[k] = customer.order_date_2025 || "Tahun 2025";
+      } else {
+        res[k] = customer.name || "Pelanggan";
+      }
+    });
+    return res;
+  };
+
   // 1. Fetch Reaktivasi Data & Stats
   const { data: apiResponse, isLoading, refetch } = useQuery({
     queryKey: ["crm-reaktivasi-2025-stats"],
@@ -446,10 +484,7 @@ function ReaktivasiPage() {
               senderSession: selectedSenderSession,
               templateName: isWaba ? selectedMetaTemplateName : undefined,
               templateLanguage: isWaba ? (activeMetaTemplate?.language || "id") : undefined,
-              namedParameters: isWaba ? {
-                nama: c.name || "Pelanggan",
-                tanggal_order: c.order_date_2025 || "Tahun 2025",
-              } : undefined,
+              namedParameters: isWaba ? buildTemplateNamedParameters(activeMetaTemplate, c) : undefined,
               headerImageUrl: isWaba ? (templateImageUrl || undefined) : undefined,
             },
           });
@@ -1625,20 +1660,50 @@ function ReaktivasiPage() {
                       </p>
 
                       {/* Interactive Button */}
-                      <div className="pt-2 border-t border-border/40">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shadow-2xs">
-                          <ShoppingBag className="w-3.5 h-3.5" /> ORDER LAGI
-                        </span>
-                      </div>
+                      {activeMetaTemplate?.components?.find((c: any) => c.type === "BUTTONS")?.buttons?.[0]?.text ? (
+                        <div className="pt-2 border-t border-border/40">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shadow-2xs">
+                            <ShoppingBag className="w-3.5 h-3.5" />
+                            {activeMetaTemplate.components.find((c: any) => c.type === "BUTTONS").buttons[0].text}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="pt-2 border-t border-border/40">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shadow-2xs">
+                            <ShoppingBag className="w-3.5 h-3.5" /> ORDER LAGI
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span>Parameter Otomatis:</span>
-                    <span className="font-semibold text-foreground">
-                      nama = <b>{previewDialogCustomer.name}</b>, tanggal = <b>{previewDialogCustomer.order_date_2025 || "Tahun 2025"}</b>
-                    </span>
-                  </div>
+                  {/* Parameter Info */}
+                  {(() => {
+                    const requiredParams = extractTemplateParameters(activeMetaTemplate);
+                    if (requiredParams.length === 0) {
+                      return (
+                        <div className="p-2.5 rounded-xl bg-slate-500/5 border border-slate-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
+                          <span>Parameter Otomatis:</span>
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            ✓ Template Statis (Tanpa variabel)
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-[11px] text-muted-foreground flex items-center justify-between">
+                        <span>Parameter Otomatis:</span>
+                        <span className="font-semibold text-foreground">
+                          {requiredParams.map((p) => {
+                            const val = p.toLowerCase().includes("tanggal") || p.toLowerCase().includes("order") || p === "2"
+                              ? (previewDialogCustomer.order_date_2025 || "Tahun 2025")
+                              : (previewDialogCustomer.name || "Pelanggan");
+                            return `${p} = ${val}`;
+                          }).join(", ")}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 /* JIKA WAHA: FORMAT TEXTAREA & GAMBAR BIASA */
@@ -1687,10 +1752,7 @@ function ReaktivasiPage() {
                   senderSession: selectedSenderSession,
                   templateName: isWaba ? selectedMetaTemplateName : undefined,
                   templateLanguage: isWaba ? (activeMetaTemplate?.language || "id") : undefined,
-                  namedParameters: isWaba ? {
-                    nama: previewDialogCustomer.name || "Pelanggan",
-                    tanggal_order: previewDialogCustomer.order_date_2025 || "Tahun 2025",
-                  } : undefined,
+                  namedParameters: isWaba ? buildTemplateNamedParameters(activeMetaTemplate, previewDialogCustomer) : undefined,
                   headerImageUrl: isWaba ? (previewImageUrl || undefined) : undefined,
                 });
               }}
