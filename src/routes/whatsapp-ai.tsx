@@ -1672,77 +1672,99 @@ function WhatsAppAiPage() {
                 </Button>
               </div>
 
-              {/* Response Status Filter Pills (Semua, Belum Dibaca, Order, Selesai, Follow-up) */}
-              <div className="grid grid-cols-5 gap-1 p-1 bg-slate-200/70 rounded-lg text-xs">
+              {/* WhatsApp Web-Style Horizontal Scrollable Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 select-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 <button
                   type="button"
                   onClick={() => setResponseFilter("all")}
-                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                     responseFilter === "all"
-                      ? "bg-white text-slate-900 shadow-xs font-bold"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/70"
                   }`}
                   title="Tampilkan semua obrolan"
                 >
                   <span>Semua</span>
-                  <span className="text-[9.5px] opacity-75">({responseCounts.all})</span>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                    responseFilter === "all" ? "bg-white/20 text-white font-bold" : "bg-slate-200 text-slate-600"
+                  }`}>
+                    {responseCounts.all}
+                  </span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setResponseFilter("unread")}
-                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                     responseFilter === "unread"
-                      ? "bg-emerald-600 text-white shadow-xs font-bold"
-                      : "text-emerald-800 hover:bg-emerald-100/70 font-semibold"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/70"
                   }`}
                   title="Obrolan belum dibaca"
                 >
                   {responseCounts.unread > 0 && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                   )}
                   <span>Belum</span>
-                  <span className={`text-[9.5px] ${responseCounts.unread > 0 ? "font-bold bg-white/20 px-1 py-0.2 rounded-full" : "opacity-80"}`}>
-                    ({responseCounts.unread})
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                    responseFilter === "unread" ? "bg-white/20 text-white font-bold" : "bg-emerald-200/70 text-emerald-800 font-bold"
+                  }`}>
+                    {responseCounts.unread}
                   </span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setResponseFilter("order")}
-                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                     responseFilter === "order"
                       ? "bg-amber-500 text-white shadow-xs font-bold"
-                      : "text-amber-800 hover:bg-amber-100/70 font-semibold"
+                      : "bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/70"
                   }`}
                   title="Obrolan dengan pesanan aktif (perlu dikerjakan)"
                 >
                   <span>🛒 Order</span>
-                  <span className="text-[9.5px] opacity-90 font-bold">({responseCounts.order})</span>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                    responseFilter === "order" ? "bg-white/20 text-white font-bold" : "bg-amber-200/70 text-amber-900 font-bold"
+                  }`}>
+                    {responseCounts.order}
+                  </span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setResponseFilter("done")}
-                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                     responseFilter === "done"
                       ? "bg-emerald-700 text-white shadow-xs font-bold"
-                      : "text-emerald-900 hover:bg-emerald-100/80 font-semibold"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/70"
                   }`}
                   title="Pesanan yang sudah selesai dikerjakan"
                 >
                   <span>✅ Selesai</span>
-                  <span className="text-[9.5px] opacity-90 font-bold">({responseCounts.done})</span>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                    responseFilter === "done" ? "bg-white/20 text-white font-bold" : "bg-slate-200 text-slate-700 font-bold"
+                  }`}>
+                    {responseCounts.done}
+                  </span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setResponseFilter("pinned")}
-                  className={`py-1.5 px-0.5 rounded-md font-medium text-[10.5px] flex items-center justify-center gap-0.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                     responseFilter === "pinned"
                       ? "bg-sky-600 text-white shadow-xs font-bold"
-                      : "text-sky-800 hover:bg-sky-100/70 font-semibold"
+                      : "bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200/70"
                   }`}
                   title="Obrolan yang di-pin"
                 >
                   <span>📌 Pin</span>
-                  <span className="text-[9.5px] opacity-90 font-bold">({responseCounts.pinned})</span>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                    responseFilter === "pinned" ? "bg-white/20 text-white font-bold" : "bg-sky-200/70 text-sky-900 font-bold"
+                  }`}>
+                    {responseCounts.pinned}
+                  </span>
                 </button>
               </div>
 
