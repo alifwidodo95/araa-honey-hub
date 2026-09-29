@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -189,6 +189,93 @@ const EMOJI_LIST: { category: string; label: string; items: EmojiItem[] }[] = [
     ]
   }
 ];
+
+// Helper Functions for WhatsApp Date & Time Display
+function isSameDay(dateStr1: string, dateStr2: string): boolean {
+  if (!dateStr1 || !dateStr2) return false;
+  const d1 = new Date(dateStr1);
+  const d2 = new Date(dateStr2);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return false;
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+function formatChatDividerDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - targetMidnight) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return "Hari Ini";
+  } else if (diffDays === 1) {
+    return "Kemarin";
+  } else {
+    return d.toLocaleDateString("id-ID", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    });
+  }
+}
+
+function formatSidebarChatTime(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - targetMidnight) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  } else if (diffDays === 1) {
+    return "Kemarin";
+  } else if (diffDays > 1 && diffDays < 7) {
+    return d.toLocaleDateString("id-ID", { weekday: "long" });
+  } else if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  } else {
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  }
+}
+
+function formatMessageTooltip(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((todayMidnight - targetMidnight) / (1000 * 60 * 60 * 24));
+
+  const timeStr = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+  const fullDate = d.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+
+  if (diffDays <= 0) {
+    return `Hari Ini (${fullDate}) pukul ${timeStr}`;
+  } else if (diffDays === 1) {
+    return `Kemarin (${fullDate}) pukul ${timeStr}`;
+  } else {
+    return `${fullDate} pukul ${timeStr}`;
+  }
+}
 
 function WhatsAppAiPage() {
   const qc = useQueryClient();
@@ -1664,7 +1751,8 @@ function WhatsAppAiPage() {
                 <div className="divide-y divide-slate-100">
                   {filteredChats.map((chat) => {
                     const isSelected = selectedChatId === chat.chat_id;
-                    const cleanDate = new Date(chat.latestLog.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                    const cleanDate = formatSidebarChatTime(chat.latestLog.created_at);
+                    const chatDateTooltip = formatMessageTooltip(chat.latestLog.created_at);
                     const isGoodName = chat.customer_name && chat.customer_name !== "Pelanggan" && chat.customer_name !== "Meta Status";
                     const isError = chat.latestLog.replied_by === "meta_error" || chat.latestLog.message.startsWith("❌");
                     const isLastIncoming = chat.latestLog.direction === "incoming";
@@ -1774,7 +1862,7 @@ function WhatsAppAiPage() {
                         <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                           {/* Top Row: Time & Minimalist Chevron Action */}
                           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                            <span className="text-[10px] text-muted-foreground">{cleanDate}</span>
+                            <span className="text-[10px] text-muted-foreground font-medium" title={chatDateTooltip}>{cleanDate}</span>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <button
@@ -2009,23 +2097,37 @@ function WhatsAppAiPage() {
                       )}
 
                       <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/40 space-y-3.5">
-                        {selectedChatMessages.map((msg) => {
+                        {selectedChatMessages.map((msg, index) => {
                           const isIncoming = msg.direction === "incoming";
                           const isError = msg.replied_by === "meta_error" || msg.message.startsWith("❌");
-                          const msgTime = new Date(msg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                          const msgTime = new Date(msg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
+                          const msgDateTooltip = formatMessageTooltip(msg.created_at);
+
+                          const prevMsg = index > 0 ? selectedChatMessages[index - 1] : null;
+                          const showDateDivider = !prevMsg || !isSameDay(msg.created_at, prevMsg.created_at);
+                          const dividerLabel = showDateDivider ? formatChatDividerDate(msg.created_at) : null;
 
                           if (isError) {
                             return (
-                              <div key={msg.id} className="flex justify-center my-2">
-                                <div className="max-w-[90%] bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 shadow-2xs flex items-start gap-2.5">
-                                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-semibold text-rose-900">Notifikasi Sistem Meta WABA</p>
-                                    <p className="text-xs whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-                                    <span className="text-[9px] text-rose-500 block">{msgTime}</span>
+                              <Fragment key={msg.id || `error-${index}`}>
+                                {showDateDivider && (
+                                  <div className="flex justify-center my-3 select-none">
+                                    <span className="bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-semibold px-3 py-1 rounded-full shadow-2xs border border-slate-300/70 dark:border-slate-700">
+                                      {dividerLabel}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex justify-center my-2">
+                                  <div className="max-w-[90%] bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 shadow-2xs flex items-start gap-2.5">
+                                    <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-semibold text-rose-900">Notifikasi Sistem Meta WABA</p>
+                                      <p className="text-xs whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                                      <span className="text-[9px] text-rose-500 block cursor-help" title={msgDateTooltip}>{msgTime}</span>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
+                              </Fragment>
                             );
                           }
 
@@ -2040,52 +2142,160 @@ function WhatsAppAiPage() {
 
                           if (isIncoming) {
                             return (
-                              <div key={msg.id} className="flex justify-start my-1">
-                                <div className="max-w-[88%] xl:max-w-[75%] rounded-2xl p-3.5 shadow-xs bg-white border-2 border-emerald-500/40 text-slate-800 rounded-tl-none ring-2 ring-emerald-500/10">
-                                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-100 text-[11px] font-bold text-emerald-800">
-                                    <div className="flex items-center gap-1.5">
-                                      <User className="w-3.5 h-3.5 text-emerald-600" />
-                                      <span>Balasan Konsumen</span>
+                              <Fragment key={msg.id || `in-${index}`}>
+                                {showDateDivider && (
+                                  <div className="flex justify-center my-3 select-none">
+                                    <span className="bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-semibold px-3 py-1 rounded-full shadow-2xs border border-slate-300/70 dark:border-slate-700">
+                                      {dividerLabel}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex justify-start my-1">
+                                  <div className="max-w-[88%] xl:max-w-[75%] rounded-2xl p-3.5 shadow-xs bg-white border-2 border-emerald-500/40 text-slate-800 rounded-tl-none ring-2 ring-emerald-500/10">
+                                    <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-100 text-[11px] font-bold text-emerald-800">
+                                      <div className="flex items-center gap-1.5">
+                                        <User className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>Balasan Konsumen</span>
+                                      </div>
+                                      {isOrderAgain ? (
+                                        <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs animate-pulse">
+                                          🎯 RESPON TOMBOL: ORDER LAGI
+                                        </Badge>
+                                      ) : isReaction ? (
+                                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[9px] px-1.5 py-0 font-semibold flex items-center gap-1">
+                                          <span>Reaksi</span>
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-semibold">
+                                          Chat Masuk
+                                        </Badge>
+                                      )}
                                     </div>
-                                    {isOrderAgain ? (
-                                      <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] px-2 py-0.5 font-bold shadow-2xs animate-pulse">
-                                        🎯 RESPON TOMBOL: ORDER LAGI
-                                      </Badge>
-                                    ) : isReaction ? (
-                                      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[9px] px-1.5 py-0 font-semibold flex items-center gap-1">
-                                        <span>Reaksi</span>
-                                      </Badge>
+                                    {/* Render Media Image if available */}
+                                    {(msg.media_id || msg.media_url) && (
+                                      <div className="mb-2">
+                                        <div
+                                          onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message !== '[Pelanggan Mengirim Gambar]' ? msg.message : undefined)}
+                                          className="relative group/media overflow-hidden rounded-xl border border-slate-200 bg-slate-100 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
+                                        >
+                                          <img
+                                            src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                            alt="Foto WhatsApp"
+                                            className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
+                                            loading="lazy"
+                                            onError={(e) => {
+                                              const target = e.currentTarget;
+                                              target.style.display = 'none';
+                                              const parent = target.parentElement;
+                                              if (parent) {
+                                                parent.innerHTML = `
+                                                  <div class="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200">
+                                                    <span>🖼️</span>
+                                                    <span>Gambar bukti transfer telah kedaluwarsa dari server WhatsApp.</span>
+                                                  </div>
+                                                `;
+                                              }
+                                            }}
+                                          />
+                                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
+                                            <ZoomIn className="h-4 w-4" />
+                                            <span>Klik untuk Perbesar</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {isReaction ? (
+                                      <div className="flex items-center gap-2.5 py-1">
+                                        <span className="text-2xl filter drop-shadow-xs select-none">{reactionEmoji}</span>
+                                        <div className="text-xs">
+                                          <span className="font-semibold text-emerald-900 block">Reaksi Emotikon</span>
+                                          <span className="text-emerald-700/80 text-[11px]">Konsumen bereaksi terhadap pesan</span>
+                                        </div>
+                                      </div>
                                     ) : (
-                                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 font-semibold">
-                                        Chat Masuk
-                                      </Badge>
+                                      (!msg.media_id && !msg.media_url) || msg.message !== '[Pelanggan Mengirim Gambar]' ? (
+                                        <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
+                                      ) : null
+                                    )}
+
+                                    <div className="flex items-center gap-1.5 justify-end mt-1.5 text-slate-400 text-[9px]">
+                                      <span className="cursor-help" title={msgDateTooltip}>{msgTime}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </Fragment>
+                            );
+                          }
+
+                          return (
+                            <Fragment key={msg.id || `out-${index}`}>
+                              {showDateDivider && (
+                                <div className="flex justify-center my-3 select-none">
+                                  <span className="bg-slate-200/90 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-semibold px-3 py-1 rounded-full shadow-2xs border border-slate-300/70 dark:border-slate-700">
+                                    {dividerLabel}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex justify-end my-1">
+                                <div className={`max-w-[88%] xl:max-w-[75%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none transition-all ${
+                                  isWabaTemplate
+                                    ? "bg-emerald-600 shadow-emerald-700/20"
+                                    : isAi
+                                    ? "bg-blue-600 shadow-blue-700/20"
+                                    : isManual
+                                    ? msg.status === "failed"
+                                      ? "bg-rose-600 shadow-rose-700/20 border border-rose-300"
+                                      : msg.status === "sending"
+                                      ? "bg-amber-600/90 shadow-amber-700/20"
+                                      : "bg-amber-600 shadow-amber-700/20"
+                                    : "bg-slate-700 shadow-slate-800/20"
+                                }`}>
+                                  <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-white/20 text-[11px] font-semibold text-white/90">
+                                    {isWabaTemplate ? (
+                                      <>
+                                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                        <span>Pesan Resmi WABA (Meta HSM)</span>
+                                      </>
+                                    ) : isAi ? (
+                                      <>
+                                        <Bot className="w-3.5 h-3.5 text-cyan-300" />
+                                        <span>Asisten AI DeepSeek</span>
+                                      </>
+                                    ) : isManual ? (
+                                      <>
+                                        <User className="w-3.5 h-3.5 text-amber-200" />
+                                        <span>Balasan Manual CS</span>
+                                        {msg.status === "sending" && (
+                                          <Badge className="bg-amber-500/50 text-amber-100 border-0 text-[9px] px-1.5 py-0 font-normal ml-auto flex items-center gap-1 animate-pulse">
+                                            <Clock className="w-2.5 h-2.5 animate-spin" />
+                                            <span>Mengirim...</span>
+                                          </Badge>
+                                        )}
+                                        {msg.status === "failed" && (
+                                          <Badge className="bg-rose-950/70 text-rose-200 border-0 text-[9px] px-1.5 py-0 font-semibold ml-auto flex items-center gap-1">
+                                            <AlertCircle className="w-2.5 h-2.5 text-rose-300" />
+                                            <span>Gagal Kirim</span>
+                                          </Badge>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <span>Sistem Otomatis</span>
                                     )}
                                   </div>
-                                  {/* Render Media Image if available */}
+
+                                  {/* Render Media Image for Outgoing if available */}
                                   {(msg.media_id || msg.media_url) && (
                                     <div className="mb-2">
                                       <div
-                                        onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message !== '[Pelanggan Mengirim Gambar]' ? msg.message : undefined)}
-                                        className="relative group/media overflow-hidden rounded-xl border border-slate-200 bg-slate-100 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
+                                        onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message)}
+                                        className="relative group/media overflow-hidden rounded-xl border border-white/20 bg-black/10 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
                                       >
                                         <img
                                           src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                          alt="Foto WhatsApp"
+                                          alt="Media Outgoing"
                                           className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
                                           loading="lazy"
-                                          onError={(e) => {
-                                            const target = e.currentTarget;
-                                            target.style.display = 'none';
-                                            const parent = target.parentElement;
-                                            if (parent) {
-                                              parent.innerHTML = `
-                                                <div class="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200">
-                                                  <span>🖼️</span>
-                                                  <span>Gambar bukti transfer telah kedaluwarsa dari server WhatsApp.</span>
-                                                </div>
-                                              `;
-                                            }
-                                          }}
                                         />
                                         <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
                                           <ZoomIn className="h-4 w-4" />
@@ -2095,141 +2305,51 @@ function WhatsAppAiPage() {
                                     </div>
                                   )}
 
-                                  {isReaction ? (
-                                    <div className="flex items-center gap-2.5 py-1">
-                                      <span className="text-2xl filter drop-shadow-xs select-none">{reactionEmoji}</span>
-                                      <div className="text-xs">
-                                        <span className="font-semibold text-emerald-900 block">Reaksi Emotikon</span>
-                                        <span className="text-emerald-700/80 text-[11px]">Konsumen bereaksi terhadap pesan</span>
-                                      </div>
+                                  <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
+
+                                  {/* Retry button if failed */}
+                                  {msg.status === "failed" && (
+                                    <div className="mt-2.5 pt-2 border-t border-rose-400/40 flex items-center justify-between text-xs gap-2">
+                                      <span className="text-rose-200 text-[10px] truncate max-w-[200px]" title={msg.errorMsg}>
+                                        {msg.errorMsg || "Gagal menghubungi Meta WABA"}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSendManualReply(msg)}
+                                        className="text-[11px] bg-white text-rose-700 hover:bg-rose-50 font-bold px-2.5 py-1 rounded-lg cursor-pointer transition-colors shadow-2xs shrink-0 flex items-center gap-1 active:scale-95"
+                                      >
+                                        <span>↺ Coba Lagi</span>
+                                      </button>
                                     </div>
-                                  ) : (
-                                    (!msg.media_id && !msg.media_url) || msg.message !== '[Pelanggan Mengirim Gambar]' ? (
-                                      <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
-                                    ) : null
                                   )}
 
-                                  <div className="flex items-center gap-1.5 justify-end mt-1.5 text-slate-400 text-[9px]">
-                                    <span>{msgTime}</span>
+                                  <div className="flex items-center gap-1.5 justify-end mt-1.5 text-white/75">
+                                    <span className="text-[9px] cursor-help" title={msgDateTooltip}>{msgTime}</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-wider">
+                                      {isWabaTemplate ? "WABA TEMPLATE" : isAi ? "AI DEEPSEEK" : isManual ? "CS MANUAL" : "SISTEM"}
+                                    </span>
+                                    {/* Delivery & Read Receipts (Sent ✓, Delivered ✓✓, Read ✓✓ Biru/Tebal) */}
+                                    {msg.status === "sending" ? (
+                                      <Clock className="w-3 h-3 text-amber-200 animate-spin" title="Sedang meluncur..." />
+                                    ) : msg.status === "failed" || msg.delivery_status === "failed" ? (
+                                      <AlertCircle className="w-3.5 h-3.5 text-rose-300" title="Gagal terkirim" />
+                                    ) : msg.delivery_status === "read" ? (
+                                      <span className="inline-flex items-center text-cyan-300 font-extrabold" title="Pesan sudah dibaca oleh konsumen (Centang 2 Tebal / Biru)">
+                                        <CheckCheck className="w-3.5 h-3.5 text-cyan-300 stroke-[3] filter drop-shadow-[0_0_2px_rgba(103,232,249,0.8)]" />
+                                      </span>
+                                    ) : msg.delivery_status === "delivered" ? (
+                                      <span className="inline-flex items-center text-white/80" title="Pesan sudah sampai di HP konsumen (Centang 2 Abu-abu)">
+                                        <CheckCheck className="w-3.5 h-3.5 text-white/80 stroke-[2.2]" />
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center text-white/70" title="Pesan terkirim ke server WhatsApp (Centang 1)">
+                                        <Check className="w-3.5 h-3.5 text-white/70 stroke-[2.2]" />
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
-                            );
-                          }
-
-                          return (
-                            <div key={msg.id} className="flex justify-end my-1">
-                              <div className={`max-w-[88%] xl:max-w-[75%] rounded-2xl p-3.5 shadow-sm text-white rounded-tr-none transition-all ${
-                                isWabaTemplate
-                                  ? "bg-emerald-600 shadow-emerald-700/20"
-                                  : isAi
-                                  ? "bg-blue-600 shadow-blue-700/20"
-                                  : isManual
-                                  ? msg.status === "failed"
-                                    ? "bg-rose-600 shadow-rose-700/20 border border-rose-300"
-                                    : msg.status === "sending"
-                                    ? "bg-amber-600/90 shadow-amber-700/20"
-                                    : "bg-amber-600 shadow-amber-700/20"
-                                  : "bg-slate-700 shadow-slate-800/20"
-                              }`}>
-                                <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-white/20 text-[11px] font-semibold text-white/90">
-                                  {isWabaTemplate ? (
-                                    <>
-                                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                                      <span>Pesan Resmi WABA (Meta HSM)</span>
-                                    </>
-                                  ) : isAi ? (
-                                    <>
-                                      <Bot className="w-3.5 h-3.5 text-cyan-300" />
-                                      <span>Asisten AI DeepSeek</span>
-                                    </>
-                                  ) : isManual ? (
-                                    <>
-                                      <User className="w-3.5 h-3.5 text-amber-200" />
-                                      <span>Balasan Manual CS</span>
-                                      {msg.status === "sending" && (
-                                        <Badge className="bg-amber-500/50 text-amber-100 border-0 text-[9px] px-1.5 py-0 font-normal ml-auto flex items-center gap-1 animate-pulse">
-                                          <Clock className="w-2.5 h-2.5 animate-spin" />
-                                          <span>Mengirim...</span>
-                                        </Badge>
-                                      )}
-                                      {msg.status === "failed" && (
-                                        <Badge className="bg-rose-950/70 text-rose-200 border-0 text-[9px] px-1.5 py-0 font-semibold ml-auto flex items-center gap-1">
-                                          <AlertCircle className="w-2.5 h-2.5 text-rose-300" />
-                                          <span>Gagal Kirim</span>
-                                        </Badge>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <span>Sistem Otomatis</span>
-                                  )}
-                                </div>
-
-                                {/* Render Media Image for Outgoing if available */}
-                                {(msg.media_id || msg.media_url) && (
-                                  <div className="mb-2">
-                                    <div
-                                      onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message)}
-                                      className="relative group/media overflow-hidden rounded-xl border border-white/20 bg-black/10 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
-                                    >
-                                      <img
-                                        src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                        alt="Media Outgoing"
-                                        className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
-                                        loading="lazy"
-                                      />
-                                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
-                                        <ZoomIn className="h-4 w-4" />
-                                        <span>Klik untuk Perbesar</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-
-                                <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
-
-                                {/* Retry button if failed */}
-                                {msg.status === "failed" && (
-                                  <div className="mt-2.5 pt-2 border-t border-rose-400/40 flex items-center justify-between text-xs gap-2">
-                                    <span className="text-rose-200 text-[10px] truncate max-w-[200px]" title={msg.errorMsg}>
-                                      {msg.errorMsg || "Gagal menghubungi Meta WABA"}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSendManualReply(msg)}
-                                      className="text-[11px] bg-white text-rose-700 hover:bg-rose-50 font-bold px-2.5 py-1 rounded-lg cursor-pointer transition-colors shadow-2xs shrink-0 flex items-center gap-1 active:scale-95"
-                                    >
-                                      <span>↺ Coba Lagi</span>
-                                    </button>
-                                  </div>
-                                )}
-
-                                <div className="flex items-center gap-1.5 justify-end mt-1.5 text-white/75">
-                                  <span className="text-[9px]">{msgTime}</span>
-                                  <span className="text-[9px] font-bold uppercase tracking-wider">
-                                    {isWabaTemplate ? "WABA TEMPLATE" : isAi ? "AI DEEPSEEK" : isManual ? "CS MANUAL" : "SISTEM"}
-                                  </span>
-                                  {/* Delivery & Read Receipts (Sent ✓, Delivered ✓✓, Read ✓✓ Biru/Tebal) */}
-                                  {msg.status === "sending" ? (
-                                    <Clock className="w-3 h-3 text-amber-200 animate-spin" title="Sedang meluncur..." />
-                                  ) : msg.status === "failed" || msg.delivery_status === "failed" ? (
-                                    <AlertCircle className="w-3.5 h-3.5 text-rose-300" title="Gagal terkirim" />
-                                  ) : msg.delivery_status === "read" ? (
-                                    <span className="inline-flex items-center text-cyan-300 font-extrabold" title="Pesan sudah dibaca oleh konsumen (Centang 2 Tebal / Biru)">
-                                      <CheckCheck className="w-3.5 h-3.5 text-cyan-300 stroke-[3] filter drop-shadow-[0_0_2px_rgba(103,232,249,0.8)]" />
-                                    </span>
-                                  ) : msg.delivery_status === "delivered" ? (
-                                    <span className="inline-flex items-center text-white/80" title="Pesan sudah sampai di HP konsumen (Centang 2 Abu-abu)">
-                                      <CheckCheck className="w-3.5 h-3.5 text-white/80 stroke-[2.2]" />
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center text-white/70" title="Pesan terkirim ke server WhatsApp (Centang 1)">
-                                      <Check className="w-3.5 h-3.5 text-white/70 stroke-[2.2]" />
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                            </Fragment>
                           );
                         })}
                         <div ref={chatEndRef} />
