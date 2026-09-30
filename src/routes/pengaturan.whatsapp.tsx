@@ -690,6 +690,14 @@ function WhatsAppPage() {
   const qrImageUrl = selectedSlot === "main" ? mainQrImageUrl : campaignQrImageUrl;
   const actionLoading = selectedSlot === "main" ? actionLoadingMain : actionLoadingCampaign;
 
+  // Status kesiapan saluran resi yang aktif (WABA selalu siap, WA 2 cek campaignSessionStatus, WA 1 cek mainSessionStatus)
+  const isResiChannelReady =
+    defaultResiChannel === "waba"
+      ? true
+      : defaultResiChannel === "waha_campaign"
+      ? campaignSessionStatus === "WORKING"
+      : mainSessionStatus === "WORKING";
+
   // Queue Running States
   const [queueActive, setQueueActive] = useState(false);
   const [queueIndex, setQueueIndex] = useState(0);
@@ -1246,8 +1254,9 @@ function WhatsAppPage() {
       toast.message("Antrean pengiriman dijeda.");
     } else {
       // Start
-      if (defaultResiChannel !== "waba" && sessionStatus !== "WORKING") {
-        toast.error("Hubungkan sesi WhatsApp Anda terlebih dahulu!");
+      if (!isResiChannelReady) {
+        const channelLabel = defaultResiChannel === "waha_campaign" ? "WA 2 (Nomor Kampanye)" : "WA 1 (CS Utama)";
+        toast.error(`Sesi ${channelLabel} belum terhubung! Pastikan sesi WhatsApp aktif (WORKING) terlebih dahulu.`);
         return;
       }
       if (!pendingOrders || pendingOrders.length === 0) {
@@ -1358,7 +1367,7 @@ function WhatsAppPage() {
   // Browser-based scheduler checker (Runs every minute)
   useEffect(() => {
     const checkSchedule = setInterval(() => {
-      if (!autoSchedule || queueActiveRef.current || sessionStatus !== "WORKING") return;
+      if (!autoSchedule || queueActiveRef.current || !isResiChannelReady) return;
 
       const now = new Date();
       const currentHrsMin = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -1372,7 +1381,7 @@ function WhatsAppPage() {
     }, 60000); // Check every minute
 
     return () => clearInterval(checkSchedule);
-  }, [autoSchedule, scheduleTime, pendingOrders, sessionStatus, intervalVal]);
+  }, [autoSchedule, scheduleTime, pendingOrders, isResiChannelReady, intervalVal]);
 
   // Clean timer on unmount
   useEffect(() => {
@@ -1992,8 +2001,17 @@ function WhatsAppPage() {
                 <CardTitle className="text-lg flex items-center gap-2">
                   <FileSpreadsheet className="w-5 h-5 text-honey" /> Antrean Pengiriman Resi
                 </CardTitle>
-                <CardDescription>
-                  Ada <strong>{pendingOrders?.length || 0}</strong> pesanan yang resinya siap dikirim.
+                <CardDescription className="flex items-center gap-2 flex-wrap mt-1">
+                  <span>Ada <strong>{pendingOrders?.length || 0}</strong> pesanan yang resinya siap dikirim.</span>
+                  <Badge variant="outline" className={`text-[11px] font-medium ${
+                    defaultResiChannel === "waba" 
+                      ? "border-emerald-400 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30" 
+                      : defaultResiChannel === "waha_campaign"
+                      ? "border-purple-400 text-purple-600 bg-purple-50 dark:bg-purple-950/30"
+                      : "border-blue-400 text-blue-600 bg-blue-50 dark:bg-blue-950/30"
+                  }`}>
+                    Jalur: {defaultResiChannel === "waba" ? "WABA Resmi Meta" : defaultResiChannel === "waha_campaign" ? "WA 2 Kampanye" : "WA 1 CS Utama"} ({isResiChannelReady ? "Siap" : "Offline"})
+                  </Badge>
                 </CardDescription>
               </div>
 
@@ -2009,9 +2027,10 @@ function WhatsAppPage() {
                 )}
                 <Button 
                   onClick={toggleQueue} 
-                  disabled={!pendingOrders || pendingOrders.length === 0 || sessionStatus !== "WORKING"}
+                  disabled={!pendingOrders || pendingOrders.length === 0 || !isResiChannelReady}
                   variant={queueActive ? "destructive" : "default"}
                   className={queueActive ? "" : "bg-honey hover:bg-honey-dark text-honey-foreground"}
+                  title={!isResiChannelReady ? `Sesi WhatsApp untuk jalur ${defaultResiChannel === "waha_campaign" ? "WA 2" : "WA 1"} belum terhubung` : undefined}
                 >
                   {queueActive ? (
                     <><Pause className="w-4 h-4 mr-2" /> Jeda Pengiriman</>
