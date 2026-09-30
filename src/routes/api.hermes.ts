@@ -148,34 +148,40 @@ async function handleHermesRequest(request: Request, method: 'GET' | 'POST') {
       const salesRes = await pool.query(
         `SELECT 
            COUNT(*)::int as total_orders, 
-           COALESCE(SUM(total_amount), 0)::numeric as total_omset
+           COALESCE(SUM(subtotal_gross), 0)::numeric as total_omset
          FROM orders 
-         WHERE (created_at AT TIME ZONE 'Asia/Jakarta')::date = $1::date`,
+         WHERE (created_at AT TIME ZONE 'Asia/Jakarta')::date = $1::date
+           AND COALESCE(returned, false) = false`,
         [todayStr]
       );
       const todayOmset = Number(salesRes.rows[0]?.total_omset || 0);
       const todayOrdersCount = Number(salesRes.rows[0]?.total_orders || 0);
 
       // Order Tags count (Pending vs Done)
-      const tagsRes = await pool.query(
-        `SELECT tag, COUNT(*)::int as count 
-         FROM whatsapp_chat_tags 
-         GROUP BY tag`
-      );
       let pendingOrders = 0;
       let completedOrders = 0;
-      tagsRes.rows.forEach(r => {
-        if (r.tag === 'order') pendingOrders = r.count;
-        if (r.tag === 'done') completedOrders = r.count;
-      });
+      try {
+        const tagsRes = await pool.query(
+          `SELECT tag, COUNT(*)::int as count 
+           FROM whatsapp_chat_tags 
+           GROUP BY tag`
+        );
+        tagsRes.rows.forEach(r => {
+          if (r.tag === 'order') pendingOrders = r.count;
+          if (r.tag === 'done') completedOrders = r.count;
+        });
+      } catch (e) {}
 
       // Unread WhatsApp Chats
-      const unreadRes = await pool.query(
-        `SELECT COUNT(DISTINCT chat_id)::int as unread_count 
-         FROM whatsapp_chat_logs 
-         WHERE direction = 'incoming' AND is_read = false AND channel = 'waba'`
-      );
-      const unreadChats = Number(unreadRes.rows[0]?.unread_count || 0);
+      let unreadChats = 0;
+      try {
+        const unreadRes = await pool.query(
+          `SELECT COUNT(DISTINCT chat_id)::int as unread_count 
+           FROM whatsapp_chat_logs 
+           WHERE direction = 'incoming' AND is_read = false`
+        );
+        unreadChats = Number(unreadRes.rows[0]?.unread_count || 0);
+      } catch (e) {}
 
       // Today's Scalev Leads
       let todayLeads = 0;
@@ -329,9 +335,9 @@ async function handleHermesRequest(request: Request, method: 'GET' | 'POST') {
       let packagingItems: any[] = [];
       try {
         const packRes = await pool.query(
-          `SELECT item_name, quantity, unit, min_stock 
+          `SELECT name as item_name, current_stock as quantity, unit, min_stock 
            FROM packaging_items 
-           ORDER BY quantity ASC`
+           ORDER BY current_stock ASC`
         );
         packagingItems = packRes.rows;
       } catch (e) {
@@ -341,10 +347,9 @@ async function handleHermesRequest(request: Request, method: 'GET' | 'POST') {
       let dandangItems: any[] = [];
       try {
         const dandangRes = await pool.query(
-          `SELECT dandang_number, honey_type, remaining_kg, status 
+          `SELECT id, honey_type, kg_remaining as remaining_kg, min_kg, avg_cost_per_kg 
            FROM dandang_balance 
-           WHERE status = 'active'
-           ORDER BY dandang_number ASC`
+           ORDER BY honey_type ASC`
         );
         dandangItems = dandangRes.rows;
       } catch (e) {
@@ -380,14 +385,18 @@ async function handleHermesRequest(request: Request, method: 'GET' | 'POST') {
       }
 
       // Customer orders
-      const ordersRes = await pool.query(
-        `SELECT id, order_number, total_amount, status, created_at 
-         FROM orders 
-         WHERE customer_phone LIKE '%' || $1 || '%'
-         ORDER BY created_at DESC 
-         LIMIT 10`,
-        [cleanPhone]
-      );
+      let customerOrders: any[] = [];
+      try {
+        const ordersRes = await pool.query(
+          `SELECT id, subtotal_gross as total_amount, net_revenue, tracking_number, created_at 
+           FROM orders 
+           WHERE customer_phone LIKE '%' || $1 || '%'
+           ORDER BY created_at DESC 
+           LIMIT 10`,
+          [cleanPhone]
+        );
+        customerOrders = ordersRes.rows;
+      } catch (e) {}
 
       // Current Tag
       const tagRes = await pool.query(
@@ -396,14 +405,18 @@ async function handleHermesRequest(request: Request, method: 'GET' | 'POST') {
       );
 
       // Recent 5 chat messages
-      const chatRes = await pool.query(
-        `SELECT customer_name, message, direction, created_at 
-         FROM whatsapp_chat_logs 
-         WHERE customer_phone = $1 OR chat_id LIKE '%' || $1 || '%'
-         ORDER BY created_at DESC 
-         LIMIT 5`,
-        [cleanPhone]
-      );
+      let recentChats: any[] = [];
+      try {
+        const chatRes = await pool.query(
+          `SELECT customer_name, message, direction, created_at 
+           FROM whatsapp_chat_logs 
+           WHERE customer_phone = $1 OR chat_id LIKE '%' || $1 || '%'
+           ORDER BY created_at DESC 
+           LIMIT 5`,
+          [cleanPhone]
+        );
+        recentChats = chatRes.rows.reverse();
+      } catch (e) {}
 
       await pool.end();
       return new Response(JSON.stringify({
@@ -411,8 +424,8 @@ async function handleHermesRequest(request: Request, method: 'GET' | 'POST') {
         action: 'customer',
         phone: cleanPhone,
         current_tag: tagRes.rows[0]?.tag || null,
-        recent_chats: chatRes.rows.reverse(),
-        recent_orders: ordersRes.rows
+        recent_chats: recentChats,
+        recent_orders: customerOrders
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
