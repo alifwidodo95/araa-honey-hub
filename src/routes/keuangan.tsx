@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
+import { syncMetaAdsSpendServerFn } from "@/lib/meta-ads.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,25 @@ function Page() {
 
   const startDate = dateRange.startDate;
   const endDate = dateRange.endDate;
+
+  const qc = useQueryClient();
+
+  // Otomatis sinkronisasi biaya iklan Meta Ads di latar belakang setiap kali membuka Finance Hub
+  useEffect(() => {
+    let active = true;
+    syncMetaAdsSpendServerFn({ data: 14 })
+      .then((res) => {
+        if (active && res && res.success && res.count && res.count > 0) {
+          qc.invalidateQueries({ queryKey: ["fin-biz"] });
+        }
+      })
+      .catch((err) => {
+        console.warn("[Finance Hub] Background Meta Ads auto-sync error:", err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [qc]);
 
   const { data: orders } = useQuery({
     queryKey: ["fin-orders", startDate, endDate],

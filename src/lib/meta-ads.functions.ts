@@ -494,3 +494,88 @@ export const getRealAdsClosingDetails = createServerFn({ method: "GET" })
       throw new Error(err?.message || "Gagal memuat detail closing iklan");
     }
   });
+
+/**
+ * Otomatis sinkronisasi biaya iklan Meta Ads ke tabel expenses_business
+ * Berjalan otomatis di latar belakang saat membuka Finance Hub maupun via cron job
+ */
+export const syncMetaAdsSpendServerFn = createServerFn({ method: "POST" })
+  .validator((daysBack?: number) => (typeof daysBack === "number" ? daysBack : 7))
+  .handler(async ({ data: daysBack }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      const configRes = await pool.query("SELECT value FROM public.app_settings WHERE key = 'meta_ads_config'");
+      if (configRes.rowCount === 0) {
+        await pool.end();
+        return { success: false, message: "Meta Ads config not found in app_settings", updated: 0, inserted: 0 };
+      }
+
+      const { token, defaultAccountId } = configRes.rows[0].value || {};
+      if (!token || !defaultAccountId) {
+        await pool.end();
+        return { success: false, message: "Token or defaultAccountId is missing", updated: 0, inserted: 0 };
+      }
+
+      const effectiveDays = daysBack || 7;
+      const now = new Date();
+      const wibNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+      const todayStr = wibNow.toISOString().split("T")[0];
+      const pastDate = new Date(wibNow.getTime() - effectiveDays * 24 * 60 * 60 * 1000);
+      const pastStr = pastDate.toISOString().split("T")[0];
+
+      const fbUrl = `https://graph.facebook.com/v19.0/${defaultAccountId}/insights?time_range=%7B%22since%22%3A%22${pastStr}%22%2C%22until%22%3A%22${todayStr}%22%7D&time_increment=1&fields=spend,date_start,account_name&access_token=${token}`;
+      const fbRes = await fetch(fbUrl);
+
+      if (!fbRes.ok) {
+        const errText = await fbRes.text();
+        await pool.end();
+        return { success: false, message: `Meta API error: ${errText}`, updated: 0, inserted: 0 };
+      }
+
+      const fbJson = (await fbRes.json()) as any;
+      const insights = fbJson.data || [];
+
+      let updated = 0;
+      let inserted = 0;
+
+      for (const item of insights) {
+        const date = item.date_start;
+        const amount = Number(item.spend || 0);
+        if (amount <= 0) continue;
+
+        const accountName = item.account_name || defaultAccountId;
+        const note = `Auto-sync dari Meta Ads API (BM: ${accountName})`;
+
+        const existRes = await pool.query(
+          "SELECT id, amount FROM public.expenses_business WHERE category = 'meta_ads' AND occurred_on = $1 LIMIT 1",
+          [date]
+        );
+
+        if (existRes.rowCount && existRes.rowCount > 0) {
+          const row = existRes.rows[0];
+          if (Number(row.amount) !== amount) {
+            await pool.query(
+              "UPDATE public.expenses_business SET amount = $1, note = $2 WHERE id = $3",
+              [amount, note, row.id]
+            );
+            updated++;
+          }
+        } else {
+          await pool.query(
+            "INSERT INTO public.expenses_business (category, amount, occurred_on, note) VALUES ('meta_ads', $1, $2, $3)",
+            [amount, date, note]
+          );
+          inserted++;
+        }
+      }
+
+      await pool.end();
+      return { success: true, count: updated + inserted, updated, inserted, daysChecked: insights.length };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[syncMetaAdsSpendServerFn Error]:", err);
+      return { success: false, message: err?.message || "Sync error", updated: 0, inserted: 0 };
+    }
+  });
