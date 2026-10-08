@@ -617,9 +617,10 @@ function WhatsAppAiPage() {
       }
       await Promise.all(promises);
 
-      // Invalidate both chat logs & sidebar unreplied badge
+      // Invalidate chat logs, sidebar unreplied badge, and dedicated conversation query
       qc.invalidateQueries({ queryKey: ["whatsapp-chat-logs"] });
       qc.invalidateQueries({ queryKey: ["unreplied-whatsapp-chats"] });
+      qc.invalidateQueries({ queryKey: ["whatsapp-conversation"] });
     } catch (err) {
       console.error("Gagal menandai pesan telah dibaca:", err);
     } finally {
@@ -629,9 +630,30 @@ function WhatsAppAiPage() {
     }
   }, [qc]);
 
-  // Handle clicking chat balloon in left panel
-  const handleSelectChat = (chat: { chat_id: string; customer_phone: string; isUnread?: boolean }) => {
+  // Store metadata for dynamically selected contacts (e.g. from Universal Search)
+  const [selectedCustomerMeta, setSelectedCustomerMeta] = useState<{
+    chat_id: string;
+    customer_name: string;
+    customer_phone: string;
+    formatted_phone: string;
+  } | null>(null);
+
+  // Handle clicking chat balloon in left panel or search results
+  const handleSelectChat = (chat: {
+    chat_id: string;
+    customer_phone: string;
+    customer_name?: string | null;
+    formatted_phone?: string;
+    isUnread?: boolean;
+  }) => {
     setSelectedChatId(chat.chat_id);
+    const cleanPhone = (chat.customer_phone || chat.chat_id.replace(/[^0-9]/g, "")).trim();
+    setSelectedCustomerMeta({
+      chat_id: chat.chat_id,
+      customer_name: chat.customer_name || "Pelanggan",
+      customer_phone: cleanPhone,
+      formatted_phone: chat.formatted_phone || formatDisplayPhone(cleanPhone),
+    });
     if (chat.isUnread) {
       markChatAsRead(chat.chat_id, chat.customer_phone);
     }
@@ -730,6 +752,7 @@ function WhatsAppAiPage() {
         { event: "*", schema: "public", table: "whatsapp_chat_logs" },
         () => {
           refetchLogs();
+          qc.invalidateQueries({ queryKey: ["whatsapp-conversation"] });
         }
       )
       .subscribe();
@@ -737,7 +760,7 @@ function WhatsAppAiPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [refetchLogs]);
+  }, [refetchLogs, qc]);
 
   // 4. Fetch Manual Chat Tags from whatsapp_chat_tags
   const { data: chatTags = [], refetch: refetchTags } = useQuery<{ phone: string; tag: string; updated_at: string }[]>({
@@ -864,6 +887,7 @@ function WhatsAppAiPage() {
         refetchLogs();
         refetchTags();
         refetchPinned();
+        qc.invalidateQueries({ queryKey: ["whatsapp-conversation"] });
       }
     };
     window.addEventListener("focus", handleRefetch);
@@ -872,7 +896,7 @@ function WhatsAppAiPage() {
       window.removeEventListener("focus", handleRefetch);
       document.removeEventListener("visibilitychange", handleRefetch);
     };
-  }, [refetchLogs, refetchTags, refetchPinned]);
+  }, [refetchLogs, refetchTags, refetchPinned, qc]);
 
   // Fast lookup Map: phone digits or chat_id -> WhatsAppPinnedChat
   const pinnedMap = useMemo(() => {
@@ -1194,7 +1218,7 @@ function WhatsAppAiPage() {
     return "upcoming";
   };
 
-  // Grouped unique chats with enriched contact info & response status
+  // Tier 1: Grouped unique chats with enriched contact info & Pinned Contacts Guarantee
   const uniqueChats = useMemo(() => {
     const chatsMap = new Map<string, {
       chat_id: string;
@@ -1261,8 +1285,95 @@ function WhatsAppAiPage() {
       }
     });
 
+    // Tier 1 Guarantee: Ensure all contacts in pinnedChats are present in uniqueChats
+    pinnedChats.forEach(p => {
+      if (!p.is_pinned) return;
+      const cleanPhone = (p.phone || "").replace(/[^0-9]/g, "");
+      const targetChatId = p.chat_id || cleanPhone;
+      if (!targetChatId && !cleanPhone) return;
+
+      // Check if already present by chat_id or phone
+      let existing = chatsMap.get(targetChatId);
+      if (!existing && cleanPhone) {
+        for (const c of chatsMap.values()) {
+          if (c.customer_phone === cleanPhone) {
+            existing = c;
+            break;
+          }
+        }
+      }
+
+      if (existing) {
+        if (p.customer_name && (!existing.customer_name || existing.customer_name === "Pelanggan" || existing.customer_name === "Pelanggan WA")) {
+          existing.customer_name = p.customer_name;
+        }
+      } else {
+        chatsMap.set(targetChatId, {
+          chat_id: targetChatId,
+          latestLog: {
+            id: `pinned-${cleanPhone || targetChatId}`,
+            chat_id: targetChatId,
+            customer_phone: cleanPhone,
+            customer_name: p.customer_name || "Pelanggan",
+            message: p.note ? `📌 ${p.note}` : "(Chat Disematkan)",
+            direction: "outgoing",
+            replied_by: null,
+            channel: "waba",
+            is_read: true,
+            created_at: p.updated_at || p.created_at || new Date().toISOString(),
+          },
+          customer_name: p.customer_name || "Pelanggan",
+          customer_phone: cleanPhone,
+          formatted_phone: formatDisplayPhone(cleanPhone),
+          messageCount: 0,
+          hasIncoming: false,
+          isUnread: false,
+          isOrderAgain: false,
+        });
+      }
+    });
+
+    // Also inject selectedCustomerMeta if selected from Universal Search
+    if (selectedCustomerMeta) {
+      const cleanPhone = (selectedCustomerMeta.customer_phone || selectedCustomerMeta.chat_id.replace(/[^0-9]/g, "")).trim();
+      const targetId = selectedCustomerMeta.chat_id || cleanPhone;
+      let existing = chatsMap.get(targetId);
+      if (!existing && cleanPhone) {
+        for (const c of chatsMap.values()) {
+          if (c.customer_phone === cleanPhone) {
+            existing = c;
+            break;
+          }
+        }
+      }
+      if (!existing && targetId) {
+        chatsMap.set(targetId, {
+          chat_id: targetId,
+          latestLog: {
+            id: `selected-${cleanPhone || targetId}`,
+            chat_id: targetId,
+            customer_phone: cleanPhone,
+            customer_name: selectedCustomerMeta.customer_name || "Pelanggan",
+            message: "(Obrolan Dipilih)",
+            direction: "outgoing",
+            replied_by: null,
+            channel: "waba",
+            is_read: true,
+            created_at: new Date().toISOString(),
+          },
+          customer_name: selectedCustomerMeta.customer_name || "Pelanggan",
+          customer_phone: cleanPhone,
+          formatted_phone: selectedCustomerMeta.formatted_phone || formatDisplayPhone(cleanPhone),
+          messageCount: 0,
+          hasIncoming: false,
+          isUnread: false,
+          isOrderAgain: false,
+        });
+      }
+    }
+
     return Array.from(chatsMap.values());
-  }, [chatLogs, pendingMessages]);
+  }, [chatLogs, pendingMessages, pinnedChats, selectedCustomerMeta]);
 
   // Response status statistics for WABA (all, unread, order, done, pinned)
   const responseCounts = useMemo(() => {
@@ -1354,16 +1465,214 @@ function WhatsAppAiPage() {
     });
   }, [uniqueChats, responseFilter, selectedChatId, chatSearch, chatTagsMap, pinnedMap]);
 
-  // Active chat bubbles (WABA only) with optimistic messages
+  // Tier 2: Dedicated Conversation Query with Pagination & Deep History
+  const activeChatInfo = useMemo(() => {
+    return uniqueChats.find(c => c.chat_id === selectedChatId) || selectedCustomerMeta;
+  }, [uniqueChats, selectedChatId, selectedCustomerMeta]);
+
+  const activeCleanPhone = useMemo(() => {
+    if (!selectedChatId) return "";
+    return (activeChatInfo?.customer_phone || selectedChatId.replace(/[^0-9]/g, "")).trim();
+  }, [activeChatInfo, selectedChatId]);
+
+  const [historyLimit, setHistoryLimit] = useState(50);
+  const prevSelectedChatIdRef = useRef<string | null>(null);
+
+  // Reset pagination limit when selecting another chat
+  useEffect(() => {
+    if (selectedChatId !== prevSelectedChatIdRef.current) {
+      prevSelectedChatIdRef.current = selectedChatId;
+      setHistoryLimit(50);
+    }
+  }, [selectedChatId]);
+
+  // Dedicated query specifically for selected conversation with infinite load-more
+  const {
+    data: conversationLogs = [],
+    refetch: refetchConversation,
+    isLoading: loadingConversation,
+    isFetching: fetchingConversation,
+  } = useQuery<ChatLog[]>({
+    queryKey: ["whatsapp-conversation", selectedChatId, activeCleanPhone, historyLimit],
+    queryFn: async () => {
+      if (!selectedChatId) return [];
+
+      let query = supabase
+        .from("whatsapp_chat_logs" as any)
+        .select("*")
+        .eq("channel", "waba")
+        .order("created_at", { ascending: false })
+        .limit(historyLimit);
+
+      const targets = new Set<string>();
+      if (selectedChatId) targets.add(selectedChatId);
+      if (activeCleanPhone) {
+        targets.add(activeCleanPhone);
+        if (activeCleanPhone.startsWith("62")) {
+          targets.add("0" + activeCleanPhone.slice(2));
+        } else if (activeCleanPhone.startsWith("0")) {
+          targets.add("62" + activeCleanPhone.slice(1));
+        }
+      }
+
+      const orClauses: string[] = [];
+      targets.forEach(t => {
+        orClauses.push(`chat_id.eq.${t}`);
+        orClauses.push(`customer_phone.eq.${t}`);
+      });
+
+      if (orClauses.length > 0) {
+        query = query.or(orClauses.join(","));
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error("Gagal mengambil riwayat percakapan:", error);
+        throw error;
+      }
+      return (data || []) as unknown as ChatLog[];
+    },
+    enabled: !!selectedChatId,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
+  });
+
+  const hasMoreHistory = conversationLogs.length >= historyLimit;
+
+  const handleLoadMoreHistory = () => {
+    setHistoryLimit(prev => prev + 50);
+  };
+
+  // Tier 3: Universal Customer & Chat Search across Supabase (4,848 customers)
+  const isLocalSearchEmpty = Boolean(chatSearch.trim().length >= 2 && filteredChats.length === 0);
+
+  const {
+    data: serverSearchResults = [],
+    isLoading: isSearchingServer
+  } = useQuery<{
+    chat_id: string;
+    customer_name: string;
+    customer_phone: string;
+    formatted_phone: string;
+    latest_message?: string;
+    created_at?: string;
+    source: 'chat_logs' | 'orders';
+  }[]>({
+    queryKey: ["whatsapp-universal-search", chatSearch.trim()],
+    queryFn: async () => {
+      const q = chatSearch.trim();
+      if (!q || q.length < 2) return [];
+
+      const cleanDigits = q.replace(/[^0-9]/g, "");
+      const resultsMap = new Map<string, {
+        chat_id: string;
+        customer_name: string;
+        customer_phone: string;
+        formatted_phone: string;
+        latest_message?: string;
+        created_at?: string;
+        source: 'chat_logs' | 'orders';
+      }>();
+
+      // 1. Search in whatsapp_chat_logs for historical conversations
+      try {
+        let logQuery = supabase
+          .from("whatsapp_chat_logs" as any)
+          .select("chat_id, customer_phone, customer_name, message, created_at")
+          .eq("channel", "waba")
+          .order("created_at", { ascending: false })
+          .limit(25);
+
+        if (cleanDigits && cleanDigits.length >= 3) {
+          logQuery = logQuery.or(`customer_phone.ilike.%${cleanDigits}%,chat_id.ilike.%${cleanDigits}%,customer_name.ilike.%${q}%`);
+        } else {
+          logQuery = logQuery.ilike("customer_name", `%${q}%`);
+        }
+
+        const { data: logsData } = await logQuery;
+        if (logsData) {
+          logsData.forEach((item: any) => {
+            const phone = (item.customer_phone || item.chat_id?.replace(/[^0-9]/g, "") || "").trim();
+            const id = item.chat_id || phone;
+            if (id && !resultsMap.has(id)) {
+              resultsMap.set(id, {
+                chat_id: id,
+                customer_name: item.customer_name || "Pelanggan",
+                customer_phone: phone,
+                formatted_phone: formatDisplayPhone(phone),
+                latest_message: item.message,
+                created_at: item.created_at,
+                source: 'chat_logs',
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Gagal cari chat logs server:", err);
+      }
+
+      // 2. Search in orders table for customer records (4,848 customer pool)
+      try {
+        let ordersQuery = supabase
+          .from("orders" as any)
+          .select("customer_name, customer_phone, created_at")
+          .order("created_at", { ascending: false })
+          .limit(25);
+
+        if (cleanDigits && cleanDigits.length >= 3) {
+          ordersQuery = ordersQuery.or(`customer_phone.ilike.%${cleanDigits}%,customer_name.ilike.%${q}%`);
+        } else {
+          ordersQuery = ordersQuery.ilike("customer_name", `%${q}%`);
+        }
+
+        const { data: ordersData } = await ordersQuery;
+        if (ordersData) {
+          ordersData.forEach((item: any) => {
+            if (!item.customer_phone) return;
+            const phone = item.customer_phone.replace(/[^0-9]/g, "").trim();
+            if (!phone) return;
+            if (!resultsMap.has(phone)) {
+              resultsMap.set(phone, {
+                chat_id: phone,
+                customer_name: item.customer_name || "Pelanggan",
+                customer_phone: phone,
+                formatted_phone: formatDisplayPhone(phone),
+                latest_message: "(Pelanggan Database Orders)",
+                created_at: item.created_at,
+                source: 'orders',
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Gagal cari orders server:", err);
+      }
+
+      return Array.from(resultsMap.values());
+    },
+    enabled: isLocalSearchEmpty,
+    staleTime: 30000,
+  });
+
+  // Active chat bubbles with Tier 2 deep history and zero-delay optimistic messages
   const selectedChatMessages = useMemo(() => {
     if (!selectedChatId) return [];
-    const serverMessages = chatLogs
-      .filter(log => log.chat_id === selectedChatId && log.channel === "waba")
-      .reverse(); // Order chronological (oldest to newest)
+
+    let serverMessages: ChatLog[] = [];
+    if (conversationLogs.length > 0) {
+      serverMessages = [...conversationLogs].reverse();
+    } else if (loadingConversation) {
+      // Instant cache fallback from Tier 1 chatLogs while Tier 2 loads
+      serverMessages = chatLogs
+        .filter(log => (log.chat_id === selectedChatId || (activeCleanPhone && log.customer_phone === activeCleanPhone)) && log.channel === "waba")
+        .reverse();
+    }
 
     // Current pending messages for selected chat
     const currentPending = pendingMessages.filter(p => {
-      if (p.chat_id !== selectedChatId) return false;
+      const matchChat = p.chat_id === selectedChatId || (activeCleanPhone && p.customer_phone === activeCleanPhone);
+      if (!matchChat) return false;
+
       // Filter out if server already contains this exact message within 30 seconds
       const pTime = new Date(p.created_at).getTime();
       const alreadyInServer = serverMessages.some(s => 
@@ -1375,12 +1684,21 @@ function WhatsAppAiPage() {
     });
 
     return [...serverMessages, ...currentPending];
-  }, [chatLogs, selectedChatId, pendingMessages]);
+  }, [conversationLogs, loadingConversation, chatLogs, selectedChatId, activeCleanPhone, pendingMessages]);
 
-  // Scroll to bottom when selected chat messages change
+  // Intelligent scroll: scroll to bottom on chat switch or new sent/received messages, but preserve scroll on loading older history
+  const prevLimitRef = useRef(historyLimit);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selectedChatMessages]);
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    if (historyLimit === prevLimitRef.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevLimitRef.current = historyLimit;
+  }, [selectedChatMessages, historyLimit]);
 
   // Auto-mark active chat as read if new incoming messages arrive while chat is open
   useEffect(() => {
@@ -1542,6 +1860,7 @@ function WhatsAppAiPage() {
         markChatAsRead(selectedChatId, customerPhone);
       }
       refetchLogs();
+      refetchConversation();
     } catch (err: any) {
       // Failed: mark as failed with error details for retry
       setPendingMessages(prev => prev.map(p => 
@@ -1575,6 +1894,7 @@ function WhatsAppAiPage() {
       if (error) throw error;
       toast.success(`Obrolan dengan ${chat.customer_name || cleanPhone} berhasil ditandai selesai!`);
       refetchLogs();
+      refetchConversation();
     } catch (err: any) {
       toast.error("Gagal menandai obrolan: " + (err.message || "Error"));
     } finally {
@@ -1811,15 +2131,105 @@ function WhatsAppAiPage() {
             </CardHeader>
             <CardContent className="p-0 overflow-y-auto flex-1">
               {filteredChats.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
-                  <Phone className="h-8 w-8 mb-2 opacity-50 text-amber-500" />
-                  <p className="text-sm font-medium">
-                    {chatSearch || responseFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat WABA."}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {chatSearch || responseFilter !== "all" ? "Coba ganti kata kunci pencarian atau status respon." : "Pesan masuk/keluar WABA akan muncul di sini secara otomatis."}
-                  </p>
-                </div>
+                chatSearch.trim().length >= 2 ? (
+                  isSearchingServer ? (
+                    <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center space-y-2">
+                      <RefreshCw className="h-6 w-6 animate-spin text-amber-500" />
+                      <p className="text-xs font-semibold text-slate-700">Mencari di seluruh database pelanggan...</p>
+                      <p className="text-[11px] text-slate-400">Menelusuri 4.848 kontak di Supabase</p>
+                    </div>
+                  ) : serverSearchResults.length > 0 ? (
+                    <div className="divide-y divide-slate-100">
+                      <div className="bg-amber-50/80 border-b border-amber-200/70 px-3.5 py-2 text-[11px] font-semibold text-amber-900 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Search className="h-3.5 w-3.5 text-amber-600" />
+                          <span>Hasil Pencarian Database ({serverSearchResults.length})</span>
+                        </span>
+                        <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-mono font-bold">
+                          4.848 Pelanggan
+                        </span>
+                      </div>
+                      {serverSearchResults.map((item) => {
+                        const isSelected = selectedChatId === item.chat_id;
+                        return (
+                          <div
+                            key={item.chat_id}
+                            onClick={() => handleSelectChat({
+                              chat_id: item.chat_id,
+                              customer_phone: item.customer_phone,
+                              customer_name: item.customer_name,
+                              formatted_phone: item.formatted_phone,
+                            })}
+                            className={`w-full p-3.5 text-left flex items-start justify-between gap-2.5 hover:bg-slate-50/80 transition-colors cursor-pointer group ${
+                              isSelected ? "bg-amber-50/80 border-r-4 border-r-amber-500 shadow-xs" : ""
+                            }`}
+                          >
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-amber-600 font-bold shrink-0">
+                                  {item.source === 'orders' ? '🛒' : '💬'}
+                                </span>
+                                <p className="font-semibold text-sm truncate text-slate-900 group-hover:text-amber-700 transition-colors">
+                                  {item.customer_name}
+                                </p>
+                                <Badge variant="outline" className="text-[9px] px-1 py-0 bg-slate-50 border-slate-200 text-slate-600">
+                                  {item.source === 'orders' ? 'Database Order' : 'Riwayat Chat'}
+                                </Badge>
+                              </div>
+                              <p className="text-[11px] font-mono font-medium text-emerald-700">
+                                {item.formatted_phone || `+${item.customer_phone}`}
+                              </p>
+                              <p className="text-xs truncate text-slate-500">
+                                {item.latest_message || "(Klik untuk membuka obrolan)"}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
+                      <Search className="h-8 w-8 mb-2 opacity-40 text-slate-400" />
+                      <p className="text-sm font-medium text-slate-700">
+                        Tidak ditemukan kontak yang cocok
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                        Tidak ada kecocokan nama/nomor "{chatSearch}" di 300 chat terbaru maupun 4.848 pelanggan di Supabase.
+                      </p>
+                      {(() => {
+                        const cleanDigits = chatSearch.replace(/[^0-9]/g, "");
+                        if (cleanDigits.length >= 8) {
+                          return (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSelectChat({
+                                chat_id: cleanDigits,
+                                customer_phone: cleanDigits,
+                                customer_name: "Pelanggan Baru",
+                                formatted_phone: formatDisplayPhone(cleanDigits),
+                              })}
+                              className="mt-3 text-xs text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer shadow-2xs"
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1" /> Mulai Chat Baru ke +{cleanDigits}
+                            </Button>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center">
+                    <Phone className="h-8 w-8 mb-2 opacity-50 text-amber-500" />
+                    <p className="text-sm font-medium">
+                      {chatSearch || responseFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat WABA."}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {chatSearch || responseFilter !== "all" ? "Coba ketik minimal 2 karakter untuk mencari di seluruh 4.848 pelanggan." : "Pesan masuk/keluar WABA akan muncul di sini secara otomatis."}
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="divide-y divide-slate-100">
                   {filteredChats.map((chat) => {
@@ -2055,7 +2465,7 @@ function WhatsAppAiPage() {
             {selectedChatId ? (
               <>
                 {(() => {
-                  const activeChat = uniqueChats.find(c => c.chat_id === selectedChatId);
+                  const activeChat = uniqueChats.find(c => c.chat_id === selectedChatId) || selectedCustomerMeta;
                   const isGoodName = activeChat?.customer_name && activeChat.customer_name !== "Pelanggan" && activeChat.customer_name !== "Meta Status";
                   const displayName = isGoodName ? activeChat.customer_name : "Pelanggan";
                   const displayPhone = activeChat?.formatted_phone || formatDisplayPhone(selectedChatId.replace(/[^0-9]/g, ""));
@@ -2261,7 +2671,7 @@ function WhatsAppAiPage() {
                           )}
 
                           {/* Quick Mark Read button if chat is unread */}
-                          {activeChat?.isUnread && (
+                          {(activeChat as any)?.isUnread && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -2332,6 +2742,55 @@ function WhatsAppAiPage() {
                       )}
 
                       <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/40 space-y-3.5">
+                        {/* Tier 2: Load More History Button */}
+                        {hasMoreHistory && (
+                          <div className="flex justify-center my-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={fetchingConversation}
+                              onClick={handleLoadMoreHistory}
+                              className="text-xs text-amber-800 bg-amber-50/90 hover:bg-amber-100 border-amber-200 shadow-2xs gap-1.5 cursor-pointer font-medium"
+                              title="Bongkar riwayat chat lebih lama dari Supabase"
+                            >
+                              {fetchingConversation ? (
+                                <>
+                                  <RefreshCw className="h-3 w-3 animate-spin text-amber-600" />
+                                  <span>Memuat pesan sebelumnya...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="h-3.5 w-3.5 text-amber-600" />
+                                  <span>Muat pesan sebelumnya (+50)</span>
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        )}
+
+                        {!hasMoreHistory && selectedChatMessages.length >= 50 && (
+                          <div className="flex justify-center my-1 select-none">
+                            <span className="text-[10px] text-slate-400 bg-slate-100/80 px-2.5 py-0.5 rounded-full border border-slate-200/60">
+                              Awal mula riwayat pesan tercatat
+                            </span>
+                          </div>
+                        )}
+
+                        {loadingConversation && selectedChatMessages.length === 0 && (
+                          <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-2">
+                            <RefreshCw className="h-6 w-6 animate-spin text-amber-500" />
+                            <p className="text-xs font-medium text-slate-600">Memuat riwayat percakapan...</p>
+                          </div>
+                        )}
+
+                        {!loadingConversation && selectedChatMessages.length === 0 && (
+                          <div className="flex flex-col items-center justify-center h-48 text-slate-400 space-y-1">
+                            <MessageSquare className="h-8 w-8 text-slate-300 mb-1" />
+                            <p className="text-xs font-medium text-slate-600">Belum ada riwayat pesan untuk kontak ini.</p>
+                            <p className="text-[11px] text-slate-400">Ketik pesan di bawah untuk memulai percakapan via WABA.</p>
+                          </div>
+                        )}
+
                         {selectedChatMessages.map((msg, index) => {
                           const isIncoming = msg.direction === "incoming";
                           const isError = msg.replied_by === "meta_error" || msg.message.startsWith("❌");
