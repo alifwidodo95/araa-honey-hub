@@ -700,7 +700,7 @@ function WhatsAppAiPage() {
     }
   }, [rawSettings]);
 
-  // 3. Fetch Chat Logs (Exclusively WABA Meta with expanded 2,000 history limit)
+  // 3. Fetch Chat Logs (Exclusively WABA Meta with optimized recent history limit)
   const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs } = useQuery<ChatLog[]>({
     queryKey: ["whatsapp-chat-logs"],
     queryFn: async () => {
@@ -709,7 +709,7 @@ function WhatsAppAiPage() {
         .select("*")
         .eq("channel", "waba")
         .order("created_at", { ascending: false })
-        .limit(2000);
+        .limit(300);
 
       if (error) {
         console.error("Gagal mengambil log chat:", error);
@@ -717,7 +717,8 @@ function WhatsAppAiPage() {
       }
       return data as ChatLog[];
     },
-    refetchInterval: 5000 // Polling backup every 5 seconds
+    refetchInterval: 60000, // Gentle background fallback (60s)
+    refetchOnWindowFocus: true,
   });
 
   // Realtime Supabase Subscription for instant live chat updates
@@ -751,7 +752,8 @@ function WhatsAppAiPage() {
       }
       return (data || []) as { phone: string; tag: string; updated_at: string }[];
     },
-    refetchInterval: 5000,
+    refetchInterval: 60000, // Gentle background fallback (60s)
+    refetchOnWindowFocus: true,
   });
 
   // Realtime Supabase Subscription for chat tags
@@ -833,7 +835,8 @@ function WhatsAppAiPage() {
       }
       return (data || []) as WhatsAppPinnedChat[];
     },
-    refetchInterval: 5000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
   });
 
   // Realtime Supabase Subscription for pinned chats
@@ -853,6 +856,23 @@ function WhatsAppAiPage() {
       supabase.removeChannel(channel);
     };
   }, [refetchPinned]);
+
+  // Auto-refetch when CS returns to the tab (window focus or tab visibility restored)
+  useEffect(() => {
+    const handleRefetch = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        refetchLogs();
+        refetchTags();
+        refetchPinned();
+      }
+    };
+    window.addEventListener("focus", handleRefetch);
+    document.addEventListener("visibilitychange", handleRefetch);
+    return () => {
+      window.removeEventListener("focus", handleRefetch);
+      document.removeEventListener("visibilitychange", handleRefetch);
+    };
+  }, [refetchLogs, refetchTags, refetchPinned]);
 
   // Fast lookup Map: phone digits or chat_id -> WhatsAppPinnedChat
   const pinnedMap = useMemo(() => {
@@ -969,7 +989,8 @@ function WhatsAppAiPage() {
       }
       return (data || []) as any[];
     },
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
   });
 
   // Realtime Supabase Subscription for quick replies

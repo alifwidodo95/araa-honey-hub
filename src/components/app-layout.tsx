@@ -165,34 +165,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const dandangAlerts = alerts?.filter((a: any) => a.item_type === "dandang").length || 0;
   const packagingAlerts = alerts?.filter((a: any) => a.item_type === "packaging").length || 0;
 
-  // Fetch unreplied customer responses for WhatsApp Monitor notification badge (Option B)
+  // Fetch unreplied customer responses for WhatsApp Monitor notification badge (Optimized Egress)
   const { data: unrepliedChatCount = 0, refetch: refetchUnrepliedChats } = useQuery({
     queryKey: ["unreplied-whatsapp-chats"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_chat_logs")
-        .select("customer_phone, chat_id, direction, channel, is_read, created_at")
+        .select("customer_phone, chat_id")
         .eq("channel", "waba")
+        .eq("direction", "incoming")
+        .eq("is_read", false)
         .order("created_at", { ascending: false })
-        .limit(2000);
+        .limit(100);
 
       if (error || !data) return 0;
 
       const seen = new Set<string>();
-      let unread = 0;
       for (const log of data) {
-        if (log.channel !== "waba") continue;
         const phone = (log.customer_phone || log.chat_id || "").replace(/[^0-9]/g, "");
         if (!phone || seen.has(phone)) continue;
         seen.add(phone);
-        // An unread incoming chat is when the latest message is incoming AND not yet marked as read!
-        if (log.direction === "incoming" && !log.is_read) {
-          unread++;
-        }
       }
-      return unread;
+      return seen.size;
     },
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
     enabled: !!user?.id,
   });
 
