@@ -722,22 +722,24 @@ function WhatsAppAiPage() {
     }
   }, [rawSettings]);
 
-  // 3. Fetch Chat Logs (Exclusively WABA Meta with optimized recent history limit)
-  const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs } = useQuery<ChatLog[]>({
-    queryKey: ["whatsapp-chat-logs"],
+  // 3. Fetch Chat Logs (Exclusively WABA Meta with optimized recent history limit & load more)
+  const [contactListLimit, setContactListLimit] = useState(500);
+
+  const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs, isFetching: fetchingLogs } = useQuery<ChatLog[]>({
+    queryKey: ["whatsapp-chat-logs", contactListLimit],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("whatsapp_chat_logs")
-        .select("*")
+        .from("whatsapp_chat_logs" as any)
+        .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
         .eq("channel", "waba")
         .order("created_at", { ascending: false })
-        .limit(300);
+        .limit(contactListLimit);
 
       if (error) {
         console.error("Gagal mengambil log chat:", error);
         throw error;
       }
-      return data as ChatLog[];
+      return (data || []) as unknown as ChatLog[];
     },
     refetchInterval: 60000, // Gentle background fallback (60s)
     refetchOnWindowFocus: true,
@@ -2455,6 +2457,35 @@ function WhatsAppAiPage() {
                       </div>
                     );
                   })}
+
+                  {/* Load More Older Chats Button at bottom of contact list */}
+                  {!chatSearch && (
+                    <div className="p-3 bg-slate-50/80 border-t border-slate-200/80 flex flex-col items-center gap-1.5 select-none">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={fetchingLogs}
+                        onClick={() => setContactListLimit(prev => prev + 350)}
+                        className="w-full text-xs text-slate-700 bg-white hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border-slate-200 shadow-2xs gap-1.5 cursor-pointer font-semibold py-2"
+                        title="Tarik percakapan kemarin dan hari sebelumnya dari database"
+                      >
+                        {fetchingLogs ? (
+                          <>
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-600" />
+                            <span>Memuat chat kemarin...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="h-3.5 w-3.5 text-amber-600" />
+                            <span>Muat Obrolan Sebelumnya (+350 Log)</span>
+                          </>
+                        )}
+                      </Button>
+                      <span className="text-[10px] text-slate-400">
+                        Menampilkan {filteredChats.length} kontak ({chatLogs.length} riwayat termuat)
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
