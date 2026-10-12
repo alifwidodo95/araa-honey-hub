@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Dialog, 
   DialogContent, 
@@ -705,6 +706,10 @@ function WhatsAppPage() {
   const queueActiveRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Bulk Selection and Single Manual Send States
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [sendingSingleOrderId, setSendingSingleOrderId] = useState<string | null>(null);
+
   // Fetch pending orders (have resi / tracking_number, sales channel is whatsapp, and not sent yet)
   const { data: pendingOrders, refetch: refetchPending, isLoading: loadingOrders } = useQuery({
     queryKey: ["pending-resi-orders"],
@@ -723,6 +728,31 @@ function WhatsAppPage() {
       return data || [];
     }
   });
+
+  // Selection helpers for bulk checkbox operations
+  const isAllSelected = useMemo(() => {
+    if (!pendingOrders || pendingOrders.length === 0) return false;
+    return pendingOrders.every((o) => selectedOrderIds.includes(o.id));
+  }, [pendingOrders, selectedOrderIds]);
+
+  const isSomeSelected = useMemo(() => {
+    if (!pendingOrders || pendingOrders.length === 0) return false;
+    return selectedOrderIds.length > 0 && !isAllSelected;
+  }, [pendingOrders, selectedOrderIds, isAllSelected]);
+
+  const handleSelectAll = (checked: boolean | "indeterminate") => {
+    if (checked === true) {
+      setSelectedOrderIds((pendingOrders || []).map((o) => o.id));
+    } else {
+      setSelectedOrderIds([]);
+    }
+  };
+
+  const handleToggleSelectOrder = (orderId: string) => {
+    setSelectedOrderIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+    );
+  };
 
   // Save config helper (Saves to both Supabase and LocalStorage)
   const handleSaveConfig = async () => {
@@ -884,6 +914,31 @@ function WhatsAppPage() {
       refetchPending();
     } catch (err: any) {
       toast.error(err.message || "Gagal membersihkan antrean.");
+    }
+  };
+
+  // Delete selected orders in bulk from queue
+  const handleDeleteSelectedOrders = async () => {
+    if (selectedOrderIds.length === 0) return;
+    const count = selectedOrderIds.length;
+    if (!confirm(`Apakah Anda yakin ingin mengeluarkan ${count} pesanan terpilih dari antrean pengiriman WhatsApp?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ 
+          resi_shared_via_wa: true, 
+          wa_share_error: "Dihapus manual dari antrean (pilihan massal)" 
+        })
+        .in("id", selectedOrderIds);
+
+      if (error) throw error;
+
+      toast.success(`Berhasil mengeluarkan ${count} pesanan terpilih dari antrean.`);
+      setSelectedOrderIds([]);
+      refetchPending();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus pesanan terpilih.");
     }
   };
 
@@ -1362,6 +1417,76 @@ function WhatsAppPage() {
   const addLog = (log: string) => {
     const time = new Date().toLocaleTimeString("id-ID");
     setQueueLogs(prev => [`[${time}] ${log}`, ...prev.slice(0, 49)]); // keep last 50 logs
+  };
+
+  // Manual single-click resi sender (1-click direct send like CRM loyalty)
+  const handleSendSingleResi = async (order: any) => {
+    if (!isResiChannelReady) {
+      const channelLabel =
+        defaultResiChannel === "waba"
+          ? "WABA Resmi Meta"
+          : defaultResiChannel === "waha_campaign"
+          ? "WA 2 (Nomor Kampanye)"
+          : "WA 1 (CS Utama)";
+      toast.error(`Sesi ${channelLabel} belum terhubung! Pastikan sesi WhatsApp aktif (WORKING/CONNECTED) terlebih dahulu.`);
+      return;
+    }
+
+    if (!order.customer_phone || !order.tracking_number) {
+      toast.error(`Nomor HP atau nomor resi untuk ${order.customer_name || "pesanan ini"} tidak lengkap.`);
+      return;
+    }
+
+    setSendingSingleOrderId(order.id);
+    addLog(`⏳ [Kirim Manual 1-Klik] Mengirim resi ke ${order.customer_name} (${order.customer_phone})...`);
+
+    const template =
+      messageTemplate ||
+      `Halo Kak {customer_name},\n\nPaket madu Araa Honey pesanan Kakak telah dikirim menggunakan {expedition}.\n\n*Resi Pengiriman:* {tracking_number}\n\nKakak bisa melacak status pengiriman secara berkala di aplikasi pelacakan ekspedisi terkait. Terima kasih banyak telah berbelanja di Araa Honey! 🍯🐝`;
+
+    const message = template
+      .replace(/{customer_name}/g, order.customer_name || "")
+      .replace(/{tracking_number}/g, order.tracking_number || "")
+      .replace(/{expedition}/g, order.expedition || "");
+
+    try {
+      const sendResult = await sendWhatsAppMessage(order.customer_phone, message, undefined, defaultResiChannel);
+
+      if (sendResult.success) {
+        const { data, error } = await supabase
+          .from("orders")
+          .update({ resi_shared_via_wa: true, wa_share_error: null })
+          .eq("id", order.id)
+          .select();
+
+        if (error) {
+          addLog(`⚠️ [Supabase Error] Pesan terkirim ke ${order.customer_name}, tetapi gagal mengupdate status di database: ${error.message}`);
+          toast.warning(`Resi terkirim ke ${order.customer_name}, tetapi gagal update status DB.`);
+        } else {
+          addLog(`✅ [Sukses 1-Klik] Resi berhasil terkirim ke ${order.customer_name}!`);
+          toast.success(`Resi berhasil terkirim ke ${order.customer_name}! 🚀`);
+          setSelectedOrderIds((prev) => prev.filter((id) => id !== order.id));
+          refetchPending();
+        }
+      } else {
+        let errDetail = sendResult.error || `Gagal terhubung atau terkirim dari gateway WhatsApp (${defaultResiChannel})`;
+        if (errDetail.includes("<!DOCTYPE") || errDetail.includes("<html")) {
+          errDetail = "Koneksi server WAHA terputus atau timeout. Server sedang sibuk.";
+        }
+        await supabase
+          .from("orders")
+          .update({ wa_share_error: errDetail })
+          .eq("id", order.id);
+
+        addLog(`❌ [Gagal 1-Klik] Gagal mengirim ke ${order.customer_name}: ${errDetail}`);
+        toast.error(`Gagal mengirim ke ${order.customer_name}: ${errDetail}`);
+      }
+    } catch (err: any) {
+      addLog(`❌ [Gagal 1-Klik] Error: ${err.message}`);
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setSendingSingleOrderId(null);
+    }
   };
 
   // Browser-based scheduler checker (Runs every minute)
@@ -2015,27 +2140,39 @@ function WhatsAppPage() {
                 </CardDescription>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedOrderIds.length > 0 && !queueActive && (
+                  <Button 
+                    onClick={handleDeleteSelectedOrders} 
+                    variant="destructive"
+                    size="sm"
+                    className="gap-1.5 font-bold shadow-xs animate-in fade-in"
+                  >
+                    <Trash2 className="w-4 h-4" /> Hapus Terpilih ({selectedOrderIds.length})
+                  </Button>
+                )}
                 {pendingOrders && pendingOrders.length > 0 && !queueActive && (
                   <Button 
                     onClick={handleClearAllQueue} 
                     variant="outline"
+                    size="sm"
                     className="text-destructive border-destructive/20 hover:bg-destructive/10"
                   >
-                    <Trash2 className="w-4 h-4 mr-2" /> Hapus Semua Antrean
+                    <Trash2 className="w-4 h-4 mr-1.5" /> Hapus Semua Antrean
                   </Button>
                 )}
                 <Button 
                   onClick={toggleQueue} 
                   disabled={!pendingOrders || pendingOrders.length === 0 || !isResiChannelReady}
                   variant={queueActive ? "destructive" : "default"}
-                  className={queueActive ? "" : "bg-honey hover:bg-honey-dark text-honey-foreground"}
+                  size="sm"
+                  className={queueActive ? "" : "bg-honey hover:bg-honey-dark text-honey-foreground font-bold"}
                   title={!isResiChannelReady ? `Sesi WhatsApp untuk jalur ${defaultResiChannel === "waha_campaign" ? "WA 2" : "WA 1"} belum terhubung` : undefined}
                 >
                   {queueActive ? (
-                    <><Pause className="w-4 h-4 mr-2" /> Jeda Pengiriman</>
+                    <><Pause className="w-4 h-4 mr-1.5" /> Jeda Pengiriman</>
                   ) : (
-                    <><Play className="w-4 h-4 mr-2" /> Mulai Kirim Sekarang</>
+                    <><Play className="w-4 h-4 mr-1.5" /> Mulai Kirim Sekarang</>
                   )}
                 </Button>
               </div>
@@ -2053,64 +2190,104 @@ function WhatsAppPage() {
               )}
 
               {/* Table of pending orders */}
-              <div className="max-h-60 overflow-y-auto">
+              <div className="max-h-[440px] overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12 text-center">
+                        <Checkbox 
+                          checked={isAllSelected ? true : isSomeSelected ? "indeterminate" : false}
+                          onCheckedChange={handleSelectAll}
+                          disabled={queueActive || !pendingOrders || pendingOrders.length === 0}
+                          title="Pilih Semua Pesanan di Antrean"
+                          aria-label="Pilih Semua"
+                        />
+                      </TableHead>
                       <TableHead>Nama Pelanggan</TableHead>
                       <TableHead>Nomor HP</TableHead>
                       <TableHead>No. Resi</TableHead>
                       <TableHead>Tanggal Order</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="w-16 text-center">Aksi</TableHead>
+                      <TableHead className="w-32 text-center">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loadingOrders ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           Memuat data antrean...
                         </TableCell>
                       </TableRow>
                     ) : !pendingOrders || pendingOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           Tidak ada pesanan resi yang perlu dikirim (semua sudah terkirim atau belum diinput resi).
                         </TableCell>
                       </TableRow>
                     ) : (
-                      pendingOrders.map((o, idx) => (
-                        <TableRow 
-                          key={o.id}
-                          className={queueActive && idx === queueIndex ? "bg-honey/10 font-medium animate-pulse" : ""}
-                        >
-                          <TableCell>{o.customer_name || "—"}</TableCell>
-                          <TableCell>{o.customer_phone || "—"}</TableCell>
-                          <TableCell className="font-mono text-xs text-honey-dark font-bold">{o.tracking_number}</TableCell>
-                          <TableCell>{new Date(o.created_at).toLocaleDateString("id-ID")}</TableCell>
-                          <TableCell>
-                            {queueActive && idx === queueIndex ? (
-                              <Badge variant="warning">Mengirim...</Badge>
-                            ) : queueActive && idx < queueIndex ? (
-                              <Badge variant="success">Terkirim</Badge>
-                            ) : (
-                              <Badge variant="secondary">Antre</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              disabled={queueActive && idx === queueIndex}
-                              onClick={() => handleSkipOrder(o.id)}
-                              title="Hapus dari antrean"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      pendingOrders.map((o, idx) => {
+                        const isSelected = selectedOrderIds.includes(o.id);
+                        return (
+                          <TableRow 
+                            key={o.id}
+                            className={`${queueActive && idx === queueIndex ? "bg-honey/10 font-medium animate-pulse" : ""} ${isSelected ? "bg-amber-500/10 dark:bg-amber-500/15" : ""}`}
+                          >
+                            <TableCell className="text-center">
+                              <Checkbox 
+                                checked={isSelected}
+                                onCheckedChange={() => handleToggleSelectOrder(o.id)}
+                                disabled={queueActive}
+                                aria-label={`Pilih pesanan ${o.customer_name}`}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{o.customer_name || "—"}</TableCell>
+                            <TableCell className="font-mono text-xs">{o.customer_phone || "—"}</TableCell>
+                            <TableCell className="font-mono text-xs text-honey-dark dark:text-honey font-bold">{o.tracking_number}</TableCell>
+                            <TableCell>{new Date(o.created_at).toLocaleDateString("id-ID")}</TableCell>
+                            <TableCell>
+                              {queueActive && idx === queueIndex ? (
+                                <Badge variant="warning">Mengirim...</Badge>
+                              ) : queueActive && idx < queueIndex ? (
+                                <Badge variant="success">Terkirim</Badge>
+                              ) : (
+                                <Badge variant="secondary">Antre</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {/* Tombol Kirim Resi Manual 1-Klik (seperti CRM Loyalitas) */}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={sendingSingleOrderId === o.id || queueActive || !isResiChannelReady}
+                                  onClick={() => handleSendSingleResi(o)}
+                                  className="h-7 px-2.5 text-xs font-semibold gap-1 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700 shadow-2xs"
+                                  title={!isResiChannelReady ? `Sesi ${defaultResiChannel} belum aktif` : `Kirim resi langsung 1-klik ke ${o.customer_name}`}
+                                >
+                                  {sendingSingleOrderId === o.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Send className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Kirim</span>
+                                </Button>
+
+                                {/* Hapus dari antrean */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                  disabled={queueActive && idx === queueIndex}
+                                  onClick={() => handleSkipOrder(o.id)}
+                                  title="Hapus dari antrean"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
