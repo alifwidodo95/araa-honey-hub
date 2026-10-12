@@ -709,6 +709,7 @@ function WhatsAppPage() {
 
   // Bulk Selection and Single Manual Send States
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [sendingSingleOrderId, setSendingSingleOrderId] = useState<string | null>(null);
 
   // Fetch pending orders (have resi / tracking_number, sales channel is whatsapp, and not sent yet)
@@ -918,28 +919,36 @@ function WhatsAppPage() {
     }
   };
 
-  // Delete selected orders in bulk from queue
+  // Delete selected orders in bulk from queue (chunked to prevent HTTP 400 Bad Request on large URI)
   const handleDeleteSelectedOrders = async () => {
-    if (selectedOrderIds.length === 0) return;
+    if (selectedOrderIds.length === 0 || isDeletingBulk) return;
     const count = selectedOrderIds.length;
     if (!confirm(`Apakah Anda yakin ingin mengeluarkan ${count} pesanan terpilih dari antrean pengiriman WhatsApp?`)) return;
 
+    setIsDeletingBulk(true);
     try {
-      const { error } = await supabase
-        .from("orders")
-        .update({ 
-          resi_shared_via_wa: true, 
-          wa_share_error: "Dihapus manual dari antrean (pilihan massal)" 
-        })
-        .in("id", selectedOrderIds);
+      // Chunk into batches of 80 to prevent query string URI length overflow in PostgREST
+      const chunkSize = 80;
+      for (let i = 0; i < selectedOrderIds.length; i += chunkSize) {
+        const chunk = selectedOrderIds.slice(i, i + chunkSize);
+        const { error } = await supabase
+          .from("orders")
+          .update({ 
+            resi_shared_via_wa: true, 
+            wa_share_error: "Dihapus manual dari antrean (pilihan massal)" 
+          })
+          .in("id", chunk);
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
       toast.success(`Berhasil mengeluarkan ${count} pesanan terpilih dari antrean.`);
       setSelectedOrderIds([]);
       refetchPending();
     } catch (err: any) {
       toast.error(err.message || "Gagal menghapus pesanan terpilih.");
+    } finally {
+      setIsDeletingBulk(false);
     }
   };
 
@@ -2145,11 +2154,17 @@ function WhatsAppPage() {
                 {selectedOrderIds.length > 0 && !queueActive && (
                   <Button 
                     onClick={handleDeleteSelectedOrders} 
+                    disabled={isDeletingBulk}
                     variant="destructive"
                     size="sm"
                     className="gap-1.5 font-bold shadow-xs animate-in fade-in"
                   >
-                    <Trash2 className="w-4 h-4" /> Hapus Terpilih ({selectedOrderIds.length})
+                    {isDeletingBulk ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    {isDeletingBulk ? `Menghapus (${selectedOrderIds.length})...` : `Hapus Terpilih (${selectedOrderIds.length})`}
                   </Button>
                 )}
                 {pendingOrders && pendingOrders.length > 0 && !queueActive && (
