@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { getScalevMetrics } from "@/lib/scalev.functions";
+import { NotificationBell } from "./notification-bell";
+import { StickyNoteWidget } from "./sticky-note-widget";
 
 function getTodayWibString() {
   const d = new Date();
@@ -645,12 +647,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <h1 className="text-sm font-medium text-muted-foreground hidden sm:block">Sistem Operasional Internal</h1>
             <h1 className="text-sm font-semibold lg:hidden sm:hidden">Araa Honey</h1>
           </div>
-          <Button variant="ghost" size="icon" onClick={toggle}>
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <NotificationBell />
+            <Button variant="ghost" size="icon" onClick={toggle}>
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          </div>
         </header>
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-background/50">{children}</div>
       </main>
+      <StickyNoteWidget />
       <BeeCursor />
     </div>
   );
