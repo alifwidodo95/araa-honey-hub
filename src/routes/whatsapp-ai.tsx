@@ -362,14 +362,14 @@ function WhatsAppAiPage() {
     enabled: !!userId
   });
 
-  const getWahaHeaders = () => {
+  const getWahaHeaders = useCallback(() => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const keyToUse = wahaApiKey.trim() || globalWahaConfig?.apiKey || "";
     if (keyToUse) {
       headers["X-Api-Key"] = keyToUse;
     }
     return headers;
-  };
+  }, [wahaApiKey, globalWahaConfig]);
 
   const safeJson = async (res: Response) => {
     const text = await res.text();
@@ -382,7 +382,7 @@ function WhatsAppAiPage() {
     }
   };
 
-  const checkSessionStatus = async (silent = false) => {
+  const checkSessionStatus = useCallback(async (silent = false) => {
     const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     const currentSession = wahaSession.trim() || "default";
     if (!silent) setLoadingStatus(true);
@@ -418,7 +418,7 @@ function WhatsAppAiPage() {
     } finally {
       if (!silent) setLoadingStatus(false);
     }
-  };
+  }, [wahaUrl, globalWahaConfig, wahaSession, getWahaHeaders]);
 
   const handleStartSession = async () => {
     const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
@@ -491,16 +491,19 @@ function WhatsAppAiPage() {
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [wahaUrl, wahaSession, wahaApiKey, globalWahaConfig]);
+  }, [wahaUrl, wahaSession, globalWahaConfig, checkSessionStatus]);
 
-  // Fetch QR image
+  // Fetch QR image with memory leak prevention
   useEffect(() => {
     let active = true;
     const currentWahaUrl = wahaUrl.trim() || globalWahaConfig?.wahaUrl || "https://waha.araahoney.my.id";
     const currentSession = wahaSession.trim() || "default";
 
     if (sessionStatus !== "SCAN_QR" || !currentWahaUrl || !currentSession) {
-      setQrImageUrl("");
+      setQrImageUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return "";
+      });
       return;
     }
 
@@ -519,7 +522,10 @@ function WhatsAppAiPage() {
         const blob = await res.blob();
         if (active) {
           const url = URL.createObjectURL(blob);
-          setQrImageUrl(url);
+          setQrImageUrl(prev => {
+            if (prev) URL.revokeObjectURL(prev);
+            return url;
+          });
         }
       } catch (err) {
         console.error("Gagal mengambil QR image:", err);
@@ -532,8 +538,12 @@ function WhatsAppAiPage() {
     return () => {
       active = false;
       clearInterval(interval);
+      setQrImageUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return "";
+      });
     };
-  }, [sessionStatus, qrRefreshTrigger, wahaUrl, wahaSession, wahaApiKey, globalWahaConfig]);
+  }, [sessionStatus, qrRefreshTrigger, wahaUrl, wahaSession, globalWahaConfig, getWahaHeaders]);
 
   // Chat Monitor States
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -617,8 +627,9 @@ function WhatsAppAiPage() {
       }
       await Promise.all(promises);
 
-      // Invalidate chat logs, sidebar unreplied badge, and dedicated conversation query
+      // Invalidate chat logs, order chat logs, sidebar unreplied badge, and dedicated conversation query
       qc.invalidateQueries({ queryKey: ["whatsapp-chat-logs"] });
+      qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
       qc.invalidateQueries({ queryKey: ["unreplied-whatsapp-chats"] });
       qc.invalidateQueries({ queryKey: ["whatsapp-conversation"] });
     } catch (err) {
@@ -738,7 +749,7 @@ function WhatsAppAiPage() {
         promises.push(
           supabase
             .from("whatsapp_chat_logs" as any)
-            .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
+            .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at, media_id, media_url, delivery_status")
             .eq("channel", "waba")
             .order("created_at", { ascending: false })
             .range(from, to)
@@ -746,14 +757,23 @@ function WhatsAppAiPage() {
       }
 
       const results = await Promise.all(promises);
+      const seenIds = new Set<string>();
       let allLogs: ChatLog[] = [];
       for (const res of results) {
         if (res.error) {
           console.error("Gagal mengambil log chat batch:", res.error);
           throw res.error;
         }
-        if (res.data) allLogs = allLogs.concat(res.data as unknown as ChatLog[]);
-        if (res.data.length < BATCH_SIZE) break; // Reached end of table
+        if (res.data) {
+          for (const log of (res.data as unknown as ChatLog[])) {
+            if (log.id && !seenIds.has(log.id)) {
+              seenIds.add(log.id);
+              allLogs.push(log);
+            } else if (!log.id) {
+              allLogs.push(log);
+            }
+          }
+        }
       }
       return allLogs;
     },
@@ -770,6 +790,7 @@ function WhatsAppAiPage() {
         { event: "*", schema: "public", table: "whatsapp_chat_logs" },
         () => {
           refetchLogs();
+          qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
           qc.invalidateQueries({ queryKey: ["whatsapp-conversation"] });
         }
       )
@@ -858,7 +879,7 @@ function WhatsAppAiPage() {
 
       const { data, error } = await supabase
         .from("whatsapp_chat_logs" as any)
-        .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
+        .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at, media_id, media_url, delivery_status")
         .eq("channel", "waba")
         .in("customer_phone", queryVariants)
         .order("created_at", { ascending: false });
@@ -886,13 +907,13 @@ function WhatsAppAiPage() {
     setUpdatingTagPhone(cleanPhone);
     try {
       if (tag) {
+        if (canonical08 !== canonical62) {
+          await supabase.from("whatsapp_chat_tags" as any).delete().eq("phone", canonical08);
+        }
         const { error } = await supabase
           .from("whatsapp_chat_tags" as any)
           .upsert({ phone: canonical62, tag: tag, updated_at: new Date().toISOString() });
         if (error) throw error;
-        if (canonical08 !== canonical62) {
-          await supabase.from("whatsapp_chat_tags" as any).delete().eq("phone", canonical08);
-        }
         if (tag === "order") {
           toast.success("Kontak berhasil diberi label Order! 🛒");
         } else if (tag === "done") {
@@ -906,7 +927,6 @@ function WhatsAppAiPage() {
         if (error) throw error;
         toast.success("Label berhasil dilepas.");
       }
-      refetchTags();
       qc.invalidateQueries({ queryKey: ["whatsapp-chat-tags"] });
       qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
     } catch (err: any) {
@@ -980,7 +1000,14 @@ function WhatsAppAiPage() {
     pinnedChats.forEach(p => {
       if (p.is_pinned) {
         const clean = (p.phone || "").replace(/[^0-9]/g, "");
-        if (clean) map.set(clean, p);
+        if (clean) {
+          map.set(clean, p);
+          if (clean.startsWith("62")) {
+            map.set("0" + clean.slice(2), p);
+          } else if (clean.startsWith("0")) {
+            map.set("62" + clean.slice(1), p);
+          }
+        }
         if (p.chat_id) map.set(p.chat_id, p);
       }
     });
@@ -1309,10 +1336,17 @@ function WhatsAppAiPage() {
     }>();
 
     const combinedLogs = [...pendingMessages, ...orderChatLogs, ...chatLogs];
+    const seenLogIds = new Set<string>();
 
     combinedLogs.forEach(log => {
       // Exclusively monitor WABA Meta Cloud API chats
       if (log.channel !== "waba") return;
+
+      // Prevent duplicate logs between orderChatLogs and chatLogs from inflating messageCount
+      if (log.id) {
+        if (seenLogIds.has(log.id)) return;
+        seenLogIds.add(log.id);
+      }
 
       const cleanPhone = (log.customer_phone || log.chat_id.replace(/[^0-9]/g, "")).trim();
       const existing = chatsMap.get(log.chat_id);
@@ -1678,14 +1712,23 @@ function WhatsAppAiPage() {
           promises.push(bQuery);
         }
         const results = await Promise.all(promises);
+        const seenIds = new Set<string>();
         let allLogs: ChatLog[] = [];
         for (const res of results) {
           if (res.error) {
             console.error("Gagal mengambil riwayat percakapan batch:", res.error);
             throw res.error;
           }
-          if (res.data) allLogs = allLogs.concat(res.data as unknown as ChatLog[]);
-          if (res.data.length < BATCH_SIZE) break;
+          if (res.data) {
+            for (const log of (res.data as unknown as ChatLog[])) {
+              if (log.id && !seenIds.has(log.id)) {
+                seenIds.add(log.id);
+                allLogs.push(log);
+              } else if (!log.id) {
+                allLogs.push(log);
+              }
+            }
+          }
         }
         return allLogs;
       }
@@ -1949,10 +1992,10 @@ function WhatsAppAiPage() {
     const text = (retryMsg ? retryMsg.message : manualReplyText).trim();
     if (!text || !selectedChatId) return;
 
-    const activeChatInfo = uniqueChats.find(c => c.chat_id === selectedChatId);
+    const currentChat = activeChatInfo;
     const targetChannel = "waba";
-    const customerPhone = activeChatInfo?.customer_phone || selectedChatId.split("@")[0].replace("waba:", "").replace(/[^0-9]/g, "");
-    const customerName = activeChatInfo?.customer_name || "Pelanggan WA";
+    const customerPhone = currentChat?.customer_phone || selectedChatId.split("@")[0].replace("waba:", "").replace(/[^0-9]/g, "");
+    const customerName = currentChat?.customer_name || "Pelanggan WA";
 
     const tempId = retryMsg ? retryMsg.id : `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const pendingLog: ChatLog = {
@@ -2018,6 +2061,7 @@ function WhatsAppAiPage() {
         markChatAsRead(selectedChatId, customerPhone);
       }
       refetchLogs();
+      qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
       refetchConversation();
     } catch (err: any) {
       // Failed: mark as failed with error details for retry
@@ -2052,6 +2096,7 @@ function WhatsAppAiPage() {
       if (error) throw error;
       toast.success(`Obrolan dengan ${chat.customer_name || cleanPhone} berhasil ditandai selesai!`);
       refetchLogs();
+      qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
       refetchConversation();
     } catch (err: any) {
       toast.error("Gagal menandai obrolan: " + (err.message || "Error"));
@@ -2298,7 +2343,7 @@ function WhatsAppAiPage() {
                     <div className="flex flex-col items-center justify-center h-48 text-muted-foreground p-4 text-center space-y-2">
                       <RefreshCw className="h-6 w-6 animate-spin text-amber-500" />
                       <p className="text-xs font-semibold text-slate-700">Mencari di seluruh database pelanggan...</p>
-                      <p className="text-[11px] text-slate-400">Menelusuri 4.848 kontak di Supabase</p>
+                      <p className="text-[11px] text-slate-400">Menelusuri database kontak di Supabase Pro</p>
                     </div>
                   ) : serverSearchResults.length > 0 ? (
                     <div className="divide-y divide-slate-100">
@@ -2308,7 +2353,7 @@ function WhatsAppAiPage() {
                           <span>Hasil Pencarian Database ({serverSearchResults.length})</span>
                         </span>
                         <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded font-mono font-bold">
-                          4.848 Pelanggan
+                          Database Pelanggan
                         </span>
                       </div>
                       {serverSearchResults.map((item) => {
@@ -2356,7 +2401,7 @@ function WhatsAppAiPage() {
                         Tidak ditemukan kontak yang cocok
                       </p>
                       <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                        Tidak ada kecocokan nama/nomor "{chatSearch}" di 300 chat terbaru maupun 4.848 pelanggan di Supabase.
+                        Tidak ada kecocokan nama/nomor "{chatSearch}" di daftar chat aktif maupun riwayat pelanggan di Supabase.
                       </p>
                       {(() => {
                         const cleanDigits = chatSearch.replace(/[^0-9]/g, "");
@@ -2388,7 +2433,7 @@ function WhatsAppAiPage() {
                       {chatSearch || responseFilter !== "all" ? "Tidak ada kontak yang cocok di filter ini" : "Belum ada riwayat chat WABA."}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
-                      {chatSearch || responseFilter !== "all" ? "Coba ketik minimal 2 karakter untuk mencari di seluruh 4.848 pelanggan." : "Pesan masuk/keluar WABA akan muncul di sini secara otomatis."}
+                      {chatSearch || responseFilter !== "all" ? "Coba ketik minimal 2 karakter untuk mencari di seluruh database pelanggan." : "Pesan masuk/keluar WABA akan muncul di sini secara otomatis."}
                     </p>
                   </div>
                 )
@@ -2902,7 +2947,7 @@ function WhatsAppAiPage() {
                             )}
                             {currentPin.note ? (
                               <span className="text-slate-800 font-medium bg-white/80 px-2 py-0.5 rounded border border-amber-200 truncate max-w-md">
-                                "{currentPin.note}"
+                                {currentPin.note}
                               </span>
                             ) : (
                               <span className="text-slate-500 italic text-[11px]">
@@ -4017,7 +4062,10 @@ function WhatsAppAiPage() {
                     {pinDialogChat.formatted_phone}
                   </p>
                 </div>
-                {pinnedMap.has((pinDialogChat.customer_phone || "").replace(/[^0-9]/g, "")) && (
+                {Boolean(
+                  (pinDialogChat.customer_phone && pinnedMap.has((pinDialogChat.customer_phone || "").replace(/[^0-9]/g, ""))) ||
+                  (pinDialogChat.chat_id && pinnedMap.has(pinDialogChat.chat_id))
+                ) && (
                   <Badge className="bg-amber-500 text-white text-[10px] font-bold">
                     📌 Sedang Tersemat
                   </Badge>
@@ -4148,7 +4196,10 @@ function WhatsAppAiPage() {
 
               <DialogFooter className="flex items-center justify-between sm:justify-between pt-3 border-t border-slate-100">
                 <div>
-                  {pinnedMap.has((pinDialogChat.customer_phone || "").replace(/[^0-9]/g, "")) && (
+                  {Boolean(
+                    (pinDialogChat.customer_phone && pinnedMap.has((pinDialogChat.customer_phone || "").replace(/[^0-9]/g, ""))) ||
+                    (pinDialogChat.chat_id && pinnedMap.has(pinDialogChat.chat_id))
+                  ) && (
                     <Button
                       type="button"
                       variant="outline"
@@ -4225,7 +4276,7 @@ function WhatsAppAiPage() {
 
           {previewImageCaption && (
             <div className="w-full pt-2 border-t border-slate-800 text-xs text-slate-300 text-center font-medium shrink-0">
-              "{previewImageCaption}"
+              {previewImageCaption}
             </div>
           )}
         </DialogContent>
