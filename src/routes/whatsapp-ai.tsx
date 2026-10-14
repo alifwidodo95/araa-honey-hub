@@ -1991,62 +1991,32 @@ function WhatsAppAiPage() {
           {/* Chat List (Left Panel) */}
           <Card className="w-full lg:w-[350px] xl:w-[390px] shrink-0 flex flex-col h-[500px] lg:h-full overflow-hidden border-slate-200/90 shadow-xs">
             <CardHeader className="py-3 px-4 border-b space-y-2.5 shrink-0 bg-slate-50/50">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <span>Daftar Obrolan WABA</span>
-                    <Badge variant="outline" className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base whitespace-nowrap">
+                      Daftar Obrolan WABA
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold shrink-0">
                       {filteredChats.length} Kontak
                     </Badge>
-                  </CardTitle>
-                  <CardDescription className="text-xs">Pantau pesan masuk & respon resmi Meta WABA</CardDescription>
+                  </div>
+                  <CardDescription className="text-xs truncate">
+                    Pantau pesan masuk & respon resmi Meta WABA
+                  </CardDescription>
                 </div>
-                <div className="flex items-center gap-1">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-2 text-[11px] text-slate-700 bg-white hover:bg-slate-50 border-slate-200 shadow-2xs gap-1 font-semibold cursor-pointer"
-                        title="Atur kuota pengambilan riwayat obrolan (Supabase Pro)"
-                      >
-                        <Settings className="h-3 w-3 text-slate-500" />
-                        <span>{contactListLimit.toLocaleString("id-ID")} Log</span>
-                        <ChevronDown className="h-2.5 w-2.5 text-slate-400" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52 text-xs">
-                      <div className="px-2 py-1.5 text-[11px] font-semibold text-slate-500 border-b border-slate-100">
-                        Batas Riwayat (Supabase Pro)
-                      </div>
-                      <DropdownMenuItem onClick={() => setContactListLimit(1000)} className="cursor-pointer text-xs">
-                        1.000 Log Terakhir
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setContactListLimit(2500)} className="cursor-pointer text-xs font-semibold text-amber-700">
-                        ⭐ 2.500 Log (Rekomendasi Pro)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setContactListLimit(5000)} className="cursor-pointer text-xs">
-                        5.000 Log Terakhir
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setContactListLimit(10000)} className="cursor-pointer text-xs font-semibold text-emerald-700">
-                        🚀 10.000 Log (Maksimal)
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-8 w-8 text-slate-500 hover:text-amber-600"
-                    onClick={() => {
-                      refetchLogs();
-                      toast.success("Log chat WABA disegarkan!");
-                    }}
-                    title="Segarkan Chat"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin text-amber-500" : ""}`} />
-                  </Button>
-                </div>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-8 w-8 text-slate-500 hover:text-amber-600 shrink-0"
+                  onClick={() => {
+                    refetchLogs();
+                    toast.success("Log chat WABA disegarkan!");
+                  }}
+                  title="Segarkan Chat"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin text-amber-500" : ""}`} />
+                </Button>
               </div>
 
               {/* WhatsApp Web-Style Horizontal Scrollable Filter Pills */}
