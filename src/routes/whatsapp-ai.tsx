@@ -832,36 +832,35 @@ function WhatsAppAiPage() {
     return map;
   }, [chatTags]);
 
-  // Extract all active order phones to guarantee they are ALWAYS fetched & loaded
-  const orderPhones = useMemo(() => {
+  // Extract canonical active order phones (unique 628... format)
+  const canonicalOrderPhones = useMemo(() => {
     const phones = new Set<string>();
     chatTags
       .filter(t => t.tag === "order")
       .forEach(t => {
-        const clean = (t.phone || "").replace(/[^0-9]/g, "");
-        if (clean) {
-          phones.add(clean);
-          if (clean.startsWith("62")) {
-            phones.add("0" + clean.slice(2));
-          } else if (clean.startsWith("0")) {
-            phones.add("62" + clean.slice(1));
-          }
-        }
+        let clean = (t.phone || "").replace(/[^0-9]/g, "");
+        if (clean.startsWith("0")) clean = "62" + clean.slice(1);
+        if (clean) phones.add(clean);
       });
     return Array.from(phones);
   }, [chatTags]);
 
   // Dedicated query to guarantee all active order chats are ALWAYS present in memory
   const { data: orderChatLogs = [] } = useQuery<ChatLog[]>({
-    queryKey: ["whatsapp-order-chat-logs", orderPhones],
+    queryKey: ["whatsapp-order-chat-logs", canonicalOrderPhones],
     queryFn: async () => {
-      if (orderPhones.length === 0) return [];
+      if (canonicalOrderPhones.length === 0) return [];
       
+      const queryVariants = [
+        ...canonicalOrderPhones,
+        ...canonicalOrderPhones.map(p => "0" + p.slice(2))
+      ];
+
       const { data, error } = await supabase
         .from("whatsapp_chat_logs" as any)
         .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
         .eq("channel", "waba")
-        .in("customer_phone", orderPhones)
+        .in("customer_phone", queryVariants)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -870,7 +869,7 @@ function WhatsAppAiPage() {
       }
       return (data || []) as unknown as ChatLog[];
     },
-    enabled: orderPhones.length > 0,
+    enabled: canonicalOrderPhones.length > 0,
     refetchInterval: 60000,
     refetchOnWindowFocus: true,
   });
@@ -1358,14 +1357,21 @@ function WhatsAppAiPage() {
       }
     });
 
-    // Tier 1 Guarantee: Ensure ALL contacts marked with tag === 'order' are ALWAYS present in uniqueChats
-    orderPhones.forEach(phone => {
-      const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
+    // Tier 1 Guarantee: Ensure ALL contacts marked with tag === 'order' are ALWAYS present in uniqueChats (deduplicated)
+    canonicalOrderPhones.forEach(cleanPhone => {
       if (!cleanPhone) return;
 
+      const altPhone = cleanPhone.startsWith("62") ? "0" + cleanPhone.slice(2) : cleanPhone;
       let existing = false;
       for (const c of chatsMap.values()) {
-        if (c.customer_phone === cleanPhone || c.chat_id === cleanPhone || c.chat_id.replace(/[^0-9]/g, "") === cleanPhone) {
+        const cPhone = (c.customer_phone || "").replace(/[^0-9]/g, "");
+        const cChatId = (c.chat_id || "").replace(/[^0-9]/g, "");
+        if (
+          cPhone === cleanPhone ||
+          cPhone === altPhone ||
+          cChatId === cleanPhone ||
+          cChatId === altPhone
+        ) {
           existing = true;
           break;
         }
@@ -1486,7 +1492,7 @@ function WhatsAppAiPage() {
     }
 
     return Array.from(chatsMap.values());
-  }, [chatLogs, orderChatLogs, orderPhones, pendingMessages, pinnedChats, selectedCustomerMeta]);
+  }, [chatLogs, orderChatLogs, canonicalOrderPhones, pendingMessages, pinnedChats, selectedCustomerMeta]);
 
   // Response status statistics for WABA (all, unread, order, done, pinned)
   const responseCounts = useMemo(() => {
