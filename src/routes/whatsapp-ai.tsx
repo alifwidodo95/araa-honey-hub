@@ -722,24 +722,40 @@ function WhatsAppAiPage() {
     }
   }, [rawSettings]);
 
-  // 3. Fetch Chat Logs (Supabase Pro: default 2,500 logs with custom limit selector)
+  // 3. Fetch Chat Logs (Supabase Pro: batched range fetch to bypass PostgREST 1000-row cap)
   const [contactListLimit, setContactListLimit] = useState(2500);
 
   const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs, isFetching: fetchingLogs } = useQuery<ChatLog[]>({
     queryKey: ["whatsapp-chat-logs", contactListLimit],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("whatsapp_chat_logs" as any)
-        .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
-        .eq("channel", "waba")
-        .order("created_at", { ascending: false })
-        .limit(contactListLimit);
+      const BATCH_SIZE = 1000;
+      const numBatches = Math.ceil(contactListLimit / BATCH_SIZE);
+      const promises = [];
 
-      if (error) {
-        console.error("Gagal mengambil log chat:", error);
-        throw error;
+      for (let i = 0; i < numBatches; i++) {
+        const from = i * BATCH_SIZE;
+        const to = Math.min((i + 1) * BATCH_SIZE - 1, contactListLimit - 1);
+        promises.push(
+          supabase
+            .from("whatsapp_chat_logs" as any)
+            .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
+            .eq("channel", "waba")
+            .order("created_at", { ascending: false })
+            .range(from, to)
+        );
       }
-      return (data || []) as unknown as ChatLog[];
+
+      const results = await Promise.all(promises);
+      let allLogs: ChatLog[] = [];
+      for (const res of results) {
+        if (res.error) {
+          console.error("Gagal mengambil log chat batch:", res.error);
+          throw res.error;
+        }
+        if (res.data) allLogs = allLogs.concat(res.data as unknown as ChatLog[]);
+        if (res.data.length < BATCH_SIZE) break; // Reached end of table
+      }
+      return allLogs;
     },
     refetchInterval: 60000, // Gentle background fallback (60s)
     refetchOnWindowFocus: true,
@@ -1527,12 +1543,43 @@ function WhatsAppAiPage() {
         query = query.or(orClauses.join(","));
       }
 
-      const { data, error } = await query;
-      if (error) {
-        console.error("Gagal mengambil riwayat percakapan:", error);
-        throw error;
+      if (historyLimit <= 1000) {
+        const { data, error } = await query;
+        if (error) {
+          console.error("Gagal mengambil riwayat percakapan:", error);
+          throw error;
+        }
+        return (data || []) as unknown as ChatLog[];
+      } else {
+        const BATCH_SIZE = 1000;
+        const numBatches = Math.ceil(historyLimit / BATCH_SIZE);
+        const promises = [];
+        for (let i = 0; i < numBatches; i++) {
+          const from = i * BATCH_SIZE;
+          const to = Math.min((i + 1) * BATCH_SIZE - 1, historyLimit - 1);
+          let bQuery = supabase
+            .from("whatsapp_chat_logs" as any)
+            .select("*")
+            .eq("channel", "waba")
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          if (orClauses.length > 0) {
+            bQuery = bQuery.or(orClauses.join(","));
+          }
+          promises.push(bQuery);
+        }
+        const results = await Promise.all(promises);
+        let allLogs: ChatLog[] = [];
+        for (const res of results) {
+          if (res.error) {
+            console.error("Gagal mengambil riwayat percakapan batch:", res.error);
+            throw res.error;
+          }
+          if (res.data) allLogs = allLogs.concat(res.data as unknown as ChatLog[]);
+          if (res.data.length < BATCH_SIZE) break;
+        }
+        return allLogs;
       }
-      return (data || []) as unknown as ChatLog[];
     },
     enabled: !!selectedChatId,
     refetchInterval: 60000,
