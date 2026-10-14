@@ -722,8 +722,8 @@ function WhatsAppAiPage() {
     }
   }, [rawSettings]);
 
-  // 3. Fetch Chat Logs (Exclusively WABA Meta with optimized recent history limit & load more)
-  const [contactListLimit, setContactListLimit] = useState(500);
+  // 3. Fetch Chat Logs (Supabase Pro: default 2,500 logs with custom limit selector)
+  const [contactListLimit, setContactListLimit] = useState(2500);
 
   const { data: chatLogs = [], refetch: refetchLogs, isLoading: loadingLogs, isFetching: fetchingLogs } = useQuery<ChatLog[]>({
     queryKey: ["whatsapp-chat-logs", contactListLimit],
@@ -1477,14 +1477,14 @@ function WhatsAppAiPage() {
     return (activeChatInfo?.customer_phone || selectedChatId.replace(/[^0-9]/g, "")).trim();
   }, [activeChatInfo, selectedChatId]);
 
-  const [historyLimit, setHistoryLimit] = useState(50);
+  const [historyLimit, setHistoryLimit] = useState(300);
   const prevSelectedChatIdRef = useRef<string | null>(null);
 
-  // Reset pagination limit when selecting another chat
+  // Reset pagination limit when selecting another chat (default 300 messages on Supabase Pro)
   useEffect(() => {
     if (selectedChatId !== prevSelectedChatIdRef.current) {
       prevSelectedChatIdRef.current = selectedChatId;
-      setHistoryLimit(50);
+      setHistoryLimit(300);
     }
   }, [selectedChatId]);
 
@@ -1542,7 +1542,7 @@ function WhatsAppAiPage() {
   const hasMoreHistory = conversationLogs.length >= historyLimit;
 
   const handleLoadMoreHistory = () => {
-    setHistoryLimit(prev => prev + 50);
+    setHistoryLimit(prev => prev + 300);
   };
 
   // Tier 3: Universal Customer & Chat Search across Supabase (4,848 customers)
@@ -1583,7 +1583,7 @@ function WhatsAppAiPage() {
           .select("chat_id, customer_phone, customer_name, message, created_at")
           .eq("channel", "waba")
           .order("created_at", { ascending: false })
-          .limit(25);
+          .limit(60);
 
         if (cleanDigits && cleanDigits.length >= 3) {
           logQuery = logQuery.or(`customer_phone.ilike.%${cleanDigits}%,chat_id.ilike.%${cleanDigits}%,customer_name.ilike.%${q}%`);
@@ -1619,7 +1619,7 @@ function WhatsAppAiPage() {
           .from("orders" as any)
           .select("customer_name, customer_phone, created_at")
           .order("created_at", { ascending: false })
-          .limit(25);
+          .limit(60);
 
         if (cleanDigits && cleanDigits.length >= 3) {
           ordersQuery = ordersQuery.or(`customer_phone.ilike.%${cleanDigits}%,customer_name.ilike.%${q}%`);
@@ -2001,18 +2001,52 @@ function WhatsAppAiPage() {
                   </CardTitle>
                   <CardDescription className="text-xs">Pantau pesan masuk & respon resmi Meta WABA</CardDescription>
                 </div>
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
-                  className="h-8 w-8 text-slate-500 hover:text-amber-600"
-                  onClick={() => {
-                    refetchLogs();
-                    toast.success("Log chat WABA disegarkan!");
-                  }}
-                  title="Segarkan Chat"
-                >
-                  <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin text-amber-500" : ""}`} />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2 text-[11px] text-slate-700 bg-white hover:bg-slate-50 border-slate-200 shadow-2xs gap-1 font-semibold cursor-pointer"
+                        title="Atur kuota pengambilan riwayat obrolan (Supabase Pro)"
+                      >
+                        <Settings className="h-3 w-3 text-slate-500" />
+                        <span>{contactListLimit.toLocaleString("id-ID")} Log</span>
+                        <ChevronDown className="h-2.5 w-2.5 text-slate-400" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52 text-xs">
+                      <div className="px-2 py-1.5 text-[11px] font-semibold text-slate-500 border-b border-slate-100">
+                        Batas Riwayat (Supabase Pro)
+                      </div>
+                      <DropdownMenuItem onClick={() => setContactListLimit(1000)} className="cursor-pointer text-xs">
+                        1.000 Log Terakhir
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setContactListLimit(2500)} className="cursor-pointer text-xs font-semibold text-amber-700">
+                        ⭐ 2.500 Log (Rekomendasi Pro)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setContactListLimit(5000)} className="cursor-pointer text-xs">
+                        5.000 Log Terakhir
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setContactListLimit(10000)} className="cursor-pointer text-xs font-semibold text-emerald-700">
+                        🚀 10.000 Log (Maksimal)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="h-8 w-8 text-slate-500 hover:text-amber-600"
+                    onClick={() => {
+                      refetchLogs();
+                      toast.success("Log chat WABA disegarkan!");
+                    }}
+                    title="Segarkan Chat"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin text-amber-500" : ""}`} />
+                  </Button>
+                </div>
               </div>
 
               {/* WhatsApp Web-Style Horizontal Scrollable Filter Pills */}
@@ -2465,24 +2499,24 @@ function WhatsAppAiPage() {
                         variant="outline"
                         size="sm"
                         disabled={fetchingLogs}
-                        onClick={() => setContactListLimit(prev => prev + 350)}
+                        onClick={() => setContactListLimit(prev => prev + 1500)}
                         className="w-full text-xs text-slate-700 bg-white hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300 border-slate-200 shadow-2xs gap-1.5 cursor-pointer font-semibold py-2"
-                        title="Tarik percakapan kemarin dan hari sebelumnya dari database"
+                        title="Tarik percakapan kemarin dan hari sebelumnya dari database Supabase Pro"
                       >
                         {fetchingLogs ? (
                           <>
                             <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-600" />
-                            <span>Memuat chat kemarin...</span>
+                            <span>Memuat riwayat chat...</span>
                           </>
                         ) : (
                           <>
                             <Clock className="h-3.5 w-3.5 text-amber-600" />
-                            <span>Muat Obrolan Sebelumnya (+350 Log)</span>
+                            <span>Muat Obrolan Sebelumnya (+1.500 Log)</span>
                           </>
                         )}
                       </Button>
                       <span className="text-[10px] text-slate-400">
-                        Menampilkan {filteredChats.length} kontak ({chatLogs.length} riwayat termuat)
+                        Menampilkan {filteredChats.length} kontak ({chatLogs.length.toLocaleString("id-ID")} riwayat termuat)
                       </span>
                     </div>
                   )}
@@ -2775,14 +2809,14 @@ function WhatsAppAiPage() {
                       <CardContent className="flex-1 overflow-y-auto p-4 bg-slate-50/40 space-y-3.5">
                         {/* Tier 2: Load More History Button */}
                         {hasMoreHistory && (
-                          <div className="flex justify-center my-2">
+                          <div className="flex items-center justify-center my-2 gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               disabled={fetchingConversation}
                               onClick={handleLoadMoreHistory}
                               className="text-xs text-amber-800 bg-amber-50/90 hover:bg-amber-100 border-amber-200 shadow-2xs gap-1.5 cursor-pointer font-medium"
-                              title="Bongkar riwayat chat lebih lama dari Supabase"
+                              title="Bongkar riwayat chat lebih lama dari Supabase Pro"
                             >
                               {fetchingConversation ? (
                                 <>
@@ -2792,14 +2826,24 @@ function WhatsAppAiPage() {
                               ) : (
                                 <>
                                   <Clock className="h-3.5 w-3.5 text-amber-600" />
-                                  <span>Muat pesan sebelumnya (+50)</span>
+                                  <span>Muat pesan sebelumnya (+300)</span>
                                 </>
                               )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={fetchingConversation}
+                              onClick={() => setHistoryLimit(prev => prev + 2000)}
+                              className="text-xs text-amber-700 bg-white hover:bg-amber-50 border-amber-200 shadow-2xs cursor-pointer font-semibold"
+                              title="Bongkar seluruh riwayat chat untuk kontak ini"
+                            >
+                              <span>Muat Semua</span>
                             </Button>
                           </div>
                         )}
 
-                        {!hasMoreHistory && selectedChatMessages.length >= 50 && (
+                        {!hasMoreHistory && selectedChatMessages.length >= 300 && (
                           <div className="flex justify-center my-1 select-none">
                             <span className="text-[10px] text-slate-400 bg-slate-100/80 px-2.5 py-0.5 rounded-full border border-slate-200/60">
                               Awal mula riwayat pesan tercatat
