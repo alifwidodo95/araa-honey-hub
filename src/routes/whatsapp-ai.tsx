@@ -880,13 +880,20 @@ function WhatsAppAiPage() {
     const cleanPhone = phone.replace(/[^0-9]/g, "");
     if (!cleanPhone) return;
 
+    const canonical62 = cleanPhone.startsWith("0") ? "62" + cleanPhone.slice(1) : cleanPhone.startsWith("62") ? cleanPhone : "62" + cleanPhone;
+    const canonical08 = cleanPhone.startsWith("62") ? "0" + cleanPhone.slice(2) : cleanPhone.startsWith("0") ? cleanPhone : "0" + cleanPhone;
+    const phoneVariants = Array.from(new Set([cleanPhone, canonical62, canonical08]));
+
     setUpdatingTagPhone(cleanPhone);
     try {
       if (tag) {
         const { error } = await supabase
           .from("whatsapp_chat_tags" as any)
-          .upsert({ phone: cleanPhone, tag: tag, updated_at: new Date().toISOString() });
+          .upsert({ phone: canonical62, tag: tag, updated_at: new Date().toISOString() });
         if (error) throw error;
+        if (canonical08 !== canonical62) {
+          await supabase.from("whatsapp_chat_tags" as any).delete().eq("phone", canonical08);
+        }
         if (tag === "order") {
           toast.success("Kontak berhasil diberi label Order! 🛒");
         } else if (tag === "done") {
@@ -896,11 +903,12 @@ function WhatsAppAiPage() {
         const { error } = await supabase
           .from("whatsapp_chat_tags" as any)
           .delete()
-          .eq("phone", cleanPhone);
+          .in("phone", phoneVariants);
         if (error) throw error;
         toast.success("Label berhasil dilepas.");
       }
       refetchTags();
+      qc.invalidateQueries({ queryKey: ["whatsapp-chat-tags"] });
       qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
     } catch (err: any) {
       toast.error("Gagal memperbarui label: " + (err.message || "Error"));
