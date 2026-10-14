@@ -815,15 +815,65 @@ function WhatsAppAiPage() {
     };
   }, [refetchTags]);
 
-  // Fast lookup Map: phone digits -> tag
+  // Fast lookup Map: phone digits -> tag (normalizes both 628... and 08...)
   const chatTagsMap = useMemo(() => {
     const map = new Map<string, string>();
     chatTags.forEach(t => {
       const clean = (t.phone || "").replace(/[^0-9]/g, "");
-      if (clean) map.set(clean, t.tag);
+      if (clean) {
+        map.set(clean, t.tag);
+        if (clean.startsWith("62")) {
+          map.set("0" + clean.slice(2), t.tag);
+        } else if (clean.startsWith("0")) {
+          map.set("62" + clean.slice(1), t.tag);
+        }
+      }
     });
     return map;
   }, [chatTags]);
+
+  // Extract all active order phones to guarantee they are ALWAYS fetched & loaded
+  const orderPhones = useMemo(() => {
+    const phones = new Set<string>();
+    chatTags
+      .filter(t => t.tag === "order")
+      .forEach(t => {
+        const clean = (t.phone || "").replace(/[^0-9]/g, "");
+        if (clean) {
+          phones.add(clean);
+          if (clean.startsWith("62")) {
+            phones.add("0" + clean.slice(2));
+          } else if (clean.startsWith("0")) {
+            phones.add("62" + clean.slice(1));
+          }
+        }
+      });
+    return Array.from(phones);
+  }, [chatTags]);
+
+  // Dedicated query to guarantee all active order chats are ALWAYS present in memory
+  const { data: orderChatLogs = [] } = useQuery<ChatLog[]>({
+    queryKey: ["whatsapp-order-chat-logs", orderPhones],
+    queryFn: async () => {
+      if (orderPhones.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("whatsapp_chat_logs" as any)
+        .select("id, chat_id, customer_phone, customer_name, message, direction, channel, is_read, replied_by, created_at")
+        .eq("channel", "waba")
+        .in("customer_phone", orderPhones)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Gagal mengambil log order chats:", error);
+        return [];
+      }
+      return (data || []) as unknown as ChatLog[];
+    },
+    enabled: orderPhones.length > 0,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
+  });
 
   // Chat Tag Handler (order, done, null)
   const handleSetChatTag = async (phone: string, tag: "order" | "done" | null) => {
@@ -851,6 +901,7 @@ function WhatsAppAiPage() {
         toast.success("Label berhasil dilepas.");
       }
       refetchTags();
+      qc.invalidateQueries({ queryKey: ["whatsapp-order-chat-logs"] });
     } catch (err: any) {
       toast.error("Gagal memperbarui label: " + (err.message || "Error"));
     } finally {
@@ -1250,7 +1301,7 @@ function WhatsAppAiPage() {
       isOrderAgain: boolean;
     }>();
 
-    const combinedLogs = [...pendingMessages, ...chatLogs];
+    const combinedLogs = [...pendingMessages, ...orderChatLogs, ...chatLogs];
 
     combinedLogs.forEach(log => {
       // Exclusively monitor WABA Meta Cloud API chats
@@ -1288,6 +1339,10 @@ function WhatsAppAiPage() {
         });
       } else {
         existing.messageCount++;
+        // Guarantee latestLog is always the newest message
+        if (new Date(log.created_at).getTime() > new Date(existing.latestLog.created_at).getTime()) {
+          existing.latestLog = log;
+        }
         if (isInc) {
           existing.hasIncoming = true;
           if (isOrder) existing.isOrderAgain = true;
@@ -1300,6 +1355,46 @@ function WhatsAppAiPage() {
         if (!isGoodName(existing.customer_name) && isGoodName(log.customer_name)) {
           existing.customer_name = log.customer_name!;
         }
+      }
+    });
+
+    // Tier 1 Guarantee: Ensure ALL contacts marked with tag === 'order' are ALWAYS present in uniqueChats
+    orderPhones.forEach(phone => {
+      const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
+      if (!cleanPhone) return;
+
+      let existing = false;
+      for (const c of chatsMap.values()) {
+        if (c.customer_phone === cleanPhone || c.chat_id === cleanPhone || c.chat_id.replace(/[^0-9]/g, "") === cleanPhone) {
+          existing = true;
+          break;
+        }
+      }
+
+      if (!existing) {
+        const targetId = `${cleanPhone}@c.us`;
+        chatsMap.set(targetId, {
+          chat_id: targetId,
+          latestLog: {
+            id: `order-tag-${cleanPhone}`,
+            chat_id: targetId,
+            customer_phone: cleanPhone,
+            customer_name: "Pelanggan Order",
+            message: "🛒 [Pesanan Aktif]",
+            direction: "outgoing",
+            replied_by: null,
+            channel: "waba",
+            is_read: true,
+            created_at: new Date().toISOString(),
+          },
+          customer_name: "Pelanggan Order",
+          customer_phone: cleanPhone,
+          formatted_phone: formatDisplayPhone(cleanPhone),
+          messageCount: 1,
+          hasIncoming: false,
+          isUnread: false,
+          isOrderAgain: false,
+        });
       }
     });
 
@@ -1391,7 +1486,7 @@ function WhatsAppAiPage() {
     }
 
     return Array.from(chatsMap.values());
-  }, [chatLogs, pendingMessages, pinnedChats, selectedCustomerMeta]);
+  }, [chatLogs, orderChatLogs, orderPhones, pendingMessages, pinnedChats, selectedCustomerMeta]);
 
   // Response status statistics for WABA (all, unread, order, done, pinned)
   const responseCounts = useMemo(() => {
