@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays, Printer, Receipt, Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Plus, Pencil, Loader2, Upload, Search, X, CalendarDays, Printer, Receipt, Package, AlertTriangle, Clock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatIDR } from "@/lib/theme";
 import {
@@ -359,6 +360,16 @@ function Page() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [deletingBulk, setDeletingBulk] = useState(false);
 
+  // DUPLICATE ORDER DETECTION STATES
+  const [duplicateOrdersWarning, setDuplicateOrdersWarning] = useState<{
+    order: any;
+    matchType: "phone" | "name" | "both";
+    matchReason: string;
+  }[]>([]);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [pendingSanitizedPhone, setPendingSanitizedPhone] = useState("");
+  const [deletingDuplicateId, setDeletingDuplicateId] = useState<string | null>(null);
+
   const activeVariants = useMemo(() => {
     const list = (variants ?? []).map((v: any) => v.name);
     return list.length > 0 ? list : ["Akasia", "Randu", "Karet", "Lainnya"];
@@ -638,6 +649,74 @@ function Page() {
   const net = received - shipping;
 
   const [submitting, setSubmitting] = useState(false);
+
+  // Fungsi inti untuk mengeksekusi penyimpanan order ke database
+  const executeCreateOrder = async (overridePhone?: string) => {
+    setSubmitting(true);
+    const phoneToUse = overridePhone !== undefined ? overridePhone : pendingSanitizedPhone;
+    try {
+      const { error } = await supabase.rpc("create_order", {
+        _channel: channel,
+        _tier_id: (channel === "reseller" ? tierId : null) as any,
+        _items: items as any,
+        _shipping_fee: channel === "whatsapp" ? shipping : 0,
+        _customer_note: (note || null) as any,
+        _customer_name: customerName.trim(),
+        _customer_phone: (phoneToUse || null) as any,
+        _tracking_number: (trackingNumber.trim() || null) as any,
+        _amount_received: (amountReceived === "" ? null : Number(amountReceived)) as any,
+        _expedition: (expedition && expedition !== "-" ? expedition : null) as any,
+        _payment_method: (paymentMethod && paymentMethod !== "-" ? paymentMethod : null) as any,
+        _transfer_bank: (paymentMethod === "TRANSFER" && transferBank && transferBank !== "-" ? transferBank : null) as any,
+      });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success("Pesanan diproses & stok dipotong otomatis");
+        setItems([]); setShipping(0); setNote("");
+        setCustomerName(""); setCustomerPhone(""); setTrackingNumber(""); setAmountReceived("");
+        setExpedition(""); setPaymentMethod(""); setTransferBank("");
+        setDuplicateOrdersWarning([]);
+        setDuplicateModalOpen(false);
+        setPendingSanitizedPhone("");
+        qc.invalidateQueries();
+        runAutoMatchScalev().catch(() => {});
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membuat pesanan.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Fungsi untuk menghapus pesanan lama duplikat langsung dari dialog notifikasi
+  const handleDeleteDuplicateOrder = async (orderId: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus pesanan sebelumnya ini? Seluruh stok madu dan kemasan akan dikembalikan ke gudang secara otomatis.")) {
+      return;
+    }
+    setDeletingDuplicateId(orderId);
+    try {
+      const { error } = await (supabase.rpc as any)("delete_order", { _order_id: orderId });
+      if (error) {
+        toast.error("Gagal menghapus: " + error.message);
+      } else {
+        toast.success("Pesanan lama berhasil dihapus & stok dikembalikan! 📦");
+        qc.invalidateQueries({ queryKey: ["orders-recent"] });
+        setDuplicateOrdersWarning(prev => {
+          const remaining = prev.filter(item => item.order.id !== orderId);
+          if (remaining.length === 0) {
+            setDuplicateModalOpen(false);
+          }
+          return remaining;
+        });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus pesanan.");
+    } finally {
+      setDeletingDuplicateId(null);
+    }
+  };
+
   const submit = async () => {
     if (!customerName.trim()) return toast.error("Nama pelanggan wajib diisi");
     if (!items.length) return toast.error("Tambahkan item pesanan");
@@ -668,30 +747,116 @@ function Page() {
       sanitizedPhone = "0" + sanitizedPhone;
     }
 
-    const { error } = await supabase.rpc("create_order", {
-      _channel: channel,
-      _tier_id: (channel === "reseller" ? tierId : null) as any,
-      _items: items as any,
-      _shipping_fee: channel === "whatsapp" ? shipping : 0,
-      _customer_note: (note || null) as any,
-      _customer_name: customerName.trim(),
-      _customer_phone: (sanitizedPhone || null) as any,
-      _tracking_number: (trackingNumber.trim() || null) as any,
-      _amount_received: (amountReceived === "" ? null : Number(amountReceived)) as any,
-      _expedition: (expedition && expedition !== "-" ? expedition : null) as any,
-      _payment_method: (paymentMethod && paymentMethod !== "-" ? paymentMethod : null) as any,
-      _transfer_bank: (paymentMethod === "TRANSFER" && transferBank && transferBank !== "-" ? transferBank : null) as any,
-    });
-    setSubmitting(false);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Pesanan diproses & stok dipotong otomatis");
-      setItems([]); setShipping(0); setNote("");
-      setCustomerName(""); setCustomerPhone(""); setTrackingNumber(""); setAmountReceived("");
-      setExpedition(""); setPaymentMethod(""); setTransferBank("");
-      qc.invalidateQueries();
-      runAutoMatchScalev().catch(() => {});
+    setPendingSanitizedPhone(sanitizedPhone);
+
+    // --- DETEKSI DOUBLE ORDER (MAKSIMAL 2 HARI TERAKHIR) ---
+    try {
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      const rawDigits = sanitizedPhone.replace(/[^0-9]/g, "");
+      let p08 = "";
+      let p62 = "";
+      if (rawDigits) {
+        if (rawDigits.startsWith("62")) {
+          p62 = rawDigits;
+          p08 = "0" + rawDigits.slice(2);
+        } else if (rawDigits.startsWith("0")) {
+          p08 = rawDigits;
+          p62 = "62" + rawDigits.slice(1);
+        } else if (rawDigits.startsWith("8")) {
+          p08 = "0" + rawDigits;
+          p62 = "62" + rawDigits;
+        } else {
+          p08 = rawDigits;
+          p62 = rawDigits;
+        }
+      }
+
+      const orClauses: string[] = [];
+      if (p08) orClauses.push(`customer_phone.eq.${p08}`);
+      if (p62) orClauses.push(`customer_phone.eq.${p62}`);
+      if (rawDigits && rawDigits !== p08 && rawDigits !== p62) orClauses.push(`customer_phone.eq.${rawDigits}`);
+
+      const cleanInputName = customerName.trim();
+      if (cleanInputName.length >= 3) {
+        orClauses.push(`customer_name.ilike.%${cleanInputName}%`);
+      }
+
+      if (orClauses.length > 0) {
+        const { data: recentOrders, error: recentErr } = await supabase
+          .from("orders")
+          .select("id, created_at, customer_name, customer_phone, channel, tracking_number, expedition, payment_method, shipping_fee, subtotal_gross, amount_received, order_items(id, honey_type, qty, unit_price, product_sizes(name, weight_grams))")
+          .gte("created_at", twoDaysAgo)
+          .or(orClauses.join(","))
+          .order("created_at", { ascending: false });
+
+        if (recentErr) {
+          console.error("Gagal memeriksa double order:", recentErr);
+        } else if (recentOrders && recentOrders.length > 0) {
+          const matchedList: {
+            order: any;
+            matchType: "phone" | "name" | "both";
+            matchReason: string;
+          }[] = [];
+
+          const inputNameLower = cleanInputName.toLowerCase();
+
+          for (const ord of recentOrders) {
+            const ordPhoneDigits = (ord.customer_phone || "").replace(/[^0-9]/g, "");
+            const ordNameLower = (ord.customer_name || "").trim().toLowerCase();
+
+            // Prioritas 1: Cocok No. HP
+            const isPhoneMatch = Boolean(
+              rawDigits.length >= 8 &&
+              ordPhoneDigits &&
+              (ordPhoneDigits === p08 || ordPhoneDigits === p62 || (rawDigits.length >= 9 && ordPhoneDigits.endsWith(rawDigits.slice(-8))))
+            );
+
+            // Prioritas 2: Cocok Nama
+            const isNameMatch = Boolean(
+              cleanInputName.length >= 3 &&
+              (ordNameLower === inputNameLower || (inputNameLower.length >= 4 && (ordNameLower.includes(inputNameLower) || inputNameLower.includes(ordNameLower))))
+            );
+
+            if (isPhoneMatch && isNameMatch) {
+              matchedList.push({
+                order: ord,
+                matchType: "both",
+                matchReason: "Nomor HP & Nama Sama"
+              });
+            } else if (isPhoneMatch) {
+              matchedList.push({
+                order: ord,
+                matchType: "phone",
+                matchReason: "Nomor HP Sama"
+              });
+            } else if (isNameMatch) {
+              matchedList.push({
+                order: ord,
+                matchType: "name",
+                matchReason: "Nama Pelanggan Sama"
+              });
+            }
+          }
+
+          if (matchedList.length > 0) {
+            // Urutkan prioritas: HP/Both di atas, lalu Nama
+            matchedList.sort((a, b) => {
+              const priority = { both: 0, phone: 1, name: 2 };
+              return priority[a.matchType] - priority[b.matchType];
+            });
+
+            setDuplicateOrdersWarning(matchedList);
+            setDuplicateModalOpen(true);
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+    } catch (checkErr) {
+      console.error("Error cek double order:", checkErr);
     }
+
+    await executeCreateOrder(sanitizedPhone);
   };
 
   const uniqueItems = useMemo(() => {
@@ -2203,6 +2368,176 @@ function Page() {
           qc.invalidateQueries({ queryKey: ["orders-recent"] });
         }}
       />
+
+      {/* DIALOG PERINGATAN ORDER GANDA (DOUBLE ORDER DETECTION) */}
+      <Dialog open={duplicateModalOpen} onOpenChange={setDuplicateModalOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden border-amber-300 shadow-2xl">
+          <DialogHeader className="px-6 py-4 border-b bg-amber-50/70 dark:bg-amber-950/30">
+            <div className="flex items-center gap-2.5">
+              <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0 border border-amber-300">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-amber-950 dark:text-amber-200 flex items-center gap-2">
+                  <span>Peringatan: Terdeteksi Potensi Order Ganda!</span>
+                  <Badge variant="outline" className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-bold">
+                    {duplicateOrdersWarning.length} Pesanan Serupa (≤ 2 Hari)
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                  Ditemukan pesanan dengan Nomor HP atau Nama yang sama dalam 2 hari terakhir. Silakan tinjau rincian di bawah sebelum memutuskan.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3.5 bg-slate-50/40">
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span>Daftar Pesanan yang Sudah Ada di Database:</span>
+              <span className="text-[11px] text-muted-foreground">Stok otomatis disinkronkan saat dihapus</span>
+            </div>
+
+            {duplicateOrdersWarning.map((item, idx) => {
+              const ord = item.order;
+              const ordItems = ord.order_items || [];
+              const timeStr = ord.created_at ? new Date(ord.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":") : "";
+              const dateStr = ord.created_at ? formatDateIndo(ord.created_at.slice(0, 10)) : "";
+
+              return (
+                <div
+                  key={ord.id || idx}
+                  className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-2.5 transition-all hover:border-amber-300"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-slate-900">{ord.customer_name || "Tanpa Nama"}</span>
+                        <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          {ord.customer_phone || "Tanpa HP"}
+                        </span>
+                        <Badge className="uppercase text-[9px] font-bold px-1.5 py-0 bg-slate-100 text-slate-800 border-slate-300">
+                          {ord.channel}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" />
+                          {dateStr} pukul {timeStr} WIB
+                        </span>
+                        {ord.tracking_number && (
+                          <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                            Resi: {ord.tracking_number}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {item.matchType === "both" ? (
+                        <Badge className="bg-rose-500 text-white text-[10px] font-bold shadow-2xs">
+                          🎯 No. HP & Nama Sama
+                        </Badge>
+                      ) : item.matchType === "phone" ? (
+                        <Badge className="bg-amber-500 text-white text-[10px] font-bold shadow-2xs">
+                          📱 No. HP Sama
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-sky-600 text-white text-[10px] font-bold shadow-2xs">
+                          👤 Nama Sama
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Items list */}
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs space-y-1">
+                    <span className="font-semibold text-[11px] text-slate-600 block">Produk Dipesan:</span>
+                    {ordItems.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {ordItems.map((oi: any, oiIdx: number) => (
+                          <div key={oi.id || oiIdx} className="flex justify-between text-slate-700 text-[11px]">
+                            <span>• {oi.qty}x {oi.honey_type || "Madu"} ({oi.product_sizes?.name || "Ukuran"})</span>
+                            <span className="font-mono text-slate-500">{formatIDR(oi.line_total || oi.qty * oi.unit_price)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">Rincian produk tidak tersedia</span>
+                    )}
+                    <div className="pt-1.5 mt-1 border-t border-slate-200/60 flex justify-between font-bold text-xs text-slate-900">
+                      <span>Total Pesanan:</span>
+                      <span className="text-honey-dark font-mono">{formatIDR(ord.subtotal_gross || ord.amount_received || 0)}</span>
+                    </div>
+                  </div>
+
+                  {/* Delete button on individual duplicate */}
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-slate-500 italic">
+                      Bila pesanan di atas adalah salah input, Anda bisa langsung menghapusnya:
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      disabled={deletingDuplicateId === ord.id}
+                      onClick={() => handleDeleteDuplicateOrder(ord.id)}
+                      className="h-7 text-xs font-semibold gap-1.5 cursor-pointer shadow-2xs"
+                      title="Hapus pesanan ini dari database dan kembalikan stoknya"
+                    >
+                      {deletingDuplicateId === ord.id ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>Menghapus...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-3 w-3" />
+                          <span>Hapus Pesanan Sebelumnya</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="px-6 py-3.5 border-t bg-slate-50 flex items-center justify-between sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDuplicateModalOpen(false);
+                setSubmitting(false);
+                toast.info("Input pesanan baru dibatalkan.");
+              }}
+              className="text-xs h-9 cursor-pointer"
+            >
+              Batalkan Input Ini
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => executeCreateOrder()}
+                disabled={submitting}
+                className="text-xs h-9 bg-honey hover:bg-honey-hover text-white font-bold gap-1.5 cursor-pointer shadow-xs"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Memproses...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Abaikan & Tetap Simpan Pesanan Baru</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
