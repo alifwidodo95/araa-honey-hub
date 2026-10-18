@@ -183,15 +183,18 @@ export async function sendWhatsAppMessage(opts: SendWhatsAppOptions): Promise<Se
           interactive: interactiveObj
         };
       } else if (hasMedia) {
+        const mediaPayloadObj: any = {
+          link: mediaUrl
+        };
+        if (opts.message && opts.message.trim()) {
+          mediaPayloadObj.caption = opts.message.trim();
+        }
         payload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
           to: cleanPhone,
           type: isVideo ? 'video' : 'image',
-          [isVideo ? 'video' : 'image']: {
-            link: mediaUrl,
-            caption: opts.message
-          }
+          [isVideo ? 'video' : 'image']: mediaPayloadObj
         };
       } else {
         payload = {

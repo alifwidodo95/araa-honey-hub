@@ -8,12 +8,14 @@ export const Route = createFileRoute('/api/whatsapp/send')({
       POST: async ({ request }) => {
         try {
           const body = await request.json() as any;
-          const { to, message, imageUrl, channel, wahaConfig } = body || {};
+          const { to, message, imageUrl, mediaUrl, mediaType, channel, wahaConfig } = body || {};
 
-          if (!to || !message) {
+          const finalMediaUrl = (mediaUrl || imageUrl || '').trim();
+
+          if (!to || (!message && !finalMediaUrl)) {
             return new Response(JSON.stringify({ 
               success: false, 
-              error: 'Nomor tujuan (to) dan pesan (message) wajib diisi.' 
+              error: 'Nomor tujuan (to) dan pesan atau media wajib diisi.' 
             }), {
               status: 400,
               headers: { 'Content-Type': 'application/json' },
@@ -37,8 +39,10 @@ export const Route = createFileRoute('/api/whatsapp/send')({
 
           const result = await sendWhatsAppMessage({
             to,
-            message,
-            imageUrl,
+            message: message || '',
+            imageUrl: finalMediaUrl,
+            mediaUrl: finalMediaUrl,
+            mediaType: mediaType,
             channel: (channel as WhatsAppChannel) || 'waba',
             wahaConfig: resolvedWahaConfig
           });
@@ -70,10 +74,16 @@ export const Route = createFileRoute('/api/whatsapp/send')({
                 }
               }
               const msgId = result.messageId || null;
+              const isVideo = mediaType === 'video' || /\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(finalMediaUrl);
+              const defaultMediaText = finalMediaUrl
+                ? (isVideo ? '[Video Dikirim]' : '[Foto Dikirim]')
+                : '';
+              const finalLogMessage = (message && message.trim()) ? message.trim() : defaultMediaText;
+
               await logPool.query(
-                `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, wamid, delivery_status, created_at)
-                 VALUES ($1, $2, $3, $4, 'outgoing', $5, $6, $7, 'sent', now())`,
-                [chatId, cleanPhone, custName, message, body.replied_by || 'manual', (channel as WhatsAppChannel) || 'waba', msgId]
+                `INSERT INTO public.whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, replied_by, channel, wamid, delivery_status, media_url, created_at)
+                 VALUES ($1, $2, $3, $4, 'outgoing', $5, $6, $7, 'sent', $8, now())`,
+                [chatId, cleanPhone, custName, finalLogMessage, body.replied_by || 'manual', (channel as WhatsAppChannel) || 'waba', msgId, finalMediaUrl || null]
               );
               await logPool.end();
             } catch (logErr) {

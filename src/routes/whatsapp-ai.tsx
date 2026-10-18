@@ -50,7 +50,7 @@ import {
   ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, CheckCheck, Smile,
   Pin, PinOff, Calendar, Clock, Copy,
   Image as ImageIcon, Download, ZoomIn, ExternalLink,
-  Maximize2, Minimize2
+  Maximize2, Minimize2, Paperclip, Video, X, Loader2
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -201,6 +201,11 @@ function isSameDay(dateStr1: string, dateStr2: string): boolean {
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate()
   );
+}
+
+function isVideoMedia(url?: string | null): boolean {
+  if (!url) return false;
+  return /\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(url);
 }
 
 function formatChatDividerDate(dateStr: string): string {
@@ -550,6 +555,118 @@ function WhatsAppAiPage() {
   const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<ChatLog[]>([]);
+
+  // Media Attachment States for Outgoing Photo / Video
+  const [mediaAttachment, setMediaAttachment] = useState<{
+    file: File;
+    previewUrl: string;
+    mediaType: "image" | "video";
+    fileName: string;
+    fileSize: number;
+  } | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (file: File) => {
+    if (!file) return;
+
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+
+    if (!isImage && !isVideo) {
+      toast.error("Format berkas tidak didukung. Harap pilih foto (JPG, PNG, WebP) atau video (MP4, MOV).");
+      return;
+    }
+
+    // Size limit: Image max 5 MB, Video max 16 MB
+    if (isImage && file.size > 5 * 1024 * 1024) {
+      toast.error(`Ukuran foto terlalu besar (${(file.size / (1024 * 1024)).toFixed(1)} MB). Batas maksimal Meta WABA adalah 5 MB.`);
+      return;
+    }
+
+    if (isVideo && file.size > 16 * 1024 * 1024) {
+      toast.error(`Ukuran video terlalu besar (${(file.size / (1024 * 1024)).toFixed(1)} MB). Batas maksimal Meta WABA adalah 16 MB.`);
+      return;
+    }
+
+    if (mediaAttachment?.previewUrl) {
+      URL.revokeObjectURL(mediaAttachment.previewUrl);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    const mediaType: "image" | "video" = isVideo ? "video" : "image";
+
+    setMediaAttachment({
+      file,
+      previewUrl,
+      mediaType,
+      fileName: file.name,
+      fileSize: file.size,
+    });
+
+    toast.success(`${mediaType === "video" ? "Video" : "Foto"} siap dikirim! Anda dapat mengetik keterangan caption jika perlu.`);
+    if (manualInputRef.current) {
+      manualInputRef.current.focus();
+    }
+  };
+
+  const handleRemoveMediaAttachment = () => {
+    if (mediaAttachment?.previewUrl) {
+      URL.revokeObjectURL(mediaAttachment.previewUrl);
+    }
+    setMediaAttachment(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handlePasteMedia = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf("image") !== -1 || item.type.indexOf("video") !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleFileSelect(file);
+          return;
+        }
+      }
+    }
+  };
+
+  const uploadMediaToStorage = async (file: File): Promise<string> => {
+    const fileExt = file.name.split(".").pop() || (file.type.startsWith("video/") ? "mp4" : "jpg");
+    const cleanBaseName = file.name
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .slice(0, 30);
+    const filePath = `chat-media/${Date.now()}-${cleanBaseName}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from("crm-media")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || (file.name.endsWith(".mp4") ? "video/mp4" : "image/jpeg")
+      });
+
+    if (error) {
+      throw new Error("Gagal mengunggah media ke penyimpanan: " + error.message);
+    }
+
+    const { data: pubData } = supabase.storage
+      .from("crm-media")
+      .getPublicUrl(data.path);
+
+    if (!pubData?.publicUrl) {
+      throw new Error("Gagal mendapatkan tautan publik berkas.");
+    }
+
+    return pubData.publicUrl;
+  };
   const [chatSearch, setChatSearch] = useState("");
   const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order" | "done" | "pinned">("all");
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
@@ -1990,7 +2107,9 @@ function WhatsAppAiPage() {
   // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send) with Zero-Delay Optimistic UI
   const handleSendManualReply = async (retryMsg?: ChatLog) => {
     const text = (retryMsg ? retryMsg.message : manualReplyText).trim();
-    if (!text || !selectedChatId) return;
+    const currentAttachment = retryMsg ? null : mediaAttachment;
+
+    if ((!text && !currentAttachment && !retryMsg?.media_url) || !selectedChatId) return;
 
     const currentChat = activeChatInfo;
     const targetChannel = "waba";
@@ -1998,12 +2117,20 @@ function WhatsAppAiPage() {
     const customerName = currentChat?.customer_name || "Pelanggan WA";
 
     const tempId = retryMsg ? retryMsg.id : `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const effectiveMediaType = currentAttachment?.mediaType || (retryMsg?.media_url && isVideoMedia(retryMsg.media_url) ? "video" : "image");
+    const optimisticMediaUrl = currentAttachment?.previewUrl || retryMsg?.media_url;
+
+    const fallbackMessage = optimisticMediaUrl 
+      ? (effectiveMediaType === "video" ? "[Video Dikirim]" : "[Foto Dikirim]")
+      : "";
+
     const pendingLog: ChatLog = {
       id: tempId,
       chat_id: selectedChatId,
       customer_phone: customerPhone,
       customer_name: customerName,
-      message: text,
+      message: text || fallbackMessage,
+      media_url: optimisticMediaUrl,
       direction: "outgoing",
       replied_by: "manual",
       channel: targetChannel,
@@ -2015,6 +2142,10 @@ function WhatsAppAiPage() {
     if (!retryMsg) {
       // 1. INSTANT (0ms): Clear input and append optimistic message immediately
       setManualReplyText("");
+      setMediaAttachment(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       if (manualInputRef.current) {
         manualInputRef.current.style.height = "auto";
       }
@@ -2032,12 +2163,20 @@ function WhatsAppAiPage() {
     // 2. BACKGROUND: Dispatch network request to Meta WABA
     setSendingReply(true);
     try {
+      let finalMediaUrl: string | undefined = retryMsg?.media_url || undefined;
+      if (currentAttachment) {
+        setUploadingMedia(true);
+        finalMediaUrl = await uploadMediaToStorage(currentAttachment.file);
+      }
+
       const sendRes = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: customerPhone,
           message: text,
+          mediaUrl: finalMediaUrl,
+          mediaType: effectiveMediaType,
           channel: "waba",
           customerName: customerName,
           replied_by: "manual"
@@ -2050,7 +2189,7 @@ function WhatsAppAiPage() {
       }
 
       // Success: mark as sent
-      setPendingMessages(prev => prev.map(p => p.id === tempId ? { ...p, status: "sent" } : p));
+      setPendingMessages(prev => prev.map(p => p.id === tempId ? { ...p, status: "sent", media_url: finalMediaUrl || p.media_url } : p));
 
       // Auto-cleanup sent temp message after 4 seconds (once server logs have synced)
       setTimeout(() => {
@@ -2071,6 +2210,7 @@ function WhatsAppAiPage() {
       toast.error(err.message || "Gagal mengirim balasan.");
     } finally {
       setSendingReply(false);
+      setUploadingMedia(false);
     }
   };
 
@@ -3111,37 +3251,48 @@ function WhatsAppAiPage() {
                                         </Badge>
                                       )}
                                     </div>
-                                    {/* Render Media Image if available */}
+                                    {/* Render Media Image or Video if available */}
                                     {(msg.media_id || msg.media_url) && (
                                       <div className="mb-2">
-                                        <div
-                                          onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message !== '[Pelanggan Mengirim Gambar]' ? msg.message : undefined)}
-                                          className="relative group/media overflow-hidden rounded-xl border border-slate-200 bg-slate-100 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
-                                        >
-                                          <img
-                                            src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                            alt="Foto WhatsApp"
-                                            className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
-                                            loading="lazy"
-                                            onError={(e) => {
-                                              const target = e.currentTarget;
-                                              target.style.display = 'none';
-                                              const parent = target.parentElement;
-                                              if (parent) {
-                                                parent.innerHTML = `
-                                                  <div class="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200">
-                                                    <span>🖼️</span>
-                                                    <span>Gambar bukti transfer telah kedaluwarsa dari server WhatsApp.</span>
-                                                  </div>
-                                                `;
-                                              }
-                                            }}
-                                          />
-                                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
-                                            <ZoomIn className="h-4 w-4" />
-                                            <span>Klik untuk Perbesar</span>
+                                        {isVideoMedia(msg.media_url) ? (
+                                          <div className="overflow-hidden rounded-xl border border-slate-200 bg-black shadow-xs max-w-sm">
+                                            <video
+                                              src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                              controls
+                                              className="w-full max-h-72 rounded-xl"
+                                              preload="metadata"
+                                            />
                                           </div>
-                                        </div>
+                                        ) : (
+                                          <div
+                                            onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, (msg.message !== '[Pelanggan Mengirim Gambar]' && msg.message !== '[Foto Dikirim]') ? msg.message : undefined)}
+                                            className="relative group/media overflow-hidden rounded-xl border border-slate-200 bg-slate-100 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
+                                          >
+                                            <img
+                                              src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                              alt="Foto WhatsApp"
+                                              className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
+                                              loading="lazy"
+                                              onError={(e) => {
+                                                const target = e.currentTarget;
+                                                target.style.display = 'none';
+                                                const parent = target.parentElement;
+                                                if (parent) {
+                                                  parent.innerHTML = `
+                                                    <div class="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200">
+                                                      <span>🖼️</span>
+                                                      <span>Gambar bukti transfer telah kedaluwarsa dari server WhatsApp.</span>
+                                                    </div>
+                                                  `;
+                                                }
+                                              }}
+                                            />
+                                            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
+                                              <ZoomIn className="h-4 w-4" />
+                                              <span>Klik untuk Perbesar</span>
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
 
@@ -3154,7 +3305,7 @@ function WhatsAppAiPage() {
                                         </div>
                                       </div>
                                     ) : (
-                                      (!msg.media_id && !msg.media_url) || msg.message !== '[Pelanggan Mengirim Gambar]' ? (
+                                      (!msg.media_id && !msg.media_url) || (msg.message !== '[Pelanggan Mengirim Gambar]' && msg.message !== '[Foto Dikirim]' && msg.message !== '[Video Dikirim]') ? (
                                         <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium text-slate-800">{msg.message}</p>
                                       ) : null
                                     )}
@@ -3224,28 +3375,41 @@ function WhatsAppAiPage() {
                                     )}
                                   </div>
 
-                                  {/* Render Media Image for Outgoing if available */}
+                                  {/* Render Media Image or Video for Outgoing if available */}
                                   {(msg.media_id || msg.media_url) && (
                                     <div className="mb-2">
-                                      <div
-                                        onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, msg.message)}
-                                        className="relative group/media overflow-hidden rounded-xl border border-white/20 bg-black/10 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
-                                      >
-                                        <img
-                                          src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                          alt="Media Outgoing"
-                                          className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
-                                          loading="lazy"
-                                        />
-                                        <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
-                                          <ZoomIn className="h-4 w-4" />
-                                          <span>Klik untuk Perbesar</span>
+                                      {isVideoMedia(msg.media_url) ? (
+                                        <div className="overflow-hidden rounded-xl border border-white/20 bg-black shadow-xs max-w-sm">
+                                          <video
+                                            src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                            controls
+                                            className="w-full max-h-72 rounded-xl"
+                                            preload="metadata"
+                                          />
                                         </div>
-                                      </div>
+                                      ) : (
+                                        <div
+                                          onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, (msg.message !== '[Foto Dikirim]' && msg.message !== '[Video Dikirim]') ? msg.message : undefined)}
+                                          className="relative group/media overflow-hidden rounded-xl border border-white/20 bg-black/10 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
+                                        >
+                                          <img
+                                            src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
+                                            alt="Media Outgoing"
+                                            className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
+                                            loading="lazy"
+                                          />
+                                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
+                                            <ZoomIn className="h-4 w-4" />
+                                            <span>Klik untuk Perbesar</span>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
 
-                                  <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
+                                  {msg.message && msg.message !== '[Foto Dikirim]' && msg.message !== '[Video Dikirim]' && (
+                                    <p className="text-sm whitespace-pre-wrap leading-relaxed font-sans">{msg.message}</p>
+                                  )}
 
                                   {/* Retry button if failed */}
                                   {msg.status === "failed" && (
@@ -3295,7 +3459,53 @@ function WhatsAppAiPage() {
                         <div ref={chatEndRef} />
                       </CardContent>
 
-                      <div className="p-3 border-t shrink-0 flex gap-2 bg-white relative items-end">
+                      <div className="border-t shrink-0 bg-white relative">
+                        {/* Media Attachment Preview Card */}
+                        {mediaAttachment && (
+                          <div className="mx-3 mt-3 p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-1 duration-150">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {mediaAttachment.mediaType === "video" ? (
+                                <div className="relative h-14 w-20 bg-black rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                                  <video src={mediaAttachment.previewUrl} className="h-full w-full object-cover" />
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white">
+                                    <Video className="h-5 w-5" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <img
+                                  src={mediaAttachment.previewUrl}
+                                  alt="Preview Lampiran"
+                                  className="h-14 w-14 object-cover rounded-lg border border-amber-200 shrink-0"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge className="text-[10px] font-bold bg-amber-500 text-white border-0 px-1.5 py-0">
+                                    {mediaAttachment.mediaType === "video" ? "🎥 Video (WABA)" : "📷 Foto (WABA)"}
+                                  </Badge>
+                                  <span className="text-xs font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-xs" title={mediaAttachment.fileName}>
+                                    {mediaAttachment.fileName}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  {(mediaAttachment.fileSize / (1024 * 1024)).toFixed(2)} MB • Ketik keterangan di bawah atau langsung tekan kirim
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={handleRemoveMediaAttachment}
+                              className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg shrink-0 cursor-pointer"
+                              title="Hapus Lampiran"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="p-3 flex gap-2 items-end">
                         {/* Floating Quick Reply Menu */}
                         {isQuickReplyMenuOpen && (
                           <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-40 animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-72 flex flex-col">
@@ -3498,11 +3708,39 @@ function WhatsAppAiPage() {
                           </PopoverContent>
                         </Popover>
 
+                        {/* Attachment Button for Photos & Videos */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={sendingReply || uploadingMedia}
+                          className="h-9 w-9 shrink-0 rounded-xl text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all cursor-pointer"
+                          title="Lampirkan Foto (maks 5MB) atau Video (maks 16MB)"
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileSelect(file);
+                          }}
+                        />
+
                         <Textarea
                           ref={manualInputRef}
                           rows={1}
-                          placeholder="Tulis balasan manual (Enter kirim, Shift+Enter baris baru, / balas cepat)..."
+                          placeholder={
+                            mediaAttachment 
+                              ? `Tulis keterangan ${mediaAttachment.mediaType === "video" ? "video" : "foto"} (opsional, tekan Enter kirim)...` 
+                              : "Tulis balasan manual (Enter kirim, Shift+Enter baris baru, / balas cepat, Ctrl+V foto)..."
+                          }
                           value={manualReplyText}
+                          onPaste={handlePasteMedia}
                           onChange={(e) => {
                             setManualReplyText(e.target.value);
                             e.target.style.height = "auto";
@@ -3525,13 +3763,18 @@ function WhatsAppAiPage() {
                         <Button 
                           type="button"
                           onClick={() => handleSendManualReply()} 
-                          disabled={!manualReplyText.trim()}
+                          disabled={(!manualReplyText.trim() && !mediaAttachment) || sendingReply || uploadingMedia}
                           className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer h-9 px-3 shrink-0"
                           title="Kirim Pesan (Enter)"
                         >
-                          <Send className="h-4 w-4" />
+                          {sendingReply || uploadingMedia ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
+                    </div>
                     </>
                   );
                 })()}
@@ -4241,36 +4484,54 @@ function WhatsAppAiPage() {
         </DialogContent>
       </Dialog>
 
-      {/* WhatsApp Media Lightbox / Image Zoom Modal */}
+      {/* WhatsApp Media Lightbox / Image & Video Zoom Modal */}
       <Dialog open={!!previewImageUrl} onOpenChange={(open) => !open && setPreviewImageUrl(null)}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] p-4 bg-slate-950 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-between border border-slate-800 overflow-hidden">
           <DialogHeader className="w-full flex flex-row items-center justify-between pb-2 border-b border-slate-800 shrink-0">
             <DialogTitle className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-              <ImageIcon className="h-4 w-4 text-amber-400" />
-              <span>Pratinjau Foto WhatsApp</span>
+              {isVideoMedia(previewImageUrl) ? (
+                <>
+                  <Video className="h-4 w-4 text-amber-400" />
+                  <span>Pratinjau Video WhatsApp</span>
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="h-4 w-4 text-amber-400" />
+                  <span>Pratinjau Foto WhatsApp</span>
+                </>
+              )}
             </DialogTitle>
             {previewImageUrl && (
               <a
                 href={previewImageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                download="bukti-transfer-whatsapp.jpg"
+                download={isVideoMedia(previewImageUrl) ? "video-whatsapp.mp4" : "foto-whatsapp.jpg"}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors shadow-xs cursor-pointer mr-6"
-                title="Buka atau unduh gambar asli"
+                title="Buka atau unduh berkas asli"
               >
                 <Download className="h-3.5 w-3.5" />
-                <span>Unduh Gambar</span>
+                <span>{isVideoMedia(previewImageUrl) ? "Unduh Video" : "Unduh Gambar"}</span>
               </a>
             )}
           </DialogHeader>
 
           <div className="w-full flex-1 overflow-auto flex items-center justify-center p-2 min-h-[300px]">
             {previewImageUrl && (
-              <img
-                src={previewImageUrl}
-                alt="Pratinjau Gambar"
-                className="max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-xl"
-              />
+              isVideoMedia(previewImageUrl) ? (
+                <video
+                  src={previewImageUrl}
+                  controls
+                  autoPlay
+                  className="max-h-[72vh] w-auto max-w-full rounded-lg shadow-xl bg-black"
+                />
+              ) : (
+                <img
+                  src={previewImageUrl}
+                  alt="Pratinjau Gambar"
+                  className="max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-xl"
+                />
+              )
             )}
           </div>
 
