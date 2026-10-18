@@ -2984,24 +2984,24 @@ function WhatsAppAiPage() {
 
                   return (
                     <>
-                      <CardHeader className="py-3 px-4 border-b flex flex-row items-center justify-between shrink-0 bg-slate-50/50">
-                        <div>
-                          <CardTitle className="text-base flex items-center gap-2">
-                            <span>{displayName}</span>
+                      <CardHeader className="py-2.5 px-4 border-b flex flex-row items-center justify-between shrink-0 bg-slate-50/50 gap-3">
+                        <div className="min-w-0">
+                          <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800 truncate">{displayName}</span>
                             <TooltipProvider delayDuration={150}>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
                                     type="button"
                                     onClick={() => handleCopyPhone(activeChat?.customer_phone || selectedChatId)}
-                                    className="group/phone inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/90 active:scale-95 px-2 py-0.5 rounded border border-emerald-200 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs"
+                                    className="group/phone inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/90 active:scale-95 px-2 py-0.5 rounded border border-emerald-200 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
                                     title="Klik untuk salin nomor murni tanpa strip"
                                   >
-                                    <span>{displayPhone}</span>
+                                    <span className="whitespace-nowrap">{displayPhone}</span>
                                     {copiedPhone ? (
-                                      <Check className="h-3 w-3 text-emerald-600 animate-in zoom-in" />
+                                      <Check className="h-3 w-3 text-emerald-600 animate-in zoom-in shrink-0" />
                                     ) : (
-                                      <Copy className="h-3 w-3 text-emerald-600/70 opacity-0 group-hover/phone:opacity-100 transition-opacity" />
+                                      <Copy className="h-3 w-3 text-emerald-600/70 opacity-0 group-hover/phone:opacity-100 transition-opacity shrink-0" />
                                     )}
                                   </button>
                                 </TooltipTrigger>
@@ -3018,25 +3018,28 @@ function WhatsAppAiPage() {
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
-                            <Badge className="bg-emerald-600 text-white text-[10px]">WABA Resmi Meta</Badge>
+
                             {isCurrentOrdered && (
-                              <Badge className="bg-amber-500 text-white text-[10px] flex items-center gap-1">
+                              <Badge className="bg-amber-500 text-white text-[10px] flex items-center gap-1 whitespace-nowrap shrink-0">
                                 <ShoppingCart className="h-3 w-3" />
                                 <span>Order</span>
                               </Badge>
                             )}
                             {isCurrentDone && (
-                              <Badge className="bg-emerald-600 text-white text-[10px] flex items-center gap-1">
+                              <Badge className="bg-emerald-600 text-white text-[10px] flex items-center gap-1 whitespace-nowrap shrink-0">
                                 <CheckCircle className="h-3 w-3" />
                                 <span>Selesai</span>
                               </Badge>
                             )}
                           </CardTitle>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            Jalur: Meta Cloud API (+62 856-4540-6949)
-                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                            <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 font-medium whitespace-nowrap shrink-0">
+                              WABA Resmi Meta
+                            </Badge>
+                            <span className="truncate">Jalur: Meta Cloud API (+62 856-4540-6949)</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           {/* Tombol Tarik Data Konsumen Lincah */}
                           <Button
                             size="sm"
@@ -3045,7 +3048,7 @@ function WhatsAppAiPage() {
                               const targetPhone = activeChat?.customer_phone || selectedChatId;
                               if (targetPhone) handleOpenLincahDialog(targetPhone);
                             }}
-                            className="h-7 px-2.5 text-[11px] gap-1.5 font-semibold text-blue-700 bg-blue-50/90 hover:bg-blue-100 hover:text-blue-800 border-blue-200 hover:border-blue-300 shadow-2xs transition-all cursor-pointer"
+                            className="h-7 px-2.5 text-[11px] gap-1.5 font-semibold text-blue-700 bg-blue-50/90 hover:bg-blue-100 hover:text-blue-800 border-blue-200 hover:border-blue-300 shadow-2xs transition-all cursor-pointer whitespace-nowrap shrink-0"
                             title="Tarik data alamat & riwayat pesanan dari Agregator Lincah"
                           >
                             <Package className="h-3.5 w-3.5 text-blue-600" />
@@ -3057,7 +3060,7 @@ function WhatsAppAiPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => activeChat && handleOpenPinDialog(activeChat)}
-                            className={`h-7 px-2.5 text-[11px] gap-1.5 font-semibold shadow-2xs transition-all cursor-pointer ${
+                            className={`h-7 px-2.5 text-[11px] gap-1.5 font-semibold shadow-2xs transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                               currentPin
                                 ? "bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300"
                                 : "text-slate-600 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200"
@@ -3070,18 +3073,18 @@ function WhatsAppAiPage() {
 
                           {/* Order / Selesai Tag Action Buttons in Header */}
                           {isCurrentOrdered ? (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1 shrink-0">
                               {/* Direct One-Click Button to complete order */}
                               <Button
                                 size="sm"
                                 variant="default"
                                 disabled={updatingTagPhone === activeChat?.customer_phone}
                                 onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "done")}
-                                className="h-7 px-2.5 text-[11px] gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                                className="h-7 px-2 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs transition-all active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
                                 title="Klik bila pesanan konsumen ini sudah selesai dikerjakan / dikirim"
                               >
                                 <CheckCircle className="h-3.5 w-3.5" />
-                                <span>Tandai Selesai</span>
+                                <span>Selesai</span>
                               </Button>
 
                               {/* Order Dropdown for options */}
@@ -3090,7 +3093,7 @@ function WhatsAppAiPage() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 px-2 text-[11px] gap-1 font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-2xs cursor-pointer"
+                                    className="h-7 px-2 text-[11px] gap-1 font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-2xs cursor-pointer whitespace-nowrap shrink-0"
                                     title="Status: Order (Klik untuk opsi)"
                                   >
                                     <ShoppingCart className="h-3.5 w-3.5 text-amber-600" />
@@ -3123,7 +3126,7 @@ function WhatsAppAiPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 px-2.5 text-[11px] gap-1.5 font-bold bg-emerald-50 text-emerald-900 border-emerald-400 hover:bg-emerald-100 shadow-2xs cursor-pointer"
+                                  className="h-7 px-2.5 text-[11px] gap-1.5 font-bold bg-emerald-50 text-emerald-900 border-emerald-400 hover:bg-emerald-100 shadow-2xs cursor-pointer whitespace-nowrap shrink-0"
                                   title="Pesanan sudah selesai dikerjakan. Klik untuk opsi."
                                 >
                                   <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
@@ -3151,13 +3154,13 @@ function WhatsAppAiPage() {
                           ) : (
                             /* Default: No Tag yet -> Tandai Order with dropdown */
                             <DropdownMenu>
-                              <div className="inline-flex rounded-md shadow-2xs">
+                              <div className="inline-flex rounded-md shadow-2xs shrink-0">
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   disabled={updatingTagPhone === activeChat?.customer_phone}
                                   onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "order")}
-                                  className="h-7 px-2.5 text-[11px] gap-1.5 font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200 rounded-r-none cursor-pointer"
+                                  className="h-7 px-2.5 text-[11px] gap-1.5 font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50/80 border-slate-200 rounded-r-none cursor-pointer whitespace-nowrap"
                                   title="Tandai kontak ini sedang order"
                                 >
                                   <ShoppingCart className="h-3.5 w-3.5 text-slate-400" />
@@ -3167,8 +3170,8 @@ function WhatsAppAiPage() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 px-1.5 text-[11px] text-slate-500 hover:text-slate-800 border-l-0 border-slate-200 rounded-l-none cursor-pointer"
-                                    title="Pilihan label"
+                                    className="h-7 px-1.5 text-[11px] text-slate-500 hover:text-slate-800 border-l-0 border-slate-200 rounded-l-none cursor-pointer whitespace-nowrap"
+                                    title="Opsi label lainnya"
                                   >
                                     <ChevronDown className="h-3 w-3" />
                                   </Button>
@@ -3179,12 +3182,12 @@ function WhatsAppAiPage() {
                                   onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "order")}
                                   className="text-xs text-amber-800 font-semibold gap-2 cursor-pointer py-1.5"
                                 >
-                                  <ShoppingCart className="h-4 w-4 text-amber-500" />
+                                  <ShoppingCart className="h-4 w-4 text-amber-600" />
                                   <span>🛒 Beri Label Order</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => activeChat && handleSetChatTag(activeChat.customer_phone, "done")}
-                                  className="text-xs text-emerald-800 font-semibold gap-2 cursor-pointer py-1.5"
+                                  className="text-xs text-emerald-700 font-semibold gap-2 cursor-pointer py-1.5"
                                 >
                                   <CheckCircle className="h-4 w-4 text-emerald-600" />
                                   <span>✅ Langsung Selesai</span>
