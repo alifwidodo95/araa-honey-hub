@@ -50,7 +50,8 @@ import {
   ChevronDown, ShoppingCart, Pencil, Trash2, Plus, Zap, Check, CheckCheck, Smile,
   Pin, PinOff, Calendar, Clock, Copy,
   Image as ImageIcon, Download, ZoomIn, ExternalLink,
-  Maximize2, Minimize2, Paperclip, Video, X, Loader2
+  Maximize2, Minimize2, Paperclip, Video, X, Loader2,
+  Package, Truck
 } from "lucide-react";
 
 export const Route = createFileRoute("/whatsapp-ai")({
@@ -708,6 +709,137 @@ function WhatsAppAiPage() {
     toast.success(`Nomor ${clean} berhasil disalin! Siap dipaste ke Agregator 📋`);
     setTimeout(() => setCopiedPhone(false), 2000);
   }, [getCleanCopyPhone]);
+
+  // Lincah Customer & Order History Modal States
+  const [isLincahModalOpen, setIsLincahModalOpen] = useState(false);
+  const [lincahLoading, setLincahLoading] = useState(false);
+  const [lincahSearchPhone, setLincahSearchPhone] = useState("");
+  const [lincahData, setLincahData] = useState<{
+    found: boolean;
+    customer: {
+      name: string;
+      phone: string;
+      address: string;
+      destination: string;
+      full_address: string;
+      score: string | null;
+      total_orders: number;
+      latest_resi: string | null;
+      latest_status: string | null;
+      latest_product: string | null;
+    } | null;
+    orders: Array<{
+      id: string;
+      no_order: string | null;
+      resi: string | null;
+      name: string;
+      phone: string;
+      address: string;
+      destination: string;
+      full_address: string;
+      product_name: string;
+      quantity: number;
+      type: string;
+      cod_price: number;
+      courier: string;
+      courier_service: string;
+      status: string;
+      lastStatus: string | null;
+      score: string | null;
+      createdAt: string | null;
+      completedAt: string | null;
+    }>;
+  } | null>(null);
+
+  const fetchLincahData = useCallback(async (phoneToQuery: string) => {
+    const clean = phoneToQuery.replace(/[^0-9]/g, "");
+    if (!clean) {
+      toast.error("Nomor telepon tidak valid atau kosong.");
+      return;
+    }
+    setLincahLoading(true);
+    setLincahSearchPhone(clean);
+    try {
+      const res = await fetch(`/api/lincah/customer?phone=${encodeURIComponent(clean)}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+      setLincahData(json);
+      if (!json.found) {
+        toast.info("Tidak ditemukan riwayat pesanan Lincah untuk nomor ini.");
+      }
+    } catch (err: any) {
+      console.error("[Lincah] Gagal mengambil data:", err);
+      toast.error(`Gagal cek Lincah: ${err.message || "Koneksi bermasalah"}`);
+    } finally {
+      setLincahLoading(false);
+    }
+  }, []);
+
+  const handleOpenLincahDialog = useCallback((phone?: string) => {
+    const clean = getCleanCopyPhone(phone);
+    if (!clean) {
+      toast.error("Pilih chat atau nomor telepon pelanggan terlebih dahulu.");
+      return;
+    }
+    setIsLincahModalOpen(true);
+    fetchLincahData(clean);
+  }, [getCleanCopyPhone, fetchLincahData]);
+
+  const handleForwardLincahToChat = useCallback((
+    order: {
+      name: string;
+      phone: string;
+      full_address: string;
+      product_name: string;
+      quantity: number;
+      type: string;
+      cod_price: number;
+      courier: string;
+      resi: string | null;
+    },
+    mode: "full" | "address" | "product" = "full"
+  ) => {
+    let formattedText = "";
+    if (mode === "full") {
+      const typeLabel = order.type === "cod" ? "COD (Bayar di Tempat)" : "Non-COD / Transfer";
+      const priceText = order.cod_price ? `Rp ${Number(order.cod_price).toLocaleString("id-ID")}` : "-";
+      const resiText = order.resi ? `${order.courier ? order.courier + " " : ""}${order.resi}` : "-";
+
+      formattedText = `📦 *DATA PESANAN KONSUMEN (LINCAH)*
+👤 *Nama:* ${order.name}
+📱 *No. HP:* ${order.phone}
+📍 *Alamat:* ${order.full_address}
+🍯 *Produk:* ${order.product_name} (${order.quantity} pcs)
+💰 *Pembayaran:* ${typeLabel} - ${priceText}
+🚚 *Ekspedisi & Resi:* ${resiText}`;
+    } else if (mode === "address") {
+      formattedText = `👤 *Nama:* ${order.name}
+📱 *No. HP:* ${order.phone}
+📍 *Alamat:* ${order.full_address}`;
+    } else if (mode === "product") {
+      const typeLabel = order.type === "cod" ? "COD" : "Transfer";
+      const priceText = order.cod_price ? `Rp ${Number(order.cod_price).toLocaleString("id-ID")}` : "-";
+      formattedText = `🍯 *Pesanan:* ${order.product_name} (${order.quantity} pcs)
+💰 *Harga:* ${typeLabel} ${priceText}`;
+    }
+
+    setManualReplyText(prev => {
+      const trimmed = prev.trim();
+      return trimmed ? `${trimmed}\n\n${formattedText}` : formattedText;
+    });
+
+    setIsLincahModalOpen(false);
+    toast.success("Data berhasil ditempel ke kolom chat!");
+    setTimeout(() => {
+      if (manualInputRef.current) {
+        manualInputRef.current.focus();
+        manualInputRef.current.selectionStart = manualInputRef.current.value.length;
+        manualInputRef.current.selectionEnd = manualInputRef.current.value.length;
+      }
+    }, 100);
+  }, []);
 
   // Mark all unread incoming messages for a customer/chat as read
   const markingReadRef = useRef<Set<string>>(new Set());
@@ -2905,6 +3037,21 @@ function WhatsAppAiPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* Tombol Tarik Data Konsumen Lincah */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const targetPhone = activeChat?.customer_phone || selectedChatId;
+                              if (targetPhone) handleOpenLincahDialog(targetPhone);
+                            }}
+                            className="h-7 px-2.5 text-[11px] gap-1.5 font-semibold text-blue-700 bg-blue-50/90 hover:bg-blue-100 hover:text-blue-800 border-blue-200 hover:border-blue-300 shadow-2xs transition-all cursor-pointer"
+                            title="Tarik data alamat & riwayat pesanan dari Agregator Lincah"
+                          >
+                            <Package className="h-3.5 w-3.5 text-blue-600" />
+                            <span>Data Lincah</span>
+                          </Button>
+
                           {/* Pin / Follow-up Button in Header */}
                           <Button
                             size="sm"
@@ -4540,6 +4687,296 @@ function WhatsAppAiPage() {
               {previewImageCaption}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Riwayat Pesanan & Data Konsumen Lincah */}
+      <Dialog open={isLincahModalOpen} onOpenChange={setIsLincahModalOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] p-0 flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+          <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-slate-50 flex items-center justify-between shrink-0">
+            <div>
+              <DialogTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <div className="p-1.5 bg-blue-600 text-white rounded-lg shadow-2xs">
+                  <Package className="h-4 w-4" />
+                </div>
+                <span>Data Konsumen & Riwayat Pesanan (Lincah)</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500 mt-1">
+                Tarik otomatis riwayat pesanan, status resi, dan alamat dari Agregator Lincah untuk diteruskan ke chat.
+              </DialogDescription>
+            </div>
+          </div>
+
+          {/* Search bar & Badges */}
+          <div className="p-3.5 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex-1 min-w-[240px] flex items-center gap-2">
+              <div className="relative flex-1">
+                <Phone className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={lincahSearchPhone}
+                  onChange={(e) => setLincahSearchPhone(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      fetchLincahData(lincahSearchPhone);
+                    }
+                  }}
+                  placeholder="Cari no. HP pelanggan (cth: 0812... atau 628...)"
+                  className="h-8 pl-8 text-xs bg-white border-slate-300"
+                />
+              </div>
+              <Button
+                size="sm"
+                disabled={lincahLoading || !lincahSearchPhone.trim()}
+                onClick={() => fetchLincahData(lincahSearchPhone)}
+                className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium cursor-pointer shadow-2xs gap-1.5"
+              >
+                {lincahLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Search className="h-3.5 w-3.5" />
+                )}
+                <span>Cari</span>
+              </Button>
+            </div>
+
+            {/* Badges */}
+            {lincahData?.customer && (
+              <div className="flex items-center gap-2">
+                {lincahData.customer.score ? (
+                  <Badge
+                    variant="outline"
+                    className={`text-xs font-semibold px-2.5 py-0.5 border ${
+                      lincahData.customer.score === "A"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                        : lincahData.customer.score === "B"
+                        ? "bg-blue-50 text-blue-700 border-blue-300"
+                        : lincahData.customer.score === "C"
+                        ? "bg-amber-50 text-amber-700 border-amber-300"
+                        : "bg-rose-50 text-rose-700 border-rose-300"
+                    }`}
+                  >
+                    ⭐ Skor COD: Grade {lincahData.customer.score}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs bg-slate-100 text-slate-600 border-slate-200">
+                    Skor COD: Belum ada
+                  </Badge>
+                )}
+                <Badge variant="secondary" className="text-xs font-medium">
+                  Total: {lincahData.orders.length} Pesanan
+                </Badge>
+              </div>
+            )}
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 max-h-[58vh]">
+            {lincahLoading ? (
+              <div className="py-12 flex flex-col items-center justify-center text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-3" />
+                <p className="text-sm font-semibold text-slate-700">Menghubungkan ke API Lincah...</p>
+                <p className="text-xs text-slate-400 mt-1">Mengambil data konsumen & riwayat pesanan.</p>
+              </div>
+            ) : !lincahData?.found ? (
+              <div className="py-10 px-4 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                <AlertCircle className="h-9 w-9 text-slate-400 mx-auto mb-2" />
+                <h4 className="text-sm font-semibold text-slate-700">Data Tidak Ditemukan</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  Tidak ditemukan riwayat pesanan untuk nomor <strong className="font-mono text-slate-700">{lincahSearchPhone || "-"}</strong> di akun Lincah Anda.
+                </p>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Tip: Pastikan nomor HP sama dengan yang didaftarkan saat pemesanan di ekspedisi atau ketik nomor lain di kolom pencarian.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary Pelanggan Card */}
+                {lincahData.customer && (
+                  <div className="p-3.5 bg-gradient-to-br from-blue-50/80 via-slate-50 to-indigo-50/40 rounded-xl border border-blue-200/80 shadow-2xs space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-800">{lincahData.customer.name}</span>
+                          <span className="text-xs font-mono text-slate-500">({lincahData.customer.phone})</span>
+                        </div>
+                        <div className="flex items-start gap-1.5 text-xs text-slate-600">
+                          <MapPin className="h-3.5 w-3.5 text-rose-500 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed">{lincahData.customer.full_address}</span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          navigator.clipboard.writeText(lincahData.customer!.full_address);
+                          toast.success("Alamat berhasil disalin!");
+                        }}
+                        className="h-7 px-2 text-[11px] text-blue-700 hover:bg-blue-100/70 border border-blue-200 shrink-0 cursor-pointer"
+                        title="Salin alamat lengkap"
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        Salin Alamat
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* List Orders */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600 px-1">
+                    <span>Riwayat Pesanan ({lincahData.orders.length})</span>
+                    <span className="text-[11px] text-slate-400 font-normal">Pilih pesanan untuk diteruskan ke chat</span>
+                  </div>
+
+                  {lincahData.orders.map((order, idx) => {
+                    const isComplete = (order.status || "").toLowerCase().includes("complete") || (order.status || "").toLowerCase().includes("done");
+                    const isShipping = (order.status || "").toLowerCase().includes("ship") || (order.status || "").toLowerCase().includes("picked");
+                    const isCanceled = (order.status || "").toLowerCase().includes("cancel") || (order.status || "").toLowerCase().includes("retur");
+
+                    return (
+                      <div
+                        key={order.id || idx}
+                        className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 bg-white shadow-2xs hover:shadow-xs transition-all space-y-3"
+                      >
+                        {/* Order Header: No Order, Date & Status */}
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="font-mono font-bold text-slate-700">
+                              {order.no_order ? `#${order.no_order}` : `Pesanan #${idx + 1}`}
+                            </span>
+                            {order.createdAt && (
+                              <span className="text-[11px] text-slate-400">
+                                {new Date(order.createdAt).toLocaleDateString("id-ID", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric"
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              className={`text-[10px] font-semibold ${
+                                isComplete
+                                  ? "bg-emerald-600 text-white"
+                                  : isShipping
+                                  ? "bg-blue-600 text-white"
+                                  : isCanceled
+                                  ? "bg-rose-600 text-white"
+                                  : "bg-amber-500 text-white"
+                              }`}
+                            >
+                              {(order.status || "STATUS").toUpperCase()}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Product & Courier Info */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div className="space-y-1">
+                            <div className="text-[11px] text-slate-400 font-medium">Produk Dibeli:</div>
+                            <div className="font-semibold text-slate-800 leading-snug">
+                              {order.product_name} <span className="text-amber-700">({order.quantity} pcs)</span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 pt-0.5">
+                              <span className="font-medium">{order.type === "cod" ? "COD" : "Transfer"}:</span>{" "}
+                              <strong className="text-emerald-700 font-mono">
+                                Rp {Number(order.cod_price || 0).toLocaleString("id-ID")}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 sm:border-l sm:border-slate-100 sm:pl-3">
+                            <div className="text-[11px] text-slate-400 font-medium">Ekspedisi & Resi:</div>
+                            <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                              <Truck className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                              <span>{order.courier} {order.courier_service ? `(${order.courier_service})` : ""}</span>
+                            </div>
+                            {order.resi ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                  {order.resi}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(order.resi || "");
+                                    toast.success("No. Resi disalin!");
+                                  }}
+                                  className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                                  title="Salin Resi"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">Belum ada resi</span>
+                            )}
+                            {order.lastStatus && (
+                              <div className="text-[10px] text-slate-500 italic truncate" title={order.lastStatus}>
+                                Status scan: {order.lastStatus}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Address */}
+                        <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 flex items-start gap-1.5">
+                          <MapPin className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="line-clamp-2">{order.full_address}</span>
+                        </div>
+
+                        {/* Action Buttons to Forward into Chat */}
+                        <div className="pt-1 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleForwardLincahToChat(order, "address")}
+                            className="h-7 px-2.5 text-[11px] text-slate-700 hover:text-blue-800 hover:bg-blue-50 border-slate-200 cursor-pointer"
+                            title="Hanya tempel Nama, No. HP, dan Alamat ke kolom chat"
+                          >
+                            <MapPin className="h-3 w-3 mr-1 text-rose-500" />
+                            Tempel Alamat
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleForwardLincahToChat(order, "product")}
+                            className="h-7 px-2.5 text-[11px] text-slate-700 hover:text-amber-800 hover:bg-amber-50 border-slate-200 cursor-pointer"
+                            title="Hanya tempel Produk & Harga ke kolom chat"
+                          >
+                            🍯 Tempel Pesanan
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleForwardLincahToChat(order, "full")}
+                            className="h-7 px-3 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shadow-2xs gap-1.5"
+                            title="Tempel alamat lengkap dan detail pesanan ke kolom chat"
+                          >
+                            <Send className="h-3 w-3" />
+                            <span>Forward ke Chat</span>
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
+            <span>Data bersumber dari API Agregator Lincah</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsLincahModalOpen(false)}
+              className="h-7 text-xs text-slate-600 cursor-pointer"
+            >
+              Tutup
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

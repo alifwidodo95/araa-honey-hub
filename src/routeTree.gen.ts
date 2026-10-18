@@ -50,6 +50,7 @@ import { Route as ApiMetaReplyCommentRouteImport } from './routes/api.meta.reply
 import { Route as ApiMetaReplyAllUnrepliedRouteImport } from './routes/api.meta.reply-all-unreplied'
 import { Route as ApiMediaUploadRouteImport } from './routes/api.media.upload'
 import { Route as ApiMediaDeleteRouteImport } from './routes/api.media.delete'
+import { Route as ApiLincahCustomerRouteImport } from './routes/api.lincah.customer'
 import { Route as ApiCronSyncScalevRouteImport } from './routes/api.cron.sync-scalev'
 import { Route as ApiCronSyncMetaAdsRouteImport } from './routes/api.cron.sync-meta-ads'
 import { Route as ApiCronSendResiRouteImport } from './routes/api.cron.send-resi'
@@ -265,6 +266,11 @@ const ApiMediaDeleteRoute = ApiMediaDeleteRouteImport.update({
   path: '/api/media/delete',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLincahCustomerRoute = ApiLincahCustomerRouteImport.update({
+  id: '/api/lincah/customer',
+  path: '/api/lincah/customer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronSyncScalevRoute = ApiCronSyncScalevRouteImport.update({
   id: '/api/cron/sync-scalev',
   path: '/api/cron/sync-scalev',
@@ -347,6 +353,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/cron/sync-scalev': typeof ApiCronSyncScalevRoute
+  '/api/lincah/customer': typeof ApiLincahCustomerRoute
   '/api/media/delete': typeof ApiMediaDeleteRoute
   '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -398,6 +405,7 @@ export interface FileRoutesByTo {
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/cron/sync-scalev': typeof ApiCronSyncScalevRoute
+  '/api/lincah/customer': typeof ApiLincahCustomerRoute
   '/api/media/delete': typeof ApiMediaDeleteRoute
   '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -450,6 +458,7 @@ export interface FileRoutesById {
   '/api/cron/send-resi': typeof ApiCronSendResiRoute
   '/api/cron/sync-meta-ads': typeof ApiCronSyncMetaAdsRoute
   '/api/cron/sync-scalev': typeof ApiCronSyncScalevRoute
+  '/api/lincah/customer': typeof ApiLincahCustomerRoute
   '/api/media/delete': typeof ApiMediaDeleteRoute
   '/api/media/upload': typeof ApiMediaUploadRoute
   '/api/meta/reply-all-unreplied': typeof ApiMetaReplyAllUnrepliedRoute
@@ -503,6 +512,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/cron/sync-scalev'
+    | '/api/lincah/customer'
     | '/api/media/delete'
     | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
@@ -554,6 +564,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/cron/sync-scalev'
+    | '/api/lincah/customer'
     | '/api/media/delete'
     | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
@@ -605,6 +616,7 @@ export interface FileRouteTypes {
     | '/api/cron/send-resi'
     | '/api/cron/sync-meta-ads'
     | '/api/cron/sync-scalev'
+    | '/api/lincah/customer'
     | '/api/media/delete'
     | '/api/media/upload'
     | '/api/meta/reply-all-unreplied'
@@ -657,6 +669,7 @@ export interface RootRouteChildren {
   ApiCronSendResiRoute: typeof ApiCronSendResiRoute
   ApiCronSyncMetaAdsRoute: typeof ApiCronSyncMetaAdsRoute
   ApiCronSyncScalevRoute: typeof ApiCronSyncScalevRoute
+  ApiLincahCustomerRoute: typeof ApiLincahCustomerRoute
   ApiMediaDeleteRoute: typeof ApiMediaDeleteRoute
   ApiMediaUploadRoute: typeof ApiMediaUploadRoute
   ApiMetaReplyAllUnrepliedRoute: typeof ApiMetaReplyAllUnrepliedRoute
@@ -957,6 +970,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMediaDeleteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/lincah/customer': {
+      id: '/api/lincah/customer'
+      path: '/api/lincah/customer'
+      fullPath: '/api/lincah/customer'
+      preLoaderRoute: typeof ApiLincahCustomerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/sync-scalev': {
       id: '/api/cron/sync-scalev'
       path: '/api/cron/sync-scalev'
@@ -1057,6 +1077,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronSendResiRoute: ApiCronSendResiRoute,
   ApiCronSyncMetaAdsRoute: ApiCronSyncMetaAdsRoute,
   ApiCronSyncScalevRoute: ApiCronSyncScalevRoute,
+  ApiLincahCustomerRoute: ApiLincahCustomerRoute,
   ApiMediaDeleteRoute: ApiMediaDeleteRoute,
   ApiMediaUploadRoute: ApiMediaUploadRoute,
   ApiMetaReplyAllUnrepliedRoute: ApiMetaReplyAllUnrepliedRoute,
