@@ -14,5 +14,8 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
+    routeRules: {
+      '/api/**': { maxDuration: 60 },
+    },
   },
 });

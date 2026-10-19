@@ -713,6 +713,7 @@ function WhatsAppAiPage() {
   // Lincah Customer & Order History Modal States
   const [isLincahModalOpen, setIsLincahModalOpen] = useState(false);
   const [lincahLoading, setLincahLoading] = useState(false);
+  const [lincahError, setLincahError] = useState<string | null>(null);
   const [lincahSearchPhone, setLincahSearchPhone] = useState("");
   const [lincahData, setLincahData] = useState<{
     found: boolean;
@@ -758,6 +759,7 @@ function WhatsAppAiPage() {
       return;
     }
     setLincahLoading(true);
+    setLincahError(null);
     setLincahSearchPhone(clean);
     try {
       const res = await fetch(`/api/lincah/customer?phone=${encodeURIComponent(clean)}`);
@@ -771,7 +773,12 @@ function WhatsAppAiPage() {
       }
     } catch (err: any) {
       console.error("[Lincah] Gagal mengambil data:", err);
-      toast.error(`Gagal cek Lincah: ${err.message || "Koneksi bermasalah"}`);
+      const isTimeout = err?.message && err.message.toLowerCase().includes("timeout");
+      const friendlyMsg = isTimeout
+        ? "Server Lincah memerlukan waktu lebih dari 45 detik untuk menyisir 20.000+ data pesanan. Silakan coba klik tombol Cari lagi."
+        : (err.message || "Koneksi ke Lincah mengalami gangguan.");
+      setLincahError(friendlyMsg);
+      toast.error(`Gagal cek Lincah: ${friendlyMsg}`);
     } finally {
       setLincahLoading(false);
     }
@@ -4775,10 +4782,28 @@ function WhatsAppAiPage() {
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 max-h-[58vh]">
             {lincahLoading ? (
-              <div className="py-12 flex flex-col items-center justify-center text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-3" />
-                <p className="text-sm font-semibold text-slate-700">Menghubungkan ke API Lincah...</p>
-                <p className="text-xs text-slate-400 mt-1">Mengambil data konsumen & riwayat pesanan.</p>
+              <div className="py-12 flex flex-col items-center justify-center text-center px-4">
+                <Loader2 className="h-9 w-9 animate-spin text-blue-600 mb-3" />
+                <p className="text-sm font-semibold text-slate-800">Menghubungkan ke API Lincah...</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                  Sedang menyisir riwayat 20.000+ pesanan di server Lincah. Proses ini memerlukan waktu sekitar 15–25 detik, mohon tunggu sebentar ya...
+                </p>
+              </div>
+            ) : lincahError ? (
+              <div className="py-10 px-4 text-center border border-dashed border-rose-200 rounded-xl bg-rose-50/50">
+                <AlertCircle className="h-9 w-9 text-rose-500 mx-auto mb-2" />
+                <h4 className="text-sm font-semibold text-rose-800">Koneksi Lincah Mengalami Kendala</h4>
+                <p className="text-xs text-rose-600 max-w-md mx-auto mt-1">
+                  {lincahError}
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => fetchLincahData(lincahSearchPhone)}
+                  className="mt-3.5 h-8 px-4 text-xs bg-rose-600 hover:bg-rose-700 text-white font-medium cursor-pointer shadow-2xs gap-1.5"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Coba Lagi</span>
+                </Button>
               </div>
             ) : !lincahData?.found ? (
               <div className="py-10 px-4 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50/50">

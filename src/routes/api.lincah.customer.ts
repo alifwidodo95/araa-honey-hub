@@ -34,15 +34,15 @@ export const Route = createFileRoute('/api/lincah/customer')({
           const apiKey = customApiKey || process.env.LINCAH_API_KEY || DEFAULT_LINCAH_API_KEY;
 
           // Helper to fetch orders from Lincah API v2
-          const fetchOrders = async (phoneQuery: string) => {
-            const endpoint = `https://api-v2.lincah.id/openapi/order?phone=${encodeURIComponent(phoneQuery)}`;
+          const fetchOrders = async (phoneQuery: string, timeoutMs = 45000) => {
+            const endpoint = `https://api-v2.lincah.id/openapi/order?phone=${encodeURIComponent(phoneQuery)}&limit=20`;
             const res = await fetch(endpoint, {
               method: 'GET',
               headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Accept': 'application/json',
               },
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(timeoutMs),
             });
 
             if (!res.ok) {
@@ -54,14 +54,14 @@ export const Route = createFileRoute('/api/lincah/customer')({
             return json?.data?.data || [];
           };
 
-          // 1. Try with 628... format
-          let rawOrders = await fetchOrders(digits);
+          // 1. Try with 628... format (allow 45 seconds to scan large 20,000+ orders DB)
+          let rawOrders = await fetchOrders(digits, 45000);
 
-          // 2. If 0 orders found and number starts with 62, try fallback with 08... format
+          // 2. If 0 orders found and number starts with 62, try fallback with 08... format (with 15s budget)
           if ((!rawOrders || rawOrders.length === 0) && digits.startsWith('62')) {
             const fallback08 = '0' + digits.slice(2);
             try {
-              const fallbackOrders = await fetchOrders(fallback08);
+              const fallbackOrders = await fetchOrders(fallback08, 15000);
               if (fallbackOrders && fallbackOrders.length > 0) {
                 rawOrders = fallbackOrders;
               }
@@ -136,9 +136,14 @@ export const Route = createFileRoute('/api/lincah/customer')({
 
         } catch (error: any) {
           console.error('[API Lincah Customer Error]:', error);
+          const isTimeout = error.name === 'TimeoutError' || (error.message && error.message.toLowerCase().includes('timeout'));
+          const clientMsg = isTimeout
+            ? 'Server Lincah memerlukan waktu pemindaian lebih dari 45 detik. Silakan coba klik tombol Cari lagi.'
+            : (error.message || 'Terjadi kesalahan saat memproses data Lincah.');
+
           return new Response(JSON.stringify({
             success: false,
-            error: error.message || 'Terjadi kesalahan saat memproses data Lincah.',
+            error: clientMsg,
             orders: [],
           }), {
             status: 500,
