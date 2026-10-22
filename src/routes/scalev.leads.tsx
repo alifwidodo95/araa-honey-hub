@@ -19,7 +19,7 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil, Trash2, Plus, Tag, FileText, RotateCcw
+  Pencil, Trash2, Plus, Tag, FileText, RotateCcw, MessageSquare
 } from "lucide-react";
 import {
   Popover,
@@ -44,7 +44,9 @@ import {
   searchOrdersForLinking,
   updateScalevLeadPhone,
   deleteScalevLeads,
-  updateScalevLeadNotes
+  updateScalevLeadNotes,
+  getLeadWaChatStatuses,
+  type LeadWaStatusInfo
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
 import { getMetaMessageTemplates } from "@/lib/waba-templates.functions";
@@ -391,7 +393,179 @@ export function ScalevLeadsPage() {
   });
 
   // Bulk Selection Helpers & Computed States
-  const currentLeads = useMemo(() => leadsData?.leads || [], [leadsData]);
+  // Filter WA Chat Status: "all" | "same_number" | "diff_number" | "not_sent"
+  const [waChatFilter, setWaChatFilter] = useState<"all" | "same_number" | "diff_number" | "not_sent">("all");
+
+  // Raw leads from server
+  const rawLeads = useMemo(() => leadsData?.leads || [], [leadsData]);
+
+  // Query: Realtime WAHA Chat Statuses for leads on current page (only new leads >= 22 Oct 2026)
+  const newLeadsForWaCheck = useMemo(() => {
+    const cutoffTime = new Date("2026-10-22T00:00:00+07:00").getTime();
+    return rawLeads
+      .filter((l: any) => new Date(l.created_at).getTime() >= cutoffTime)
+      .map((l: any) => ({
+        id: l.id,
+        customer_name: l.customer_name,
+        customer_phone: l.customer_phone,
+        scalev_order_id: l.scalev_order_id,
+        created_at: l.created_at,
+      }));
+  }, [rawLeads]);
+
+  const { data: waChatStatusMap, isLoading: isWaStatusLoading } = useQuery({
+    queryKey: ["lead-wa-chat-statuses", newLeadsForWaCheck.map((l: any) => l.id + l.customer_phone).join(",")],
+    queryFn: () => getLeadWaChatStatuses({ data: { leads: newLeadsForWaCheck } }),
+    enabled: newLeadsForWaCheck.length > 0,
+    refetchInterval: 15000,
+    staleTime: 10000,
+  });
+
+  // Filtered Leads based on WA Chat Status
+  const currentLeads = useMemo(() => {
+    if (waChatFilter === "all" || !waChatStatusMap) return rawLeads;
+    return rawLeads.filter((l: any) => {
+      const waInfo = waChatStatusMap[l.id];
+      if (!waInfo) return false;
+      return waInfo.status === waChatFilter;
+    });
+  }, [rawLeads, waChatFilter, waChatStatusMap]);
+
+  // Status counts for WA Chat filter pills
+  const waStatusCounts = useMemo(() => {
+    if (!waChatStatusMap) return { same: 0, diff: 0, notSent: 0 };
+    let same = 0, diff = 0, notSent = 0;
+    Object.values(waChatStatusMap).forEach((info) => {
+      if (info.status === "same_number") same++;
+      else if (info.status === "diff_number") diff++;
+      else if (info.status === "not_sent") notSent++;
+    });
+    return { same, diff, notSent };
+  }, [waChatStatusMap]);
+
+  // Render Dot Indicator next to customer name
+  const renderWaChatDot = (lead: any) => {
+    const cutoffTime = new Date("2026-10-22T00:00:00+07:00").getTime();
+    if (new Date(lead.created_at).getTime() < cutoffTime) {
+      return null;
+    }
+
+    const waInfo: LeadWaStatusInfo | undefined = waChatStatusMap?.[lead.id];
+
+    if (!waInfo) {
+      if (isWaStatusLoading) {
+        return (
+          <span 
+            className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30 animate-pulse inline-block shrink-0 ml-0.5" 
+            title="Mengecek status chat WA..." 
+          />
+        );
+      }
+      return null;
+    }
+
+    if (waInfo.status === "same_number") {
+      return (
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center justify-center cursor-help shrink-0 ml-1">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-xs shadow-emerald-500/50 border border-emerald-300/40"></span>
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs space-y-1.5 p-2.5 bg-slate-900 text-white border-slate-700 shadow-xl z-50">
+              <div className="font-bold flex items-center gap-1.5 text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                🟢 Sudah Chat WA (Nomor Sama)
+              </div>
+              {waInfo.chatTimestamp && (
+                <div className="text-[11px] text-slate-300">
+                  Waktu Chat: {formatDateIndo(new Date(waInfo.chatTimestamp * 1000).toISOString())}
+                </div>
+              )}
+              {waInfo.lastSnippet && (
+                <div className="text-[11px] italic text-slate-200 border-t border-slate-700/60 pt-1 mt-1 line-clamp-2">
+                  &ldquo;{waInfo.lastSnippet}&rdquo;
+                </div>
+              )}
+              <div className="text-[10px] text-emerald-300/80 pt-0.5">
+                Pesan terdeteksi di WhatsApp 1.
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    if (waInfo.status === "diff_number") {
+      return (
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center justify-center cursor-help shrink-0 ml-1">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 shadow-xs shadow-amber-500/50 border border-amber-300/40"></span>
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs space-y-1.5 p-2.5 bg-slate-900 text-white border-slate-700 shadow-xl z-50">
+              <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
+                🟡 Sudah WA (Nomor Berbeda!)
+              </div>
+              <div className="text-[11px] text-amber-200">
+                Chat masuk dari: <span className="font-mono font-bold">{waInfo.chatPhone}</span>
+              </div>
+              <p className="text-[10px] text-slate-300">
+                Nomor di form berbeda dengan WhatsApp pengirim. Klik tombol pensil ✏️ jika ingin menyelaraskan nomor kontak.
+              </p>
+              {waInfo.lastSnippet && (
+                <div className="text-[11px] italic text-slate-200 border-t border-slate-700/60 pt-1 mt-1 line-clamp-2">
+                  &ldquo;{waInfo.lastSnippet}&rdquo;
+                </div>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    if (waInfo.status === "not_sent") {
+      return (
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center justify-center cursor-help shrink-0 ml-1">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-60"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-600 shadow-xs shadow-rose-600/50 border border-rose-300/40"></span>
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs space-y-1.5 p-2.5 bg-slate-900 text-white border-slate-700 shadow-xl z-50">
+              <div className="font-bold flex items-center gap-1.5 text-rose-400">
+                <span className="w-2 h-2 rounded-full bg-rose-400 inline-block"></span>
+                🔴 Belum Chat WA
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Konsumen hanya mengisi form Scalev dan belum mengirim chat ke WA 1.
+              </p>
+              <p className="text-[10px] text-amber-300 font-semibold pt-0.5">
+                ⚡ Prioritaskan untuk follow-up manual oleh CS!
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return null;
+  };
+
   const currentLeadIds = useMemo(() => currentLeads.map((l: any) => l.id), [currentLeads]);
   const isAllSelected = currentLeadIds.length > 0 && currentLeadIds.every((id: string) => selectedLeadIds.includes(id));
   const isSomeSelected = currentLeadIds.some((id: string) => selectedLeadIds.includes(id));
@@ -1047,6 +1221,71 @@ export function ScalevLeadsPage() {
                 />
               </div>
             </div>
+
+            {/* Row 3: Status Chat WA Indicator Filter */}
+            {newLeadsForWaCheck.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/40">
+                <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5 mr-0.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-500" /> Status WA:
+                </span>
+                <div className="flex flex-wrap items-center gap-1 bg-muted/40 p-0.5 rounded-lg border border-border/50">
+                  <Button
+                    variant={waChatFilter === "all" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setWaChatFilter("all")}
+                    className={`h-6 text-[11px] px-2.5 rounded-md ${
+                      waChatFilter === "all" ? "bg-background font-semibold shadow-xs" : "text-muted-foreground"
+                    }`}
+                  >
+                    Semua ({rawLeads.length})
+                  </Button>
+                  <Button
+                    variant={waChatFilter === "same_number" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setWaChatFilter("same_number")}
+                    className={`h-6 text-[11px] px-2.5 rounded-md ${
+                      waChatFilter === "same_number"
+                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold shadow-xs"
+                        : "text-emerald-600 dark:text-emerald-400"
+                    }`}
+                    title="Konsumen sudah mengirim chat ke WA 1 dengan nomor yang sama"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 inline-block shrink-0" />
+                    🟢 Sudah WA ({waStatusCounts.same})
+                  </Button>
+                  {waStatusCounts.diff > 0 && (
+                    <Button
+                      variant={waChatFilter === "diff_number" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setWaChatFilter("diff_number")}
+                      className={`h-6 text-[11px] px-2.5 rounded-md ${
+                        waChatFilter === "diff_number"
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold shadow-xs"
+                          : "text-amber-600 dark:text-amber-400"
+                      }`}
+                      title="Konsumen sudah chat tapi memakai nomor WhatsApp yang berbeda"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-amber-500 mr-1.5 inline-block shrink-0" />
+                      🟡 No. Berbeda ({waStatusCounts.diff})
+                    </Button>
+                  )}
+                  <Button
+                    variant={waChatFilter === "not_sent" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setWaChatFilter("not_sent")}
+                    className={`h-6 text-[11px] px-2.5 rounded-md ${
+                      waChatFilter === "not_sent"
+                        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 font-semibold shadow-xs"
+                        : "text-rose-600 dark:text-rose-400"
+                    }`}
+                    title="Konsumen belum mengirim pesan konfirmasi ke WA 1 - Prioritas Follow-Up Manual"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-500 mr-1.5 inline-block shrink-0 animate-pulse" />
+                    🔴 Belum WA ({waStatusCounts.notSent})
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -1124,20 +1363,22 @@ export function ScalevLeadsPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : (leadsData?.leads || []).length === 0 ? (
+                ) : (currentLeads || []).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="h-36 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Users className="w-8 h-8 text-muted-foreground/40" />
                         <span className="text-sm font-medium text-foreground">Tidak ada lead ditemukan</span>
                         <span className="text-xs">
-                          Coba ganti filter tanggal atau klik tombol &quot;Tarik Data Scalev&quot;.
+                          {waChatFilter !== "all" 
+                            ? "Tidak ada lead dengan filter status WA ini." 
+                            : "Coba ganti filter tanggal atau klik tombol \"Tarik Data Scalev\"."}
                         </span>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  (leadsData?.leads || []).map((lead: any) => {
+                  (currentLeads || []).map((lead: any) => {
                     const isClosed = lead.is_closed === true;
                     const hasFollowedUp = !!lead.followed_up_at;
                     const cleanPhone = String(lead.customer_phone || "").replace(/[^0-9]/g, "");
@@ -1167,9 +1408,12 @@ export function ScalevLeadsPage() {
                         {/* Pelanggan */}
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="font-medium text-xs text-foreground">
-                              {lead.customer_name || "Pelanggan Scalev"}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-medium text-xs text-foreground">
+                                {lead.customer_name || "Pelanggan Scalev"}
+                              </span>
+                              {renderWaChatDot(lead)}
+                            </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className="text-xs font-mono text-muted-foreground">
                                 {lead.customer_phone}
