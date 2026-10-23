@@ -199,6 +199,13 @@ export const Route = createFileRoute('/api/scalev-webhook')({
 
           await pool.end();
 
+          // Schedule background 92-second auto-FU1 check for un-chatted lead
+          setTimeout(() => {
+            import('@/lib/scalev.functions').then(({ processPendingAutoFu1 }) => {
+              processPendingAutoFu1().catch((e) => console.error('[Webhook Auto-FU1 Error]:', e));
+            }).catch(() => {});
+          }, 92000);
+
           return new Response(JSON.stringify({
             ok: true,
             order_id: scalevOrderId,

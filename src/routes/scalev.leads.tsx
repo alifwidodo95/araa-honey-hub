@@ -32,6 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 import {
   getScalevMetrics,
   getScalevLeads,
@@ -345,7 +346,7 @@ export function ScalevLeadsPage() {
     apiKey: "",
     clientId: "",
     signingSecret: "",
-    senderSession: "waba",
+    senderSession: "default",
     followUpTemplate: "",
     fu1Template: "",
     fu1MediaUrl: "",
@@ -353,6 +354,8 @@ export function ScalevLeadsPage() {
     fu2MediaUrl: "",
     fu3Template: "",
     fu3MediaUrl: "",
+    autoFu1Enabled: true,
+    autoFu1DelaySeconds: 90,
   });
   const [configTemplateTab, setConfigTemplateTab] = useState<"fu1" | "fu2" | "fu3">("fu1");
 
@@ -662,7 +665,7 @@ export function ScalevLeadsPage() {
   // Keep form in sync when currentConfig loads
   useMemo(() => {
     if (currentConfig) {
-      const sess = currentConfig.senderSession || "waba";
+      const sess = currentConfig.senderSession || "default";
       setConfigForm({
         apiKey: currentConfig.apiKey || "",
         clientId: currentConfig.clientId || "",
@@ -675,6 +678,8 @@ export function ScalevLeadsPage() {
         fu2MediaUrl: currentConfig.fu2MediaUrl || "",
         fu3Template: currentConfig.fu3Template || "",
         fu3MediaUrl: currentConfig.fu3MediaUrl || "",
+        autoFu1Enabled: currentConfig.autoFu1Enabled !== false,
+        autoFu1DelaySeconds: currentConfig.autoFu1DelaySeconds || 90,
       });
       setSelectedFollowUpSession(sess);
     }
@@ -2569,8 +2574,61 @@ export function ScalevLeadsPage() {
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-muted-foreground">
-                Gunakan WABA Resmi Meta agar pesan follow-up calon pembeli aman dari pemblokiran dan dilengkapi tombol interaktif otomatis.
+                Gunakan Slot 1 WAHA CS Utama atau WABA Resmi Meta untuk pengiriman pesan follow-up.
               </p>
+            </div>
+
+            {/* Auto Follow-Up 1 (90 Detik) Trigger Setting */}
+            <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      Auto-Trigger Follow-Up 1 ({configForm.autoFu1DelaySeconds || 90} Detik)
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold">
+                        Otomatis WA 1
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground">
+                      Kirim pesan FU 1 otomatis jika konsumen tidak chat WA dalam {configForm.autoFu1DelaySeconds || 90} detik.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={configForm.autoFu1Enabled}
+                  onCheckedChange={(checked) => setConfigForm({ ...configForm, autoFu1Enabled: checked })}
+                />
+              </div>
+
+              {configForm.autoFu1Enabled && (
+                <div className="pt-2 border-t border-emerald-500/20 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground">Jeda Waktu Tunggu:</label>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Input
+                        type="number"
+                        min={30}
+                        max={600}
+                        value={configForm.autoFu1DelaySeconds}
+                        onChange={(e) => setConfigForm({ ...configForm, autoFu1DelaySeconds: Number(e.target.value) || 90 })}
+                        className="h-8 text-xs font-mono w-24 bg-background"
+                      />
+                      <span className="text-xs text-muted-foreground font-medium">detik</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground">Pengaman Batal Otomatis (OFF):</label>
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1 leading-snug">
+                      ✓ Batal jika CS sudah WA duluan<br />
+                      ✓ Batal jika konsumen sudah chat (🟢/🟡)<br />
+                      ✓ Batal jika lead sudah closing
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Follow-Up Templates & Media Configuration (Step 1, 2, 3) */}
