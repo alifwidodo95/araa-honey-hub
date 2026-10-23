@@ -1130,6 +1130,27 @@ async function runWithConcurrency<T, R>(
   return Promise.all(ret);
 }
 
+// Helper to filter out WhatsApp system/handshake notifications (e.g. e2e_notification, disappearing_mode)
+function isRealIncomingMessage(m: any): boolean {
+  if (!m || m.fromMe) return false;
+  const type = m._data?.type || m.type;
+  if (
+    type === "e2e_notification" ||
+    type === "notification_template" ||
+    type === "gp2" ||
+    type === "broadcast_notification" ||
+    type === "protocol"
+  ) {
+    return false;
+  }
+  const hasBody = Boolean(m.body && typeof m.body === "string" && m.body.trim().length > 0);
+  const hasMedia = Boolean(m.hasMedia);
+  const hasCaption = Boolean(
+    m._data?.caption && typeof m._data.caption === "string" && m._data.caption.trim().length > 0
+  );
+  return hasBody || hasMedia || hasCaption;
+}
+
 export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
   .validator((data: {
     leads: Array<{
@@ -1192,12 +1213,15 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
           if (res.ok) {
             const msgs = await res.json();
             if (Array.isArray(msgs) && msgs.length > 0) {
-              const incoming = msgs.filter((m: any) => !m.fromMe);
-              if (incoming.length > 0) {
-                const latestIncoming = incoming[0]; // newest first
-                const latestOverall = msgs[0];
+              const incomingReal = msgs.filter(isRealIncomingMessage);
+              if (incomingReal.length > 0) {
+                const latestIncoming = incomingReal[0]; // newest incoming first
+                const latestOverall = msgs.find((m: any) => isRealIncomingMessage(m) || m.fromMe) || msgs[0];
                 const snippet =
-                  latestIncoming?.body || latestOverall?.body || latestIncoming?._data?.caption || "";
+                  latestIncoming?.body?.trim() ||
+                  latestIncoming?._data?.caption?.trim() ||
+                  latestOverall?.body?.trim() ||
+                  (latestIncoming?.hasMedia ? "[Media / File]" : "");
                 const info: LeadWaStatusInfo = {
                   status: "same_number",
                   chatPhone: cleanPhone,
@@ -1234,6 +1258,15 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
             .filter((p) => p.length >= 3 && !stopWords.has(p));
 
           const matchChat = recentChats.find((c: any) => {
+            // Must have actual chat content, not system notifications
+            const last = c.lastMessage;
+            const hasRealContent = Boolean(
+              (last?.body && typeof last.body === "string" && last.body.trim().length > 0) ||
+              last?.hasMedia ||
+              (last?._data?.caption && typeof last._data.caption === "string" && last._data.caption.trim().length > 0)
+            );
+            if (!hasRealContent) return false;
+
             const chatName = (c.name || "").toLowerCase();
             const chatDigits = (c.name || "").replace(/\D/g, "");
 
