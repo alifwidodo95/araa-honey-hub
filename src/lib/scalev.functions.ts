@@ -1064,80 +1064,70 @@ export const updateScalevLeadNotes = createServerFn({ method: "POST" })
   });
 
 // 12. Realtime WAHA WhatsApp Chat Status Detector for New Scalev Leads
-let cachedWahaChats: { timestamp: number; data: any[] } = { timestamp: 0, data: [] };
-
-async function getEnrichedWahaChats(wahaUrl = "https://waha.araahoney.my.id", apiKey = "araahoney123"): Promise<any[]> {
-  const now = Date.now();
-  // Cache in-memory for 12 seconds to prevent WAHA single-thread congestion
-  if (now - cachedWahaChats.timestamp < 12000 && cachedWahaChats.data.length > 0) {
-    return cachedWahaChats.data;
-  }
-
-  try {
-    const wahaRes = await fetch(`${wahaUrl}/api/default/chats?limit=60`, {
-      headers: { "X-Api-Key": apiKey },
-      signal: AbortSignal.timeout(7000),
-    });
-    if (!wahaRes.ok) {
-      return cachedWahaChats.data || [];
-    }
-    const chats: any[] = await wahaRes.json();
-    if (!Array.isArray(chats)) return cachedWahaChats.data || [];
-
-    // Find non-group chats that have text name instead of phone digits
-    const needsResolve = chats.filter(
-      (c) => !c.isGroup && c.id?._serialized && c.name && !/^\+?[0-9\s-]+$/.test(c.name)
-    );
-
-    const resolvedMap = new Map<string, string>();
-    await Promise.all(
-      needsResolve.slice(0, 20).map(async (c) => {
-        try {
-          const res = await fetch(
-            `${wahaUrl}/api/default/contacts/${encodeURIComponent(c.id._serialized)}`,
-            {
-              headers: { "X-Api-Key": apiKey },
-              signal: AbortSignal.timeout(2500),
-            }
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const phone = data.id?.split("@")[0];
-            if (phone) resolvedMap.set(c.id._serialized, phone.replace(/\D/g, ""));
-          }
-        } catch (e) {
-          // ignore individual timeout
-        }
-      })
-    );
-
-    const enriched = chats.map((c) => {
-      const rawNameDigits = (c.name || "").replace(/\D/g, "");
-      const resolvedPhone = resolvedMap.get(c.id?._serialized);
-      const phone = resolvedPhone || (rawNameDigits.length >= 8 ? rawNameDigits : "");
-      return {
-        id: c.id?._serialized,
-        name: c.name,
-        phone,
-        timestamp: c.timestamp,
-        fromMe: c.lastMessage?.fromMe,
-        body: c.lastMessage?.body || "",
-      };
-    });
-
-    cachedWahaChats = { timestamp: now, data: enriched };
-    return enriched;
-  } catch (err) {
-    console.error("[getEnrichedWahaChats error]:", err);
-    return cachedWahaChats.data || [];
-  }
-}
-
 export interface LeadWaStatusInfo {
   status: "same_number" | "diff_number" | "not_sent";
   chatPhone?: string;
   chatTimestamp?: number;
   lastSnippet?: string;
+}
+
+// In-memory persistent cache for confirmed leads (once chatted, positive status persists for 2h)
+// Negative checks (not_sent) are cached for 20s to prevent spamming WAHA during rapid refreshes.
+interface CachedLeadStatus {
+  info: LeadWaStatusInfo;
+  expiresAt: number;
+}
+const confirmedLeadWaCache = new Map<string, CachedLeadStatus>();
+
+// Cached recent chats list (refreshed every 15s)
+let cachedRecentChats: { timestamp: number; data: any[] } = { timestamp: 0, data: [] };
+
+async function getRecentWahaChats(
+  wahaUrl = "https://waha.araahoney.my.id",
+  apiKey = "araahoney123"
+): Promise<any[]> {
+  const now = Date.now();
+  if (now - cachedRecentChats.timestamp < 15000 && cachedRecentChats.data.length > 0) {
+    return cachedRecentChats.data;
+  }
+  try {
+    const res = await fetch(`${wahaUrl}/api/default/chats?limit=150`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return cachedRecentChats.data || [];
+    const chats = await res.json();
+    const list = Array.isArray(chats) ? chats.filter((c: any) => !c.isGroup) : [];
+    cachedRecentChats = { timestamp: now, data: list };
+    return list;
+  } catch (e) {
+    return cachedRecentChats.data || [];
+  }
+}
+
+// Concurrency pool helper to avoid overloading WAHA Node.js event loop
+async function runWithConcurrency<T, R>(
+  limit: number,
+  items: T[],
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const ret: Promise<R>[] = [];
+  const executing: Promise<any>[] = [];
+  for (const item of items) {
+    const p = Promise.resolve().then(() => fn(item));
+    ret.push(p);
+    if (limit <= items.length) {
+      const e: Promise<any> = p.then(() => {
+        const idx = executing.indexOf(e);
+        if (idx !== -1) executing.splice(idx, 1);
+      });
+      executing.push(e);
+      if (executing.length >= limit) {
+        await Promise.race(executing);
+      }
+    }
+  }
+  return Promise.all(ret);
 }
 
 export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
@@ -1152,71 +1142,148 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
   }) => data)
   .handler(async ({ data }) => {
     try {
-      const chats = await getEnrichedWahaChats();
       const cutoffTime = new Date("2026-10-22T00:00:00+07:00").getTime();
       const results: Record<string, LeadWaStatusInfo> = {};
+      const now = Date.now();
 
-      for (const lead of data.leads || []) {
-        const leadTime = new Date(lead.created_at).getTime();
-        // Cut-off: Leads before 22 Oct 2026 do not get any indicator (clean view)
-        if (leadTime < cutoffTime) {
-          continue;
+      const wahaUrl = process.env.WAHA_URL || "https://waha.araahoney.my.id";
+      const apiKey = process.env.WAHA_API_KEY || "araahoney123";
+
+      // 1. Filter leads >= cutoffTime
+      const eligibleLeads = (data.leads || []).filter((l) => {
+        const t = new Date(l.created_at).getTime();
+        return !isNaN(t) && t >= cutoffTime;
+      });
+
+      // 2. Check in-memory cache first
+      const leadsToCheck: typeof eligibleLeads = [];
+      for (const lead of eligibleLeads) {
+        const cleanPhone = normalizePhone(lead.customer_phone || "");
+        const cacheKey = `${lead.id}_${cleanPhone}`;
+        const cached = confirmedLeadWaCache.get(cacheKey);
+        if (cached && cached.expiresAt > now) {
+          results[lead.id] = cached.info;
+        } else {
+          leadsToCheck.push(lead);
+        }
+      }
+
+      if (leadsToCheck.length === 0) {
+        return results;
+      }
+
+      const unmatchedLeads: typeof eligibleLeads = [];
+
+      // Step 1: Direct Phone Verification (Concurrency: 5)
+      // Checks /api/default/chats/${cleanPhone}@c.us/messages?limit=20
+      await runWithConcurrency(5, leadsToCheck, async (lead) => {
+        const cleanPhone = normalizePhone(lead.customer_phone || "");
+        if (!cleanPhone || cleanPhone.length < 8) {
+          unmatchedLeads.push(lead);
+          return;
         }
 
-        const cleanLeadPhone = normalizePhone(lead.customer_phone || "");
-        const leadEpoch = Math.floor(leadTime / 1000);
+        try {
+          const res = await fetch(`${wahaUrl}/api/default/chats/${cleanPhone}@c.us/messages?limit=20`, {
+            headers: { "X-Api-Key": apiKey },
+            signal: AbortSignal.timeout(5000),
+          });
 
-        // 1. Same Number Check
-        // Match if chat phone ends with lead phone or equal, and timestamp is >= lead creation - 180s (3m tolerance)
-        const sameChat = chats.find((c) => {
-          if (!c.phone) return false;
-          const isPhoneMatch =
-            c.phone.endsWith(cleanLeadPhone.slice(-9)) || c.phone === cleanLeadPhone;
-          return isPhoneMatch && c.timestamp >= leadEpoch - 180;
-        });
-
-        if (sameChat) {
-          results[lead.id] = {
-            status: "same_number",
-            chatPhone: sameChat.phone || sameChat.name,
-            chatTimestamp: sameChat.timestamp,
-            lastSnippet: sameChat.body ? sameChat.body.substring(0, 80) : undefined,
-          };
-          continue;
+          if (res.ok) {
+            const msgs = await res.json();
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              const incoming = msgs.filter((m: any) => !m.fromMe);
+              if (incoming.length > 0) {
+                const latestIncoming = incoming[0]; // newest first
+                const latestOverall = msgs[0];
+                const snippet =
+                  latestIncoming?.body || latestOverall?.body || latestIncoming?._data?.caption || "";
+                const info: LeadWaStatusInfo = {
+                  status: "same_number",
+                  chatPhone: cleanPhone,
+                  chatTimestamp: latestOverall?.timestamp || latestIncoming?.timestamp,
+                  lastSnippet: snippet ? snippet.substring(0, 80) : undefined,
+                };
+                results[lead.id] = info;
+                // Cache confirmed positive status for 2 hours
+                const cacheKey = `${lead.id}_${cleanPhone}`;
+                confirmedLeadWaCache.set(cacheKey, { info, expiresAt: now + 2 * 3600 * 1000 });
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          // Timeout or connection error -> fallback to Step 2
         }
+        unmatchedLeads.push(lead);
+      });
 
-        // 2. Diff Number Check via Customer Name or Order ID
-        const nameParts = (lead.customer_name || "")
-          .trim()
-          .toLowerCase()
-          .split(/[\s.]+/)
-          .filter((p) => p.length >= 3);
+      // Step 2: Unmatched fallback (Check recent 150 chats for different number / contact name / promo text)
+      if (unmatchedLeads.length > 0) {
+        const recentChats = await getRecentWahaChats(wahaUrl, apiKey);
+        const stopWords = new Set([
+          "ibu", "bapak", "pak", "kak", "haji", "hj", "ustadz", "dokter", "dr", "drs", "nama"
+        ]);
 
-        const diffChat = chats.find((c) => {
-          if (c.timestamp < leadEpoch - 300) return false;
-          const body = (c.body || "").toLowerCase();
-          const hasOrderId =
-            lead.scalev_order_id && body.includes(lead.scalev_order_id.toLowerCase());
-          const hasName =
-            (body.includes("atas nama") || body.includes("promo madu araa")) &&
-            nameParts.some((np) => body.includes(np));
-          return hasOrderId || hasName;
-        });
+        for (const lead of unmatchedLeads) {
+          const cleanLeadPhone = normalizePhone(lead.customer_phone || "");
+          const nameParts = (lead.customer_name || "")
+            .toLowerCase()
+            .replace(/[.,]/g, " ")
+            .split(/\s+/)
+            .filter((p) => p.length >= 3 && !stopWords.has(p));
 
-        if (diffChat) {
-          results[lead.id] = {
-            status: "diff_number",
-            chatPhone: diffChat.phone || diffChat.name,
-            chatTimestamp: diffChat.timestamp,
-            lastSnippet: diffChat.body ? diffChat.body.substring(0, 80) : undefined,
-          };
-          continue;
+          const matchChat = recentChats.find((c: any) => {
+            const chatName = (c.name || "").toLowerCase();
+            const chatDigits = (c.name || "").replace(/\D/g, "");
+
+            // If phone in chat name matches
+            if (
+              chatDigits &&
+              cleanLeadPhone &&
+              (chatDigits === cleanLeadPhone || chatDigits.endsWith(cleanLeadPhone.slice(-9)))
+            ) {
+              return true;
+            }
+            // If contact name contains customer name
+            if (nameParts.length > 0 && nameParts.some((np) => chatName.includes(np))) {
+              return true;
+            }
+            // If order ID in last message
+            const lastMsg = (c.lastMessage?.body || "").toLowerCase();
+            if (lead.scalev_order_id && lastMsg.includes(lead.scalev_order_id.toLowerCase())) {
+              return true;
+            }
+            return false;
+          });
+
+          const cacheKey = `${lead.id}_${cleanLeadPhone}`;
+
+          if (matchChat) {
+            const chatDigits = (matchChat.name || "").replace(/\D/g, "");
+            const isSame = Boolean(
+              chatDigits &&
+              cleanLeadPhone &&
+              (chatDigits === cleanLeadPhone || chatDigits.endsWith(cleanLeadPhone.slice(-9)))
+            );
+
+            const snippet = matchChat.lastMessage?.body || "";
+            const info: LeadWaStatusInfo = {
+              status: isSame ? "same_number" : "diff_number",
+              chatPhone: matchChat.name || cleanLeadPhone,
+              chatTimestamp: matchChat.timestamp,
+              lastSnippet: snippet ? snippet.substring(0, 80) : undefined,
+            };
+            results[lead.id] = info;
+            // Cache confirmed status for 2 hours
+            confirmedLeadWaCache.set(cacheKey, { info, expiresAt: now + 2 * 3600 * 1000 });
+          } else {
+            const info: LeadWaStatusInfo = { status: "not_sent" };
+            results[lead.id] = info;
+            // Cache negative status for 20s
+            confirmedLeadWaCache.set(cacheKey, { info, expiresAt: now + 20 * 1000 });
+          }
         }
-
-        // 3. Not sent
-        results[lead.id] = {
-          status: "not_sent",
-        };
       }
 
       return results;

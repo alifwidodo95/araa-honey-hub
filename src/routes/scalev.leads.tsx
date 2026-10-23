@@ -301,8 +301,18 @@ export function ScalevLeadsPage() {
   const [customEndDate, setCustomEndDate] = useState("");
   const [statusTab, setStatusTab] = useState<"all" | "unclosed" | "closed">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
+
+  // Debounce search query to prevent typing lag / UI freezing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setCurrentPage(1);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   // Dialog States
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -377,12 +387,12 @@ export function ScalevLeadsPage() {
 
   // Query: Leads List
   const { data: leadsData, isLoading: isLeadsLoading, refetch: refetchLeads } = useQuery({
-    queryKey: ["scalev-leads", statusTab, searchQuery, startDate, endDate, currentPage],
+    queryKey: ["scalev-leads", statusTab, debouncedSearchQuery, startDate, endDate, currentPage],
     queryFn: () =>
       getScalevLeads({
         data: {
           status: statusTab,
-          search: searchQuery,
+          search: debouncedSearchQuery,
           startDate,
           endDate,
           limit: pageSize,
@@ -1242,10 +1252,7 @@ export function ScalevLeadsPage() {
                 <Input
                   placeholder="Cari nama, no HP, order ID..."
                   value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setCurrentPage(1);
-                  }}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 h-9 text-xs"
                 />
               </div>
