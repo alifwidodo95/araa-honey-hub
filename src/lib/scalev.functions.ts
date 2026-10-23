@@ -782,11 +782,14 @@ export const saveScalevConfig = createServerFn({ method: "POST" })
     let pool: pg.Pool | null = null;
     try {
       pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+      const existingRes = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
+      const existingVal = existingRes.rows[0]?.value || {};
+      const merged = { ...existingVal, ...data };
       await pool.query(
         `INSERT INTO app_settings (key, value, updated_at)
          VALUES ('scalev_config', $1, now())
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-        [JSON.stringify(data)]
+        [JSON.stringify(merged)]
       );
       await pool.end();
       return { ok: true };

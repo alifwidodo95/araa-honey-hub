@@ -19,7 +19,7 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil, Trash2, Plus, Tag, FileText, RotateCcw, MessageSquare
+  Pencil, Trash2, Plus, Tag, FileText, RotateCcw, MessageSquare, Save
 } from "lucide-react";
 import {
   Popover,
@@ -917,6 +917,28 @@ export function ScalevLeadsPage() {
     toast.success("URL Webhook berhasil disalin ke clipboard!");
   };
 
+  const handleSaveAsDefaultTemplate = () => {
+    let templateToSave = customMessage;
+    if (selectedLead?.customer_name && templateToSave.includes(selectedLead.customer_name)) {
+      templateToSave = templateToSave.replace(new RegExp(selectedLead.customer_name, "g"), "{nama}");
+    }
+    if (selectedLead?.product_name && templateToSave.includes(selectedLead.product_name)) {
+      templateToSave = templateToSave.replace(new RegExp(selectedLead.product_name, "g"), "{produk}");
+    }
+
+    const payload = {
+      ...configForm,
+      [`fu${activeStep}Template`]: templateToSave,
+      [`fu${activeStep}MediaUrl`]: mediaUrl || "",
+    };
+
+    saveConfigMutation.mutate(payload, {
+      onSuccess: () => {
+        toast.success(`Template & Media default FU ${activeStep} berhasil disimpan secara permanen!`);
+      }
+    });
+  };
+
   // Pagination details
   const totalItems = leadsData?.total || 0;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -965,16 +987,23 @@ export function ScalevLeadsPage() {
                   apiKey: currentConfig.apiKey || "",
                   clientId: currentConfig.clientId || "",
                   signingSecret: currentConfig.signingSecret || "",
+                  senderSession: currentConfig.senderSession || "waba",
                   followUpTemplate: currentConfig.followUpTemplate || "",
-                  senderSession: currentConfig.senderSession || "campaign",
+                  fu1Template: currentConfig.fu1Template || currentConfig.followUpTemplate || "",
+                  fu1MediaUrl: currentConfig.fu1MediaUrl || "",
+                  fu2Template: currentConfig.fu2Template || "",
+                  fu2MediaUrl: currentConfig.fu2MediaUrl || "",
+                  fu3Template: currentConfig.fu3Template || "",
+                  fu3MediaUrl: currentConfig.fu3MediaUrl || "",
                 });
               }
               setConfigModalOpen(true);
             }}
-            className="border-border hover:bg-muted/80 gap-1.5"
+            className="border-border hover:bg-muted/80 gap-1.5 font-medium"
+            title="Atur Webhook Scalev dan Template Pesan/Media Follow-Up 1, 2, 3"
           >
-            <Settings2 className="w-4 h-4 text-muted-foreground" />
-            <span>Pengaturan Webhook</span>
+            <Settings2 className="w-4 h-4 text-primary" />
+            <span>Pengaturan Template FU & Webhook</span>
           </Button>
 
           <Button
@@ -1673,40 +1702,71 @@ export function ScalevLeadsPage() {
       <Dialog open={followUpModalOpen} onOpenChange={setFollowUpModalOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                <Send className="w-5 h-5" />
+            <div className="flex items-start justify-between gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                  <Send className="w-5 h-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold flex items-center gap-2 flex-wrap">
+                    <span>Follow-Up Lead Scalev</span>
+                    {followUpMode === "custom" ? (
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] font-bold ${
+                          activeStep === 1
+                            ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                            : activeStep === 2
+                            ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                            : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                        }`}
+                      >
+                        Tahap {activeStep} of 3
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 flex items-center gap-1"
+                      >
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        HSM Meta Template
+                      </Badge>
+                    )}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Pilih follow-up bertahap interaktif atau kirim template resmi Meta HSM (100% Anti-Banned).
+                  </DialogDescription>
+                </div>
               </div>
-              <div>
-                <DialogTitle className="text-base font-bold flex items-center gap-2">
-                  <span>Follow-Up Lead Scalev</span>
-                  {followUpMode === "custom" ? (
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] font-bold ${
-                        activeStep === 1
-                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
-                          : activeStep === 2
-                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                          : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                      }`}
-                    >
-                      Tahap {activeStep} of 3
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 flex items-center gap-1"
-                    >
-                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                      HSM Meta Template
-                    </Badge>
-                  )}
-                </DialogTitle>
-                <DialogDescription className="text-xs">
-                  Pilih follow-up bertahap interaktif atau kirim template resmi Meta HSM (100% Anti-Banned).
-                </DialogDescription>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (currentConfig) {
+                    setConfigForm({
+                      apiKey: currentConfig.apiKey || "",
+                      clientId: currentConfig.clientId || "",
+                      signingSecret: currentConfig.signingSecret || "",
+                      senderSession: currentConfig.senderSession || "waba",
+                      followUpTemplate: currentConfig.followUpTemplate || "",
+                      fu1Template: currentConfig.fu1Template || currentConfig.followUpTemplate || "",
+                      fu1MediaUrl: currentConfig.fu1MediaUrl || "",
+                      fu2Template: currentConfig.fu2Template || "",
+                      fu2MediaUrl: currentConfig.fu2MediaUrl || "",
+                      fu3Template: currentConfig.fu3Template || "",
+                      fu3MediaUrl: currentConfig.fu3MediaUrl || "",
+                    });
+                  }
+                  setConfigTemplateTab(`fu${activeStep}` as any);
+                  setConfigModalOpen(true);
+                }}
+                className="h-8 px-2.5 text-xs gap-1.5 text-primary border-primary/30 hover:bg-primary/10 shrink-0 font-medium cursor-pointer"
+                title="Buka pengaturan template default untuk mengedit dan menyimpan template permanen"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span>Atur Template</span>
+              </Button>
             </div>
           </DialogHeader>
 
@@ -1960,15 +2020,27 @@ export function ScalevLeadsPage() {
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-foreground flex items-center justify-between">
                       <span>Pesan WhatsApp (FU {activeStep}):</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (selectedLead) setCustomMessage(getTemplateForStep(activeStep, selectedLead));
-                        }}
-                        className="text-[10px] text-primary hover:underline"
-                      >
-                        Reset Template FU {activeStep}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedLead) setCustomMessage(getTemplateForStep(activeStep, selectedLead));
+                          }}
+                          className="text-[10px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+                        >
+                          Reset Template FU {activeStep}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveAsDefaultTemplate}
+                          disabled={saveConfigMutation.isPending}
+                          className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 transition-colors cursor-pointer"
+                          title="Simpan teks dan link media di atas sebagai template default untuk FU tahap ini"
+                        >
+                          <Save className="w-3 h-3 text-emerald-600" />
+                          <span>{saveConfigMutation.isPending ? "Menyimpan..." : `Simpan Default FU ${activeStep}`}</span>
+                        </button>
+                      </div>
                     </label>
                     <Textarea
                       rows={5}
