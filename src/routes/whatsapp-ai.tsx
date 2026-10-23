@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
+import { WhatsAppChatInput, type WhatsAppChatInputHandle, type MediaAttachmentItem } from "@/components/whatsapp-chat-input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,93 +104,6 @@ interface WhatsAppPinnedChat {
   created_at: string;
   updated_at: string;
 }
-
-interface EmojiItem {
-  emoji: string;
-  name: string;
-  keywords: string[];
-}
-
-const EMOJI_LIST: { category: string; label: string; items: EmojiItem[] }[] = [
-  {
-    category: "salam",
-    label: "🙏 CS",
-    items: [
-      { emoji: "🙏", name: "terima kasih", keywords: ["makasih", "thanks", "tq", "doa", "maaf", "salam"] },
-      { emoji: "😊", name: "senyum", keywords: ["smile", "ramah", "senang", "happy"] },
-      { emoji: "👍", name: "jempol", keywords: ["ok", "siap", "mantap", "bagus", "baik", "setuju"] },
-      { emoji: "😇", name: "senyum malaikat", keywords: ["baik", "tulus", "ikhlas"] },
-      { emoji: "🤝", name: "jabat tangan", keywords: ["deal", "kerjasama", "sepakat"] },
-      { emoji: "🤗", name: "peluk ramah", keywords: ["hangat", "ramah", "welcome"] },
-      { emoji: "❤️", name: "hati merah", keywords: ["love", "cinta", "suka"] },
-      { emoji: "👏", name: "tepuk tangan", keywords: ["selamat", "hebat", "mantul"] },
-      { emoji: "👌", name: "tangan oke", keywords: ["ok", "siap", "beres"] },
-      { emoji: "🥰", name: "penuh cinta", keywords: ["senang", "gemas", "suka"] },
-      { emoji: "😍", name: "mata hati", keywords: ["kagum", "suka", "love"] },
-      { emoji: "😁", name: "senyum lebar", keywords: ["gembira", "tertawa"] },
-      { emoji: "🙌", name: "angkat tangan", keywords: ["hore", "syukur", "alhamdulillah"] },
-      { emoji: "👋", name: "lambaian tangan", keywords: ["halo", "hai", "selamat tinggal"] },
-      { emoji: "🎉", name: "pesta terompet", keywords: ["selamat", "promo", "kejutan"] },
-      { emoji: "✨", name: "kilau bintang", keywords: ["spesial", "berkilau", "baru"] },
-    ]
-  },
-  {
-    category: "toko",
-    label: "🛒 Toko",
-    items: [
-      { emoji: "🛒", name: "keranjang belanja", keywords: ["troli", "order", "beli", "checkout"] },
-      { emoji: "📦", name: "paket kardus", keywords: ["box", "packing", "pesanan", "barang"] },
-      { emoji: "🚚", name: "truk kirim", keywords: ["kurir", "ekspedisi", "ongkir", "jalan", "antar"] },
-      { emoji: "🛵", name: "motor kurir", keywords: ["ojol", "instan", "sameday"] },
-      { emoji: "💰", name: "kantong uang", keywords: ["duit", "bayar", "transfer", "lunas", "harga"] },
-      { emoji: "💳", name: "kartu atm", keywords: ["bank", "rekening", "transfer", "qris"] },
-      { emoji: "🏷️", name: "label diskon", keywords: ["promo", "potongan", "voucher"] },
-      { emoji: "🎁", name: "hadiah kado", keywords: ["free", "gratis", "bonus"] },
-      { emoji: "🧾", name: "struk kwitansi", keywords: ["nota", "invoice", "resi"] },
-      { emoji: "🛍️", name: "tas belanja", keywords: ["shopping", "toko"] },
-      { emoji: "⏰", name: "jam weker", keywords: ["waktu", "segera", "deadline"] },
-      { emoji: "📍", name: "pin lokasi", keywords: ["alamat", "lokasi", "tujuan"] },
-      { emoji: "📱", name: "handphone", keywords: ["wa", "hp", "chat", "kontak"] },
-      { emoji: "📞", name: "gagang telepon", keywords: ["hubungi", "telepon", "call"] },
-    ]
-  },
-  {
-    category: "madu",
-    label: "🍯 Madu",
-    items: [
-      { emoji: "🍯", name: "pot madu", keywords: ["madu", "honey", "araa", "manis", "murni"] },
-      { emoji: "🐝", name: "lebah madu", keywords: ["bee", "tawon", "ternak"] },
-      { emoji: "🌸", name: "bunga sakura", keywords: ["nektar", "bunga", "cantik"] },
-      { emoji: "🌿", name: "daun herbal", keywords: ["herbal", "alami", "sehat"] },
-      { emoji: "🍃", name: "daun hijau", keywords: ["organik", "fresh", "segar"] },
-      { emoji: "🍶", name: "botol madu", keywords: ["kemasan", "jerigen", "botol"] },
-      { emoji: "🥄", name: "sendok", keywords: ["minum", "dosis", "aturan"] },
-      { emoji: "💛", name: "hati kuning", keywords: ["kuning", "madu", "emas"] },
-      { emoji: "🍋", name: "lemon", keywords: ["jeruk", "campuran", "wedang"] },
-      { emoji: "💧", name: "tetes air", keywords: ["tetes", "kental", "cair"] },
-      { emoji: "🌱", name: "tunas benih", keywords: ["tumbuh", "alam"] },
-      { emoji: "☀️", name: "matahari cerah", keywords: ["pagi", "sehat", "daya tahan"] },
-    ]
-  },
-  {
-    category: "simbol",
-    label: "✅ Simbol",
-    items: [
-      { emoji: "✅", name: "centang hijau", keywords: ["sukses", "benar", "lunas", "ready", "ada"] },
-      { emoji: "❌", name: "silang merah", keywords: ["batal", "habis", "kosong", "salah"] },
-      { emoji: "⚠️", name: "peringatan", keywords: ["penting", "perhatian", "awas"] },
-      { emoji: "ℹ️", name: "informasi", keywords: ["info", "keterangan", "catatan"] },
-      { emoji: "📌", name: "pin tusuk", keywords: ["catatan", "simpan", "ingat"] },
-      { emoji: "⭐", name: "bintang", keywords: ["review", "testimoni", "favorit", "rating"] },
-      { emoji: "💯", name: "seratus persen", keywords: ["asli", "murni", "dijamin", "pasti"] },
-      { emoji: "🔥", name: "api membara", keywords: ["laris", "hot", "terbaru"] },
-      { emoji: "💬", name: "balon obrolan", keywords: ["pesan", "tanya", "jawab"] },
-      { emoji: "💡", name: "lampu ide", keywords: ["tips", "saran", "rekomendasi"] },
-      { emoji: "🎯", name: "sasaran target", keywords: ["fokus", "tepat"] },
-      { emoji: "➡️", name: "panah kanan", keywords: ["lanjut", "berikut"] },
-    ]
-  }
-];
 
 // Helper Functions for WhatsApp Date & Time Display
 function isSameDay(dateStr1: string, dateStr2: string): boolean {
@@ -625,90 +539,10 @@ function WhatsAppAiPage() {
 
   // Chat Monitor States
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [manualReplyText, setManualReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<ChatLog[]>([]);
-
-  // Media Attachment States for Outgoing Photo / Video
-  const [mediaAttachment, setMediaAttachment] = useState<{
-    file: File;
-    previewUrl: string;
-    mediaType: "image" | "video";
-    fileName: string;
-    fileSize: number;
-  } | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = (file: File) => {
-    if (!file) return;
-
-    const isImage = file.type.startsWith("image/");
-    const isVideo = file.type.startsWith("video/");
-
-    if (!isImage && !isVideo) {
-      toast.error("Format berkas tidak didukung. Harap pilih foto (JPG, PNG, WebP) atau video (MP4, MOV).");
-      return;
-    }
-
-    // Size limit: Image max 5 MB, Video max 16 MB
-    if (isImage && file.size > 5 * 1024 * 1024) {
-      toast.error(`Ukuran foto terlalu besar (${(file.size / (1024 * 1024)).toFixed(1)} MB). Batas maksimal Meta WABA adalah 5 MB.`);
-      return;
-    }
-
-    if (isVideo && file.size > 16 * 1024 * 1024) {
-      toast.error(`Ukuran video terlalu besar (${(file.size / (1024 * 1024)).toFixed(1)} MB). Batas maksimal Meta WABA adalah 16 MB.`);
-      return;
-    }
-
-    if (mediaAttachment?.previewUrl) {
-      URL.revokeObjectURL(mediaAttachment.previewUrl);
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    const mediaType: "image" | "video" = isVideo ? "video" : "image";
-
-    setMediaAttachment({
-      file,
-      previewUrl,
-      mediaType,
-      fileName: file.name,
-      fileSize: file.size,
-    });
-
-    toast.success(`${mediaType === "video" ? "Video" : "Foto"} siap dikirim! Anda dapat mengetik keterangan caption jika perlu.`);
-    if (manualInputRef.current) {
-      manualInputRef.current.focus();
-    }
-  };
-
-  const handleRemoveMediaAttachment = () => {
-    if (mediaAttachment?.previewUrl) {
-      URL.revokeObjectURL(mediaAttachment.previewUrl);
-    }
-    setMediaAttachment(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handlePasteMedia = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.indexOf("image") !== -1 || item.type.indexOf("video") !== -1) {
-        const file = item.getAsFile();
-        if (file) {
-          e.preventDefault();
-          handleFileSelect(file);
-          return;
-        }
-      }
-    }
-  };
+  const chatInputRef = useRef<WhatsAppChatInputHandle>(null);
 
   const uploadMediaToStorage = async (file: File): Promise<string> => {
     const fileExt = file.name.split(".").pop() || (file.type.startsWith("video/") ? "mp4" : "jpg");
@@ -742,6 +576,18 @@ function WhatsAppAiPage() {
   };
   const [chatSearch, setChatSearch] = useState("");
   const [responseFilter, setResponseFilter] = useState<"all" | "unread" | "order" | "done" | "pinned">("all");
+  const [visibleContactCount, setVisibleContactCount] = useState(60);
+
+  useEffect(() => {
+    setVisibleContactCount(60);
+  }, [responseFilter, chatSearch]);
+
+  const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 250) {
+      setVisibleContactCount((prev) => Math.min(prev + 60, filteredChats.length));
+    }
+  };
   const [updatingTagPhone, setUpdatingTagPhone] = useState<string | null>(null);
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinDialogChat, setPinDialogChat] = useState<{
@@ -906,20 +752,9 @@ function WhatsAppAiPage() {
 💰 *Harga:* ${typeLabel} ${priceText}`;
     }
 
-    setManualReplyText(prev => {
-      const trimmed = prev.trim();
-      return trimmed ? `${trimmed}\n\n${formattedText}` : formattedText;
-    });
-
+    chatInputRef.current?.insertText(formattedText);
     setIsLincahModalOpen(false);
     toast.success("Data berhasil ditempel ke kolom chat!");
-    setTimeout(() => {
-      if (manualInputRef.current) {
-        manualInputRef.current.focus();
-        manualInputRef.current.selectionStart = manualInputRef.current.value.length;
-        manualInputRef.current.selectionEnd = manualInputRef.current.value.length;
-      }
-    }, 100);
   }, []);
 
   // Mark all unread incoming messages for a customer/chat as read
@@ -1001,7 +836,6 @@ function WhatsAppAiPage() {
   };
 
   // Quick Reply States
-  const [showQuickReplyMenu, setShowQuickReplyMenu] = useState(false);
   const [isQuickReplySheetOpen, setIsQuickReplySheetOpen] = useState(false);
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [formShortcut, setFormShortcut] = useState("");
@@ -1009,44 +843,6 @@ function WhatsAppAiPage() {
   const [formMessage, setFormMessage] = useState("");
   const [isSavingReply, setIsSavingReply] = useState(false);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
-
-  // Emoji Picker States
-  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [activeEmojiTab, setActiveEmojiTab] = useState("salam");
-  const [emojiFilterText, setEmojiFilterText] = useState("");
-  const manualInputRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleInsertEmoji = (emoji: string) => {
-    const input = manualInputRef.current;
-    if (input) {
-      const start = input.selectionStart ?? manualReplyText.length;
-      const end = input.selectionEnd ?? manualReplyText.length;
-      const nextText = manualReplyText.substring(0, start) + emoji + manualReplyText.substring(end);
-      setManualReplyText(nextText);
-      setTimeout(() => {
-        input.focus();
-        const nextPos = start + emoji.length;
-        input.setSelectionRange(nextPos, nextPos);
-        input.style.height = "auto";
-        input.style.height = Math.min(input.scrollHeight, 160) + "px";
-      }, 10);
-    } else {
-      setManualReplyText(prev => prev + emoji);
-    }
-  };
-
-  const filteredEmojiItems = useMemo(() => {
-    const q = emojiFilterText.trim().toLowerCase();
-    if (!q) {
-      const activeCat = EMOJI_LIST.find(c => c.category === activeEmojiTab);
-      return activeCat?.items || [];
-    }
-    const allItems = EMOJI_LIST.flatMap(c => c.items);
-    return allItems.filter(item => 
-      item.name.toLowerCase().includes(q) || 
-      item.keywords.some(k => k.toLowerCase().includes(q))
-    );
-  }, [emojiFilterText, activeEmojiTab]);
 
   // Sync settings to state
   useEffect(() => {
@@ -1565,37 +1361,6 @@ function WhatsAppAiPage() {
     setFormTitle("");
     setFormMessage("");
   };
-
-  // Select Quick Reply into manual reply input
-  const handleSelectQuickReply = (qr: { shortcut: string; title: string; message: string }, customerName?: string) => {
-    let msg = qr.message;
-    const nameToUse = (customerName && customerName !== "Pelanggan" && customerName !== "Meta Status") ? customerName : "Kak";
-    msg = msg.replace(/\{nama\}/gi, nameToUse);
-    setManualReplyText(msg);
-    setShowQuickReplyMenu(false);
-    setTimeout(() => {
-      if (manualInputRef.current) {
-        manualInputRef.current.focus();
-        manualInputRef.current.style.height = "auto";
-        manualInputRef.current.style.height = Math.min(manualInputRef.current.scrollHeight, 160) + "px";
-      }
-    }, 10);
-  };
-
-  // Quick reply search query derived from manualReplyText
-  const isTriggeredBySlash = manualReplyText.startsWith("/") && !manualReplyText.includes("\n");
-  const quickReplySearch = isTriggeredBySlash ? manualReplyText.slice(1).trim().toLowerCase() : "";
-  const isQuickReplyMenuOpen = showQuickReplyMenu || isTriggeredBySlash;
-
-  // Filtered quick replies based on search query
-  const matchingQuickReplies = useMemo(() => {
-    if (!quickReplySearch) return quickReplies;
-    return quickReplies.filter(qr => 
-      qr.shortcut.toLowerCase().includes(quickReplySearch) ||
-      qr.title.toLowerCase().includes(quickReplySearch) ||
-      qr.message.toLowerCase().includes(quickReplySearch)
-    );
-  }, [quickReplies, quickReplySearch]);
 
   // Helper to format clean Indonesian phone numbers nicely (+62 819-0194-2233)
   const formatDisplayPhone = (phone?: string) => {
@@ -2318,9 +2083,13 @@ function WhatsAppAiPage() {
   };
 
   // Send Manual Reply via Unified Dispatcher (/api/whatsapp/send) with Zero-Delay Optimistic UI
-  const handleSendManualReply = async (retryMsg?: ChatLog) => {
-    const text = (retryMsg ? retryMsg.message : manualReplyText).trim();
-    const currentAttachment = retryMsg ? null : mediaAttachment;
+  const handleSendManualReply = async (
+    retryMsg?: ChatLog,
+    overrideText?: string,
+    overrideAttachment?: MediaAttachmentItem | null
+  ) => {
+    const text = (retryMsg ? retryMsg.message : (overrideText !== undefined ? overrideText : "")).trim();
+    const currentAttachment = retryMsg ? null : (overrideAttachment !== undefined ? overrideAttachment : null);
 
     if ((!text && !currentAttachment && !retryMsg?.media_url) || !selectedChatId) return;
 
@@ -2353,15 +2122,6 @@ function WhatsAppAiPage() {
     };
 
     if (!retryMsg) {
-      // 1. INSTANT (0ms): Clear input and append optimistic message immediately
-      setManualReplyText("");
-      setMediaAttachment(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      if (manualInputRef.current) {
-        manualInputRef.current.style.height = "auto";
-      }
       setPendingMessages(prev => [...prev, pendingLog]);
     } else {
       // Retrying: reset status back to sending
@@ -2689,7 +2449,7 @@ function WhatsAppAiPage() {
                 )}
               </div>
             </CardHeader>
-            <CardContent className="p-0 overflow-y-auto flex-1">
+            <CardContent className="p-0 overflow-y-auto flex-1" onScroll={handleSidebarScroll}>
               {filteredChats.length === 0 ? (
                 chatSearch.trim().length >= 2 ? (
                   isSearchingServer ? (
@@ -2792,7 +2552,7 @@ function WhatsAppAiPage() {
                 )
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {filteredChats.map((chat) => {
+                  {filteredChats.slice(0, visibleContactCount).map((chat) => {
                     const isSelected = selectedChatId === chat.chat_id;
                     const cleanDate = formatSidebarChatTime(chat.latestLog.created_at);
                     const chatDateTooltip = formatMessageTooltip(chat.latestLog.created_at);
@@ -3015,6 +2775,21 @@ function WhatsAppAiPage() {
                       </div>
                     );
                   })}
+
+                  {/* Client-side Infinite Scroll Load More Contacts */}
+                  {visibleContactCount < filteredChats.length && (
+                    <div className="p-2.5 text-center bg-amber-50/50 border-t border-amber-200/60">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={() => setVisibleContactCount(prev => Math.min(prev + 80, filteredChats.length))}
+                        className="text-xs text-amber-800 bg-white hover:bg-amber-100 hover:text-amber-900 border-amber-300 cursor-pointer shadow-2xs font-semibold py-1.5"
+                      >
+                        Muat Lebih Banyak ({filteredChats.length - visibleContactCount} Kontak Lagi)
+                      </Button>
+                    </div>
+                  )}
 
                   {/* Load More Older Chats Button at bottom of contact list */}
                   {!chatSearch && (
@@ -3639,322 +3414,19 @@ function WhatsAppAiPage() {
                         <div ref={chatEndRef} />
                       </CardContent>
 
-                      <div className="border-t shrink-0 bg-white relative">
-                        {/* Media Attachment Preview Card */}
-                        {mediaAttachment && (
-                          <div className="mx-3 mt-3 p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-1 duration-150">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              {mediaAttachment.mediaType === "video" ? (
-                                <div className="relative h-14 w-20 bg-black rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
-                                  <video src={mediaAttachment.previewUrl} className="h-full w-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white">
-                                    <Video className="h-5 w-5" />
-                                  </div>
-                                </div>
-                              ) : (
-                                <img
-                                  src={mediaAttachment.previewUrl}
-                                  alt="Preview Lampiran"
-                                  className="h-14 w-14 object-cover rounded-lg border border-amber-200 shrink-0"
-                                />
-                              )}
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <Badge className="text-[10px] font-bold bg-amber-500 text-white border-0 px-1.5 py-0">
-                                    {mediaAttachment.mediaType === "video" ? "🎥 Video (WABA)" : "📷 Foto (WABA)"}
-                                  </Badge>
-                                  <span className="text-xs font-semibold text-slate-800 truncate max-w-[200px] sm:max-w-xs" title={mediaAttachment.fileName}>
-                                    {mediaAttachment.fileName}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                  {(mediaAttachment.fileSize / (1024 * 1024)).toFixed(2)} MB • Ketik keterangan di bawah atau langsung tekan kirim
-                                </p>
-                              </div>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={handleRemoveMediaAttachment}
-                              className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg shrink-0 cursor-pointer"
-                              title="Hapus Lampiran"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-
-                        <div className="p-3 flex gap-2 items-end">
-                        {/* Floating Quick Reply Menu */}
-                        {isQuickReplyMenuOpen && (
-                          <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-40 animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-72 flex flex-col">
-                            {/* Floating Menu Header */}
-                            <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200 shrink-0">
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                                <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                                <span>Balas Cepat (/)</span>
-                                {quickReplySearch && (
-                                  <span className="text-[11px] font-normal text-slate-500">
-                                    Cari: <code className="bg-amber-100 text-amber-800 px-1 rounded font-mono">/{quickReplySearch}</code>
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setShowQuickReplyMenu(false);
-                                    setIsQuickReplySheetOpen(true);
-                                  }}
-                                  className="h-6 px-2 rounded flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-amber-800 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-all cursor-pointer"
-                                  title="Kelola & Tambah Balas Cepat"
-                                >
-                                  <Pencil className="h-3.5 w-3.5 text-amber-600" />
-                                  <span>Kelola</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowQuickReplyMenu(false)}
-                                  className="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 transition-all cursor-pointer text-sm font-bold"
-                                  title="Tutup"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Quick Reply Items List */}
-                            <div className="overflow-y-auto max-h-56 divide-y divide-slate-100 p-1">
-                              {matchingQuickReplies.length === 0 ? (
-                                <div className="p-4 text-center text-xs text-slate-500 space-y-2">
-                                  <p className="font-medium">
-                                    {quickReplies.length === 0 
-                                      ? "Belum ada template balas cepat." 
-                                      : `Tidak ditemukan balas cepat dengan kata kunci "/${quickReplySearch}"`}
-                                  </p>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    type="button"
-                                    onClick={() => {
-                                      setShowQuickReplyMenu(false);
-                                      setIsQuickReplySheetOpen(true);
-                                      if (quickReplySearch) {
-                                        setFormShortcut(quickReplySearch);
-                                      }
-                                    }}
-                                    className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-50 cursor-pointer"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    <span>Tambah Balas Cepat {quickReplySearch ? `/${quickReplySearch}` : ""}</span>
-                                  </Button>
-                                </div>
-                              ) : (
-                                matchingQuickReplies.map((qr) => (
-                                  <button
-                                    key={qr.id}
-                                    type="button"
-                                    onClick={() => handleSelectQuickReply(qr, displayName)}
-                                    className="w-full text-left p-2.5 rounded-lg hover:bg-amber-50/80 transition-colors flex items-start gap-2.5 group cursor-pointer"
-                                  >
-                                    <Badge variant="outline" className="bg-amber-100/70 text-amber-800 border-amber-300 font-mono text-[11px] font-bold shrink-0 mt-0.5 group-hover:bg-amber-500 group-hover:text-white transition-colors">
-                                      /{qr.shortcut}
-                                    </Badge>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs font-semibold text-slate-800 truncate group-hover:text-amber-900">{qr.title}</p>
-                                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 whitespace-pre-wrap">{qr.message}</p>
-                                    </div>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Zap Toggle Button */}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setShowQuickReplyMenu(prev => !prev)}
-                          className={`h-9 w-9 shrink-0 rounded-xl transition-all cursor-pointer ${
-                            isQuickReplyMenuOpen ? "bg-amber-100 text-amber-700 font-bold" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
-                          }`}
-                          title="Buka Balas Cepat (atau ketik /)"
-                        >
-                          <Zap className="h-4 w-4" />
-                        </Button>
-
-                        {/* Emoji Picker Popover */}
-                        <Popover open={isEmojiPickerOpen} onOpenChange={setIsEmojiPickerOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className={`h-9 w-9 shrink-0 rounded-xl transition-all cursor-pointer ${
-                                isEmojiPickerOpen ? "bg-amber-100 text-amber-700 font-bold" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50"
-                              }`}
-                              title="Pilih Emoji (😊)"
-                            >
-                              <Smile className="h-4 w-4" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            side="top"
-                            align="start"
-                            sideOffset={8}
-                            className="w-80 p-2.5 rounded-2xl shadow-xl border border-slate-200 bg-white z-50 animate-in fade-in zoom-in-95 duration-150"
-                          >
-                            <div className="space-y-2">
-                              {/* Header & Category Pills */}
-                              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 px-0.5">
-                                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                  <span>😊</span>
-                                  <span>Pilih Emoji</span>
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsEmojiPickerOpen(false)}
-                                  className="h-5 w-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xs font-bold cursor-pointer"
-                                  title="Tutup"
-                                >
-                                  ×
-                                </button>
-                              </div>
-
-                              {/* Search bar inside emoji picker */}
-                              <div className="relative">
-                                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                                <Input
-                                  placeholder="Cari emoji (cth: madu, makasih, jempol)..."
-                                  value={emojiFilterText}
-                                  onChange={(e) => setEmojiFilterText(e.target.value)}
-                                  className="h-7 pl-8 pr-6 text-xs bg-slate-50 rounded-lg border-slate-200"
-                                />
-                                {emojiFilterText && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setEmojiFilterText("")}
-                                    className="absolute right-2 top-1.5 h-4 w-4 rounded-full text-[10px] text-slate-400 hover:text-slate-700 flex items-center justify-center bg-slate-200 cursor-pointer"
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Category Tabs (tampil jika tidak sedang mencari) */}
-                              {!emojiFilterText && (
-                                <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-100 rounded-lg text-[10px]">
-                                  {EMOJI_LIST.map(cat => (
-                                    <button
-                                      key={cat.category}
-                                      type="button"
-                                      onClick={() => setActiveEmojiTab(cat.category)}
-                                      className={`py-1 px-1 rounded font-medium truncate text-center transition-all cursor-pointer ${
-                                        activeEmojiTab === cat.category
-                                          ? "bg-white text-amber-700 shadow-2xs font-bold"
-                                          : "text-slate-600 hover:text-slate-900"
-                                      }`}
-                                    >
-                                      {cat.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Emoji Grid */}
-                              <div className="max-h-48 overflow-y-auto p-1 grid grid-cols-6 gap-1">
-                                {filteredEmojiItems.length === 0 ? (
-                                  <div className="col-span-6 py-6 text-center text-xs text-slate-400">
-                                    Emoji tidak ditemukan
-                                  </div>
-                                ) : (
-                                  filteredEmojiItems.map((item, idx) => (
-                                    <button
-                                      key={`${item.emoji}-${idx}`}
-                                      type="button"
-                                      onClick={() => handleInsertEmoji(item.emoji)}
-                                      className="h-9 w-9 rounded-lg flex items-center justify-center text-xl hover:bg-amber-100/70 hover:scale-125 transition-transform active:scale-95 cursor-pointer select-none"
-                                      title={`${item.name} (${item.emoji})`}
-                                    >
-                                      {item.emoji}
-                                    </button>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-
-                        {/* Attachment Button for Photos & Videos */}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={sendingReply || uploadingMedia}
-                          className="h-9 w-9 shrink-0 rounded-xl text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all cursor-pointer"
-                          title="Lampirkan Foto (maks 5MB) atau Video (maks 16MB)"
-                        >
-                          <Paperclip className="h-4 w-4" />
-                        </Button>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleFileSelect(file);
-                          }}
-                        />
-
-                        <Textarea
-                          ref={manualInputRef}
-                          rows={1}
-                          placeholder={
-                            mediaAttachment 
-                              ? `Tulis keterangan ${mediaAttachment.mediaType === "video" ? "video" : "foto"} (opsional, tekan Enter kirim)...` 
-                              : "Tulis balasan manual (Enter kirim, Shift+Enter baris baru, / balas cepat, Ctrl+V foto)..."
-                          }
-                          value={manualReplyText}
-                          onPaste={handlePasteMedia}
-                          onChange={(e) => {
-                            setManualReplyText(e.target.value);
-                            e.target.style.height = "auto";
-                            e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              if (isQuickReplyMenuOpen && matchingQuickReplies.length > 0 && isTriggeredBySlash) {
-                                handleSelectQuickReply(matchingQuickReplies[0], displayName);
-                              } else {
-                                handleSendManualReply();
-                              }
-                            } else if (e.key === "Escape") {
-                              setShowQuickReplyMenu(false);
-                            }
-                          }}
-                          className="flex-1 min-h-[38px] max-h-[160px] resize-none py-2 px-3 text-sm rounded-xl leading-relaxed border-input focus-visible:ring-amber-500"
-                        />
-                        <Button 
-                          type="button"
-                          onClick={() => handleSendManualReply()} 
-                          disabled={(!manualReplyText.trim() && !mediaAttachment) || sendingReply || uploadingMedia}
-                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl cursor-pointer h-9 px-3 shrink-0"
-                          title="Kirim Pesan (Enter)"
-                        >
-                          {sendingReply || uploadingMedia ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
+                      <WhatsAppChatInput
+                        key={selectedChatId || "empty"}
+                        ref={chatInputRef}
+                        onSendMessage={async (text, attachment) => {
+                          await handleSendManualReply(undefined, text, attachment);
+                        }}
+                        sendingReply={sendingReply}
+                        uploadingMedia={uploadingMedia}
+                        quickReplies={quickReplies}
+                        displayName={displayName}
+                        onOpenManageQuickReplies={() => setIsQuickReplySheetOpen(true)}
+                        onPrefillQuickReplyShortcut={(sc) => setFormShortcut(sc)}
+                      />
                     </>
                   );
                 })()}
