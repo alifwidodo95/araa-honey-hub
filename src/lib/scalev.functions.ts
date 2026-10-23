@@ -1332,7 +1332,8 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
   });
 
 // 13. Auto-Follow-Up 1 Engine (90-second trigger for un-chatted leads via WAHA WA 1)
-let isAutoFu1Running = false;
+let lastAutoFu1RunTime = 0;
+const AUTO_FU1_LOCK_TIMEOUT_MS = 25_000;
 
 export async function processPendingAutoFu1(): Promise<{
   processed: number;
@@ -1340,11 +1341,12 @@ export async function processPendingAutoFu1(): Promise<{
   skipped: number;
   results: any[];
 }> {
-  if (isAutoFu1Running) {
+  const now = Date.now();
+  if (lastAutoFu1RunTime && now - lastAutoFu1RunTime < AUTO_FU1_LOCK_TIMEOUT_MS) {
     return { processed: 0, sent: 0, skipped: 0, results: [{ status: "already_running" }] };
   }
 
-  isAutoFu1Running = true;
+  lastAutoFu1RunTime = now;
   let pool: pg.Pool | null = null;
   const out = { processed: 0, sent: 0, skipped: 0, results: [] as any[] };
 
@@ -1360,7 +1362,7 @@ export async function processPendingAutoFu1(): Promise<{
 
     if (scalevCfg.autoFu1Enabled === false) {
       await pool.end();
-      isAutoFu1Running = false;
+      lastAutoFu1RunTime = 0;
       return out;
     }
 
@@ -1387,7 +1389,7 @@ export async function processPendingAutoFu1(): Promise<{
 
     if (!candidates || candidates.length === 0) {
       await pool.end();
-      isAutoFu1Running = false;
+      lastAutoFu1RunTime = 0;
       return out;
     }
 
@@ -1599,7 +1601,7 @@ export async function processPendingAutoFu1(): Promise<{
     if (pool) try { await pool.end(); } catch (e) {}
     console.error("[processPendingAutoFu1 Error]:", err);
   } finally {
-    isAutoFu1Running = false;
+    lastAutoFu1RunTime = 0;
   }
 
   return out;
