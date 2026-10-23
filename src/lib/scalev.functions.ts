@@ -1355,6 +1355,9 @@ export async function processPendingAutoFu1(): Promise<{
     const scalevCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
     const scalevCfg = scalevCfgRes.rows[0]?.value || {};
 
+    const wahaCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
+    const wahaCfg = wahaCfgRes.rows[0]?.value || {};
+
     if (scalevCfg.autoFu1Enabled === false) {
       await pool.end();
       isAutoFu1Running = false;
@@ -1362,8 +1365,8 @@ export async function processPendingAutoFu1(): Promise<{
     }
 
     const delaySeconds = Number(scalevCfg.autoFu1DelaySeconds) || 90;
-    const wahaUrl = process.env.WAHA_URL || scalevCfg.wahaUrl || "https://waha.araahoney.my.id";
-    const apiKey = process.env.WAHA_API_KEY || scalevCfg.apiKey || "araahoney123";
+    const wahaUrl = process.env.WAHA_URL || wahaCfg.wahaUrl || "https://waha.araahoney.my.id";
+    const apiKey = process.env.WAHA_API_KEY || wahaCfg.apiKey || "araahoney123";
 
     // 2. Query candidate leads
     // Only leads created >= 90s ago and <= 30 mins ago, starting from 23 Oct 2026
