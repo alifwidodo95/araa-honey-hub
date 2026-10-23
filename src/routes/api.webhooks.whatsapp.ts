@@ -205,11 +205,16 @@ export const Route = createFileRoute('/api/webhooks/whatsapp')({
                     content: r.message
                   }));
 
+                  // Determine media_url if mediaId exists
+                  const incomingMediaUrl = mediaId
+                    ? `/api/whatsapp-media?media_id=${mediaId}${messageType === 'video' ? '&type=video' : ''}`
+                    : null;
+
                   // Save incoming message to database with channel='waba'
                   await pool.query(`
-                    INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, media_id, created_at)
-                    VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', $6, now())
-                  `, [userId, chatId, customerPhone, customerName, incomingText, mediaId]);
+                    INSERT INTO public.whatsapp_chat_logs (user_id, chat_id, customer_phone, customer_name, message, direction, channel, media_id, media_url, created_at)
+                    VALUES ($1, $2, $3, $4, $5, 'incoming', 'waba', $6, $7, now())
+                  `, [userId, chatId, customerPhone, customerName, incomingText, mediaId, incomingMediaUrl]);
 
                   // === HERMES FASE 1: FU Reply Classifier ===
                   // Check if this is a reply from a Scalev lead being followed up

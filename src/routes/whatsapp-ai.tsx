@@ -204,9 +204,81 @@ function isSameDay(dateStr1: string, dateStr2: string): boolean {
   );
 }
 
-function isVideoMedia(url?: string | null): boolean {
+function isVideoMedia(url?: string | null, message?: string | null): boolean {
+  if (message && (/\[video\]/i.test(message) || message.toLowerCase().includes("[video dikirim]"))) return true;
   if (!url) return false;
-  return /\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(url);
+  return /\.(mp4|mov|webm|avi|m4v)(\?.*)?$/i.test(url) || url.includes("type=video") || url.includes("video/mp4");
+}
+
+function WhatsAppChatMedia({
+  mediaUrl,
+  mediaId,
+  message,
+  onPreview,
+  isOutgoing = false,
+}: {
+  mediaUrl?: string | null;
+  mediaId?: string | null;
+  message?: string | null;
+  onPreview: (url: string, caption?: string, isVideo?: boolean) => void;
+  isOutgoing?: boolean;
+}) {
+  const effectiveSrc = mediaUrl || (mediaId ? `/api/whatsapp-media?media_id=${mediaId}` : "");
+  const initiallyVideo = isVideoMedia(effectiveSrc, message);
+  const [isVideo, setIsVideo] = useState(initiallyVideo);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setIsVideo(isVideoMedia(effectiveSrc, message));
+    setHasError(false);
+  }, [effectiveSrc, message]);
+
+  if (!effectiveSrc) return null;
+
+  if (hasError) {
+    return (
+      <div className="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200 my-1">
+        <span>🖼️</span>
+        <span>Media tidak dapat dimuat atau telah kedaluwarsa dari server WhatsApp.</span>
+      </div>
+    );
+  }
+
+  if (isVideo) {
+    return (
+      <div className={`overflow-hidden rounded-xl border ${isOutgoing ? "border-white/20 bg-black" : "border-slate-200 bg-black"} shadow-xs max-w-sm my-1`}>
+        <video
+          src={effectiveSrc}
+          controls
+          className="w-full max-h-72 rounded-xl"
+          preload="metadata"
+          onError={() => setHasError(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={() => onPreview(effectiveSrc, (message !== '[Pelanggan Mengirim Gambar]' && message !== '[Foto Dikirim]' && message !== '[Video Dikirim]') ? (message || undefined) : undefined, false)}
+      className={`relative group/media overflow-hidden rounded-xl border ${isOutgoing ? "border-white/20 bg-black/10" : "border-slate-200 bg-slate-100"} cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all my-1`}
+    >
+      <img
+        src={effectiveSrc}
+        alt="Media WhatsApp"
+        className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
+        loading="lazy"
+        onError={() => {
+          // If image decoding failed, it's very likely a video (e.g. MP4)! Auto-switch to video player
+          setIsVideo(true);
+        }}
+      />
+      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
+        <ZoomIn className="h-4 w-4" />
+        <span>Klik untuk Perbesar</span>
+      </div>
+    </div>
+  );
 }
 
 function formatChatDividerDate(dateStr: string): string {
@@ -684,11 +756,13 @@ function WhatsAppAiPage() {
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewImageCaption, setPreviewImageCaption] = useState<string | null>(null);
+  const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const handlePreviewImage = useCallback((url: string, caption?: string) => {
+  const handlePreviewImage = useCallback((url: string, caption?: string, isVideo?: boolean) => {
     setPreviewImageUrl(url);
     setPreviewImageCaption(caption || null);
+    setPreviewIsVideo(!!isVideo || isVideoMedia(url, caption));
   }, []);
 
   // Helper to extract clean digit-only phone (no +, -, or spaces; e.g. 6281284629656) for Agregator CRM search
@@ -3411,45 +3485,13 @@ function WhatsAppAiPage() {
                                     {/* Render Media Image or Video if available */}
                                     {(msg.media_id || msg.media_url) && (
                                       <div className="mb-2">
-                                        {isVideoMedia(msg.media_url) ? (
-                                          <div className="overflow-hidden rounded-xl border border-slate-200 bg-black shadow-xs max-w-sm">
-                                            <video
-                                              src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                              controls
-                                              className="w-full max-h-72 rounded-xl"
-                                              preload="metadata"
-                                            />
-                                          </div>
-                                        ) : (
-                                          <div
-                                            onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, (msg.message !== '[Pelanggan Mengirim Gambar]' && msg.message !== '[Foto Dikirim]') ? msg.message : undefined)}
-                                            className="relative group/media overflow-hidden rounded-xl border border-slate-200 bg-slate-100 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
-                                          >
-                                            <img
-                                              src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                              alt="Foto WhatsApp"
-                                              className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
-                                              loading="lazy"
-                                              onError={(e) => {
-                                                const target = e.currentTarget;
-                                                target.style.display = 'none';
-                                                const parent = target.parentElement;
-                                                if (parent) {
-                                                  parent.innerHTML = `
-                                                    <div class="p-3 text-xs text-amber-900 bg-amber-50 rounded-xl flex items-center gap-2 border border-amber-200">
-                                                      <span>🖼️</span>
-                                                      <span>Gambar bukti transfer telah kedaluwarsa dari server WhatsApp.</span>
-                                                    </div>
-                                                  `;
-                                                }
-                                              }}
-                                            />
-                                            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
-                                              <ZoomIn className="h-4 w-4" />
-                                              <span>Klik untuk Perbesar</span>
-                                            </div>
-                                          </div>
-                                        )}
+                                        <WhatsAppChatMedia
+                                          mediaUrl={msg.media_url}
+                                          mediaId={msg.media_id}
+                                          message={msg.message}
+                                          onPreview={handlePreviewImage}
+                                          isOutgoing={false}
+                                        />
                                       </div>
                                     )}
 
@@ -3535,32 +3577,13 @@ function WhatsAppAiPage() {
                                   {/* Render Media Image or Video for Outgoing if available */}
                                   {(msg.media_id || msg.media_url) && (
                                     <div className="mb-2">
-                                      {isVideoMedia(msg.media_url) ? (
-                                        <div className="overflow-hidden rounded-xl border border-white/20 bg-black shadow-xs max-w-sm">
-                                          <video
-                                            src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                            controls
-                                            className="w-full max-h-72 rounded-xl"
-                                            preload="metadata"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div
-                                          onClick={() => handlePreviewImage(msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`, (msg.message !== '[Foto Dikirim]' && msg.message !== '[Video Dikirim]') ? msg.message : undefined)}
-                                          className="relative group/media overflow-hidden rounded-xl border border-white/20 bg-black/10 cursor-pointer shadow-xs max-w-sm hover:shadow-md transition-all"
-                                        >
-                                          <img
-                                            src={msg.media_url || `/api/whatsapp-media?media_id=${msg.media_id}`}
-                                            alt="Media Outgoing"
-                                            className="w-full max-h-72 object-cover object-top hover:scale-[1.02] transition-transform duration-200 rounded-xl"
-                                            loading="lazy"
-                                          />
-                                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/media:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-semibold backdrop-blur-[1px] rounded-xl">
-                                            <ZoomIn className="h-4 w-4" />
-                                            <span>Klik untuk Perbesar</span>
-                                          </div>
-                                        </div>
-                                      )}
+                                      <WhatsAppChatMedia
+                                        mediaUrl={msg.media_url}
+                                        mediaId={msg.media_id}
+                                        message={msg.message}
+                                        onPreview={handlePreviewImage}
+                                        isOutgoing={true}
+                                      />
                                     </div>
                                   )}
 
@@ -4646,7 +4669,7 @@ function WhatsAppAiPage() {
         <DialogContent className="sm:max-w-3xl max-h-[90vh] p-4 bg-slate-950 text-white rounded-2xl shadow-2xl flex flex-col items-center justify-between border border-slate-800 overflow-hidden">
           <DialogHeader className="w-full flex flex-row items-center justify-between pb-2 border-b border-slate-800 shrink-0">
             <DialogTitle className="text-sm font-semibold flex items-center gap-2 text-slate-200">
-              {isVideoMedia(previewImageUrl) ? (
+              {previewIsVideo || isVideoMedia(previewImageUrl) ? (
                 <>
                   <Video className="h-4 w-4 text-amber-400" />
                   <span>Pratinjau Video WhatsApp</span>
@@ -4663,19 +4686,19 @@ function WhatsAppAiPage() {
                 href={previewImageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                download={isVideoMedia(previewImageUrl) ? "video-whatsapp.mp4" : "foto-whatsapp.jpg"}
+                download={previewIsVideo || isVideoMedia(previewImageUrl) ? "video-whatsapp.mp4" : "foto-whatsapp.jpg"}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors shadow-xs cursor-pointer mr-6"
                 title="Buka atau unduh berkas asli"
               >
                 <Download className="h-3.5 w-3.5" />
-                <span>{isVideoMedia(previewImageUrl) ? "Unduh Video" : "Unduh Gambar"}</span>
+                <span>{previewIsVideo || isVideoMedia(previewImageUrl) ? "Unduh Video" : "Unduh Gambar"}</span>
               </a>
             )}
           </DialogHeader>
 
           <div className="w-full flex-1 overflow-auto flex items-center justify-center p-2 min-h-[300px]">
             {previewImageUrl && (
-              isVideoMedia(previewImageUrl) ? (
+              previewIsVideo || isVideoMedia(previewImageUrl) ? (
                 <video
                   src={previewImageUrl}
                   controls
@@ -4687,6 +4710,7 @@ function WhatsAppAiPage() {
                   src={previewImageUrl}
                   alt="Pratinjau Gambar"
                   className="max-h-[72vh] w-auto max-w-full object-contain rounded-lg shadow-xl"
+                  onError={() => setPreviewIsVideo(true)}
                 />
               )
             )}
