@@ -86,7 +86,8 @@ function formatDateTimeIndo(dateStr: string) {
 function LoyaltyPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"vip" | "potential" | "at_risk" | "all_repeat">("vip");
+  const [activeTab, setActiveTab] = useState<"ready" | "new" | "repeat2x" | "loyal" | "vip" | "all">("ready");
+  const [cycleFilter, setCycleFilter] = useState<"all" | "ready" | "consuming" | "at_risk">("all");
   const [crmFilter, setCrmFilter] = useState<"all" | "uncontacted" | "need_followup" | "contacted">("all");
   const [hideInvalidPhone, setHideInvalidPhone] = useState(true);
   const [sortBy, setSortBy] = useState<"oldest" | "newest" | "spent_desc" | "count_desc">("oldest");
@@ -482,11 +483,15 @@ function LoyaltyPage() {
     const rawCustomers = apiResponse?.customers || [];
     const rawTrends = apiResponse?.trends || [];
 
-    let vipCount = 0;
-    let potentialCount = 0;
-    let atRiskCount = 0;
-    let repeatCount = 0;
     let totalUnique = rawCustomers.length;
+    let newCount = 0;       // orderCount === 1
+    let repeat2xCount = 0;  // orderCount === 2
+    let loyalCount = 0;     // orderCount >= 3 && orderCount <= 5
+    let vipCount = 0;       // orderCount >= 6
+    let repeatCount = 0;    // orderCount >= 2
+    let readyCount = 0;     // daysSince >= minCycle && daysSince <= maxCycle
+    let atRiskCount = 0;    // daysSince > maxCycle
+    let consumingCount = 0; // daysSince < minCycle
 
     const formattedCustomers = rawCustomers.map((c) => {
       const orderCount = Number(c.order_count) || 1;
@@ -518,16 +523,31 @@ function LoyaltyPage() {
         cycleLabel = "~75 hari";
       }
 
-      if (orderCount >= 2) {
+      // Loyalty counts
+      if (orderCount === 1) {
+        newCount += 1;
+      } else if (orderCount === 2) {
+        repeat2xCount += 1;
+        repeatCount += 1;
+      } else if (orderCount >= 3 && orderCount <= 5) {
+        loyalCount += 1;
+        repeatCount += 1;
+      } else if (orderCount >= 6) {
+        vipCount += 1;
         repeatCount += 1;
       }
 
-      if (orderCount >= 3) {
-        vipCount += 1;
-      } else if (orderCount === 1 && daysSince >= minCycle && daysSince <= maxCycle) {
-        potentialCount += 1;
-      } else if (orderCount === 1 && daysSince > maxCycle) {
+      // Universal Cycle status (applies to ALL customers, 1x, 2x, or VIP!)
+      let consumptionStatus: "ready" | "at_risk" | "consuming" = "consuming";
+      if (daysSince >= minCycle && daysSince <= maxCycle) {
+        readyCount += 1;
+        consumptionStatus = "ready";
+      } else if (daysSince > maxCycle) {
         atRiskCount += 1;
+        consumptionStatus = "at_risk";
+      } else {
+        consumingCount += 1;
+        consumptionStatus = "consuming";
       }
 
       return {
@@ -545,6 +565,8 @@ function LoyaltyPage() {
         minCycle,
         maxCycle,
         isValidWa,
+        consumptionStatus,
+        tier: orderCount === 1 ? "new" : orderCount === 2 ? "repeat2x" : orderCount <= 5 ? "loyal" : "vip",
       };
     });
 
@@ -592,9 +614,14 @@ function LoyaltyPage() {
         totalUnique,
         repeatCount,
         repeatRate,
+        newCount,
+        repeat2xCount,
+        loyalCount,
         vipCount,
-        potentialCount,
+        readyCount,
         atRiskCount,
+        consumingCount,
+        potentialCount: readyCount, // backwards compat
         avgIntervalDays: 38,
         currentMonthRepeatOmzet: currRepeatOmzet,
         currentMonthRepeatPct: currRepeatPct,
@@ -772,8 +799,13 @@ function LoyaltyPage() {
   }, [convertedCustomersData?.orders, convertedSearchQuery]);
 
   // Format message for a specific customer based on the active tab template
-  const formatCustomerMessage = (c: any, tabKey = activeTab) => {
-    let tpl = templates[tabKey] || templates.vip;
+  const formatCustomerMessage = (c: any, tabKey = activeTab as string) => {
+    let tplKey = tabKey;
+    if (tabKey === "ready" || tabKey === "new") tplKey = "potential";
+    else if (tabKey === "repeat2x" || tabKey === "loyal" || tabKey === "all") tplKey = "all_repeat";
+    else if (tabKey === "vip") tplKey = "vip";
+
+    let tpl = (templates as any)[tplKey] || (templates as any)[tabKey] || templates.potential || templates.vip || "";
     return tpl
       .replace(/{nama}/g, c.name || "Pelanggan")
       .replace(/{tanggal_order}/g, formatDateIndo(c.lastOrderDate))
@@ -787,8 +819,11 @@ function LoyaltyPage() {
   const handleOpenSendDialog = (c: any) => {
     const formatted = formatCustomerMessage(c);
     setPreviewMessage(formatted);
-    const imgKey = `${activeTab}_image_url` as keyof typeof templates;
-    setPreviewImageUrl(templates[imgKey] || "");
+    let imgTab = activeTab as string;
+    if (activeTab === "ready" || activeTab === "new") imgTab = "potential";
+    else if (activeTab === "repeat2x" || activeTab === "loyal" || activeTab === "all") imgTab = "all_repeat";
+    const imgKey = `${imgTab}_image_url` as keyof typeof templates;
+    setPreviewImageUrl((templates as any)[imgKey] || "");
     setPreviewDialogCustomer(c);
   };
 
@@ -844,14 +879,26 @@ function LoyaltyPage() {
   const filteredCustomers = useMemo(() => {
     let list = customers;
 
-    if (activeTab === "vip") {
-      list = list.filter((c) => c.orderCount >= 3);
-    } else if (activeTab === "potential") {
-      list = list.filter((c) => c.orderCount === 1 && c.daysSinceLastOrder >= c.minCycle && c.daysSinceLastOrder <= c.maxCycle);
-    } else if (activeTab === "at_risk") {
-      list = list.filter((c) => c.orderCount === 1 && c.daysSinceLastOrder > c.maxCycle);
-    } else if (activeTab === "all_repeat") {
-      list = list.filter((c) => c.orderCount >= 2);
+    if (activeTab === "ready") {
+      list = list.filter((c) => c.daysSinceLastOrder >= c.minCycle && c.daysSinceLastOrder <= c.maxCycle);
+    } else if (activeTab === "new") {
+      list = list.filter((c) => c.orderCount === 1);
+    } else if (activeTab === "repeat2x") {
+      list = list.filter((c) => c.orderCount === 2);
+    } else if (activeTab === "loyal") {
+      list = list.filter((c) => c.orderCount >= 3 && c.orderCount <= 5);
+    } else if (activeTab === "vip") {
+      list = list.filter((c) => c.orderCount >= 6);
+    }
+    // activeTab === "all" includes everyone
+
+    // Siklus Konsumsi Sub-Filter
+    if (cycleFilter === "ready") {
+      list = list.filter((c) => c.daysSinceLastOrder >= c.minCycle && c.daysSinceLastOrder <= c.maxCycle);
+    } else if (cycleFilter === "consuming") {
+      list = list.filter((c) => c.daysSinceLastOrder < c.minCycle);
+    } else if (cycleFilter === "at_risk") {
+      list = list.filter((c) => c.daysSinceLastOrder > c.maxCycle);
     }
 
     // CRM Follow-Up Status Filter
@@ -896,7 +943,7 @@ function LoyaltyPage() {
       }
       return b.daysSinceLastOrder - a.daysSinceLastOrder;
     });
-  }, [customers, activeTab, crmFilter, hideInvalidPhone, searchTerm, sortBy, sentMap]);
+  }, [customers, activeTab, cycleFilter, crmFilter, hideInvalidPhone, searchTerm, sortBy, sentMap]);
 
   // Pagination
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
@@ -945,8 +992,11 @@ function LoyaltyPage() {
       });
 
       const formatted = formatCustomerMessage(c);
-      const imgKey = `${activeTab}_image_url` as keyof typeof templates;
-      const imgUrl = templates[imgKey] || "";
+      let imgTab = activeTab as string;
+      if (activeTab === "ready" || activeTab === "new") imgTab = "potential";
+      else if (activeTab === "repeat2x" || activeTab === "loyal" || activeTab === "all") imgTab = "all_repeat";
+      const imgKey = `${imgTab}_image_url` as keyof typeof templates;
+      const imgUrl = (templates as any)[imgKey] || "";
 
       const isWaba = selectedSenderSession === "waba";
       try {
@@ -1726,112 +1776,179 @@ function LoyaltyPage() {
         </CardHeader>
 
         <CardContent className="pt-4 space-y-4">
-          {/* Segment Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {/* Tab 1 */}
+          {/* Segment Tabs - Piramida Loyalitas Murni & Siklus Cerdas */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {/* Tab 1: Siap Re-Order Hari Ini */}
+            <Button
+              variant={activeTab === "ready" ? "default" : "outline"}
+              onClick={() => { setActiveTab("ready"); setCurrentPage(1); setSelectedPhones([]); }}
+              className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
+                activeTab === "ready" 
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ring-2 ring-emerald-500/50" 
+                  : "border-emerald-500/30 hover:bg-emerald-500/5 text-foreground"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <ShoppingBag className="w-3.5 h-3.5" />
+                Siap Re-Order
+              </div>
+              <span className="text-[11px] opacity-85 font-medium">{summaryStats.readyCount.toLocaleString("id-ID")} Pelanggan</span>
+            </Button>
+
+            {/* Tab 2: Baru (1x) */}
+            <Button
+              variant={activeTab === "new" ? "default" : "outline"}
+              onClick={() => { setActiveTab("new"); setCurrentPage(1); setSelectedPhones([]); }}
+              className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
+                activeTab === "new" 
+                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm ring-2 ring-blue-500/50" 
+                  : "border-blue-500/30 hover:bg-blue-500/5 text-foreground"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400">
+                <Users className="w-3.5 h-3.5" />
+                Baru (1x)
+              </div>
+              <span className="text-[11px] opacity-85 font-medium">{summaryStats.newCount.toLocaleString("id-ID")} Pelanggan</span>
+            </Button>
+
+            {/* Tab 3: Repeat (2x) */}
+            <Button
+              variant={activeTab === "repeat2x" ? "default" : "outline"}
+              onClick={() => { setActiveTab("repeat2x"); setCurrentPage(1); setSelectedPhones([]); }}
+              className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
+                activeTab === "repeat2x" 
+                  ? "bg-teal-600 hover:bg-teal-700 text-white shadow-sm ring-2 ring-teal-500/50" 
+                  : "border-teal-500/30 hover:bg-teal-500/5 text-foreground"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400">
+                <Repeat className="w-3.5 h-3.5" />
+                Repeat (2x)
+              </div>
+              <span className="text-[11px] opacity-85 font-medium">{summaryStats.repeat2xCount.toLocaleString("id-ID")} Pelanggan</span>
+            </Button>
+
+            {/* Tab 4: Loyal (3-5x) */}
+            <Button
+              variant={activeTab === "loyal" ? "default" : "outline"}
+              onClick={() => { setActiveTab("loyal"); setCurrentPage(1); setSelectedPhones([]); }}
+              className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
+                activeTab === "loyal" 
+                  ? "bg-purple-600 hover:bg-purple-700 text-white shadow-sm ring-2 ring-purple-500/50" 
+                  : "border-purple-500/30 hover:bg-purple-500/5 text-foreground"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400">
+                <Sparkles className="w-3.5 h-3.5" />
+                Loyal (3-5x)
+              </div>
+              <span className="text-[11px] opacity-85 font-medium">{summaryStats.loyalCount.toLocaleString("id-ID")} Pelanggan</span>
+            </Button>
+
+            {/* Tab 5: Super VIP (>=6x) */}
             <Button
               variant={activeTab === "vip" ? "default" : "outline"}
               onClick={() => { setActiveTab("vip"); setCurrentPage(1); setSelectedPhones([]); }}
               className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
-                activeTab === "vip" ? "bg-purple-600 hover:bg-purple-700 text-white" : "border-purple-500/30 hover:bg-purple-500/5"
+                activeTab === "vip" 
+                  ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm ring-2 ring-amber-500/50" 
+                  : "border-amber-500/30 hover:bg-amber-500/5 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
                 <Crown className="w-3.5 h-3.5" />
-                Super VIP (&ge;3x)
+                Super VIP (&ge;6x)
               </div>
-              <span className="text-[11px] opacity-85">{summaryStats.vipCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className="text-[11px] opacity-85 font-medium">{summaryStats.vipCount.toLocaleString("id-ID")} Pelanggan</span>
             </Button>
 
-            {/* Tab 2 */}
+            {/* Tab 6: Semua Database */}
             <Button
-              variant={activeTab === "potential" ? "default" : "outline"}
-              onClick={() => { setActiveTab("potential"); setCurrentPage(1); setSelectedPhones([]); }}
+              variant={activeTab === "all" ? "default" : "outline"}
+              onClick={() => { setActiveTab("all"); setCurrentPage(1); setSelectedPhones([]); }}
               className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
-                activeTab === "potential" ? "bg-amber-600 hover:bg-amber-700 text-white" : "border-amber-500/30 hover:bg-amber-500/5"
+                activeTab === "all" 
+                  ? "bg-slate-700 hover:bg-slate-800 text-white shadow-sm ring-2 ring-slate-500/50" 
+                  : "border-slate-300 dark:border-slate-700 hover:bg-muted/50 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold">
-                <ShoppingBag className="w-3.5 h-3.5" />
-                Waktunya Re-Order (Siklus Cerdas)
+              <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
+                <Users className="w-3.5 h-3.5" />
+                Semua Data
               </div>
-              <span className="text-[11px] opacity-85">{summaryStats.potentialCount.toLocaleString("id-ID")} Pelanggan</span>
-            </Button>
-
-            {/* Tab 3 */}
-            <Button
-              variant={activeTab === "at_risk" ? "default" : "outline"}
-              onClick={() => { setActiveTab("at_risk"); setCurrentPage(1); setSelectedPhones([]); }}
-              className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
-                activeTab === "at_risk" ? "bg-rose-600 hover:bg-rose-700 text-white" : "border-rose-500/30 hover:bg-rose-500/5"
-              }`}
-            >
-              <div className="flex items-center gap-1.5 text-xs font-bold">
-                <AlertCircle className="w-3.5 h-3.5" />
-                At-Risk (Lewat Siklus)
-              </div>
-              <span className="text-[11px] opacity-85">{summaryStats.atRiskCount.toLocaleString("id-ID")} Pelanggan</span>
-            </Button>
-
-            {/* Tab 4 */}
-            <Button
-              variant={activeTab === "all_repeat" ? "default" : "outline"}
-              onClick={() => { setActiveTab("all_repeat"); setCurrentPage(1); setSelectedPhones([]); }}
-              className={`h-auto py-2.5 px-3 flex flex-col items-start text-left gap-1 rounded-xl transition-all ${
-                activeTab === "all_repeat" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "border-emerald-500/30 hover:bg-emerald-500/5"
-              }`}
-            >
-              <div className="flex items-center gap-1.5 text-xs font-bold">
-                <Repeat className="w-3.5 h-3.5" />
-                Semua Repeat (&ge;2x)
-              </div>
-              <span className="text-[11px] opacity-85">{summaryStats.repeatCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className="text-[11px] opacity-85 font-medium">{summaryStats.totalUnique.toLocaleString("id-ID")} Pelanggan</span>
             </Button>
           </div>
 
           {/* CRM Status Filter Bar & Marketplace Sensor Toggle */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 rounded-xl bg-muted/40 border border-muted/50">
-            {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground mr-1 flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5" />
-                Status WA:
-              </span>
-              <Button
-                size="sm"
-                variant={crmFilter === "all" ? "secondary" : "ghost"}
-                onClick={() => { setCrmFilter("all"); setCurrentPage(1); }}
-                className="h-7 text-xs px-2.5 rounded-lg"
-              >
-                Semua
-              </Button>
-              <Button
-                size="sm"
-                variant={crmFilter === "uncontacted" ? "secondary" : "ghost"}
-                onClick={() => { setCrmFilter("uncontacted"); setCurrentPage(1); }}
-                className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "uncontacted" ? "text-rose-600 dark:text-rose-400 font-bold" : "text-muted-foreground"}`}
-              >
-                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
-                Belum Pernah di-WA
-              </Button>
-              <Button
-                size="sm"
-                variant={crmFilter === "need_followup" ? "secondary" : "ghost"}
-                onClick={() => { setCrmFilter("need_followup"); setCurrentPage(1); }}
-                className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "need_followup" ? "text-amber-600 dark:text-amber-400 font-bold" : "text-muted-foreground"}`}
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                Perlu Follow-up Ulang
-              </Button>
-              <Button
-                size="sm"
-                variant={crmFilter === "contacted" ? "secondary" : "ghost"}
-                onClick={() => { setCrmFilter("contacted"); setCurrentPage(1); }}
-                className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "contacted" ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground"}`}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                Sudah di-WA (&lt;30h)
-              </Button>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-2.5 rounded-xl bg-muted/40 border border-muted/50">
+            {/* Filter Controls: Siklus & Status WA */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Filter Siklus Konsumsi */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  Siklus:
+                </span>
+                <Select value={cycleFilter} onValueChange={(v: any) => { setCycleFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger className="h-7 text-xs w-44 bg-background">
+                    <SelectValue placeholder="Semua Siklus" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Semua Siklus Konsumsi</SelectItem>
+                    <SelectItem value="ready" className="text-xs">🟢 Waktunya Re-Order (Siklus Pas)</SelectItem>
+                    <SelectItem value="consuming" className="text-xs">⚪ Sedang Konsumsi (&lt; Siklus)</SelectItem>
+                    <SelectItem value="at_risk" className="text-xs">🔴 Lewat Siklus (At-Risk)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Separator */}
+              <div className="hidden sm:block h-4 w-px bg-border/60" />
+
+              {/* Status WA Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold text-muted-foreground mr-0.5 flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5" />
+                  Status WA:
+                </span>
+                <Button
+                  size="sm"
+                  variant={crmFilter === "all" ? "secondary" : "ghost"}
+                  onClick={() => { setCrmFilter("all"); setCurrentPage(1); }}
+                  className="h-7 text-xs px-2.5 rounded-lg"
+                >
+                  Semua
+                </Button>
+                <Button
+                  size="sm"
+                  variant={crmFilter === "uncontacted" ? "secondary" : "ghost"}
+                  onClick={() => { setCrmFilter("uncontacted"); setCurrentPage(1); }}
+                  className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "uncontacted" ? "text-rose-600 dark:text-rose-400 font-bold" : "text-muted-foreground"}`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                  Belum di-WA
+                </Button>
+                <Button
+                  size="sm"
+                  variant={crmFilter === "need_followup" ? "secondary" : "ghost"}
+                  onClick={() => { setCrmFilter("need_followup"); setCurrentPage(1); }}
+                  className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "need_followup" ? "text-amber-600 dark:text-amber-400 font-bold" : "text-muted-foreground"}`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                  Perlu Follow-up
+                </Button>
+                <Button
+                  size="sm"
+                  variant={crmFilter === "contacted" ? "secondary" : "ghost"}
+                  onClick={() => { setCrmFilter("contacted"); setCurrentPage(1); }}
+                  className={`h-7 text-xs px-2.5 rounded-lg gap-1.5 ${crmFilter === "contacted" ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground"}`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                  Sudah di-WA (&lt;30h)
+                </Button>
+              </div>
             </div>
 
             {/* Invalid Phone Toggle */}
@@ -1943,14 +2060,16 @@ function LoyaltyPage() {
                         </TableCell>
                         <TableCell className="py-2.5 text-center">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            c.orderCount >= 3 
-                              ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                            c.orderCount >= 6 
+                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                              : c.orderCount >= 3 
+                              ? "bg-purple-500/15 text-purple-700 dark:text-purple-400"
                               : c.orderCount === 2 
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                              : "bg-muted text-muted-foreground"
+                              ? "bg-teal-500/15 text-teal-700 dark:text-teal-400"
+                              : "bg-blue-500/10 text-blue-700 dark:text-blue-400"
                           }`}>
-                            {c.orderCount >= 3 && <Crown className="w-3 h-3" />}
-                            {c.orderCount}x Order
+                            {c.orderCount >= 6 ? <Crown className="w-3 h-3 text-amber-500" /> : c.orderCount >= 3 ? <Sparkles className="w-3 h-3 text-purple-500" /> : null}
+                            {c.orderCount >= 6 ? `VIP (${c.orderCount}x)` : c.orderCount >= 3 ? `Loyal (${c.orderCount}x)` : c.orderCount === 2 ? `Repeat (2x)` : `Baru (1x)`}
                           </span>
                         </TableCell>
                         <TableCell className="py-2.5 text-right font-bold text-foreground">
@@ -1966,13 +2085,18 @@ function LoyaltyPage() {
                         <TableCell className="py-2.5">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-semibold text-foreground">{c.favoriteHoney}</span>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[10px] text-muted-foreground bg-muted/80 px-1.5 py-0.5 rounded font-medium">
                                 {c.lastOrderGrams >= 1000 ? `${(c.lastOrderGrams/1000).toFixed(1)} kg` : `${c.lastOrderGrams} gr`} • Siklus {c.cycleLabel}
                               </span>
-                              {c.daysSinceLastOrder >= c.minCycle && c.orderCount === 1 && (
-                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded animate-pulse">
+                              {c.daysSinceLastOrder >= c.minCycle && c.daysSinceLastOrder <= c.maxCycle && (
+                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded animate-pulse border border-emerald-500/30">
                                   ⚡ Waktunya Beli
+                                </span>
+                              )}
+                              {c.daysSinceLastOrder > c.maxCycle && (
+                                <span className="text-[10px] font-medium text-rose-600 dark:text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
+                                  Lewat Siklus
                                 </span>
                               )}
                             </div>
