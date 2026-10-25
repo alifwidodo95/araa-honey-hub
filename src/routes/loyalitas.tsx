@@ -1788,11 +1788,17 @@ function LoyaltyPage() {
                   : "border-emerald-500/30 hover:bg-emerald-500/5 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+              <div className={`flex items-center gap-1.5 text-xs font-bold ${
+                activeTab === "ready" ? "text-white" : "text-emerald-600 dark:text-emerald-400"
+              }`}>
                 <ShoppingBag className="w-3.5 h-3.5" />
                 Siap Re-Order
               </div>
-              <span className="text-[11px] opacity-85 font-medium">{summaryStats.readyCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className={`text-[11px] font-medium ${
+                activeTab === "ready" ? "text-white/90" : "text-muted-foreground"
+              }`}>
+                {summaryStats.readyCount.toLocaleString("id-ID")} Pelanggan
+              </span>
             </Button>
 
             {/* Tab 2: Baru (1x) */}
@@ -1805,11 +1811,17 @@ function LoyaltyPage() {
                   : "border-blue-500/30 hover:bg-blue-500/5 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400">
+              <div className={`flex items-center gap-1.5 text-xs font-bold ${
+                activeTab === "new" ? "text-white" : "text-blue-600 dark:text-blue-400"
+              }`}>
                 <Users className="w-3.5 h-3.5" />
                 Baru (1x)
               </div>
-              <span className="text-[11px] opacity-85 font-medium">{summaryStats.newCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className={`text-[11px] font-medium ${
+                activeTab === "new" ? "text-white/90" : "text-muted-foreground"
+              }`}>
+                {summaryStats.newCount.toLocaleString("id-ID")} Pelanggan
+              </span>
             </Button>
 
             {/* Tab 3: Repeat (2x) */}
@@ -1822,11 +1834,17 @@ function LoyaltyPage() {
                   : "border-teal-500/30 hover:bg-teal-500/5 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400">
+              <div className={`flex items-center gap-1.5 text-xs font-bold ${
+                activeTab === "repeat2x" ? "text-white" : "text-teal-600 dark:text-teal-400"
+              }`}>
                 <Repeat className="w-3.5 h-3.5" />
                 Repeat (2x)
               </div>
-              <span className="text-[11px] opacity-85 font-medium">{summaryStats.repeat2xCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className={`text-[11px] font-medium ${
+                activeTab === "repeat2x" ? "text-white/90" : "text-muted-foreground"
+              }`}>
+                {summaryStats.repeat2xCount.toLocaleString("id-ID")} Pelanggan
+              </span>
             </Button>
 
             {/* Tab 4: Loyal (3-5x) */}
@@ -1839,11 +1857,17 @@ function LoyaltyPage() {
                   : "border-purple-500/30 hover:bg-purple-500/5 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400">
+              <div className={`flex items-center gap-1.5 text-xs font-bold ${
+                activeTab === "loyal" ? "text-white" : "text-purple-600 dark:text-purple-400"
+              }`}>
                 <Sparkles className="w-3.5 h-3.5" />
                 Loyal (3-5x)
               </div>
-              <span className="text-[11px] opacity-85 font-medium">{summaryStats.loyalCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className={`text-[11px] font-medium ${
+                activeTab === "loyal" ? "text-white/90" : "text-muted-foreground"
+              }`}>
+                {summaryStats.loyalCount.toLocaleString("id-ID")} Pelanggan
+              </span>
             </Button>
 
             {/* Tab 5: Super VIP (>=6x) */}
@@ -1856,11 +1880,17 @@ function LoyaltyPage() {
                   : "border-amber-500/30 hover:bg-amber-500/5 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+              <div className={`flex items-center gap-1.5 text-xs font-bold ${
+                activeTab === "vip" ? "text-white" : "text-amber-600 dark:text-amber-400"
+              }`}>
                 <Crown className="w-3.5 h-3.5" />
                 Super VIP (&ge;6x)
               </div>
-              <span className="text-[11px] opacity-85 font-medium">{summaryStats.vipCount.toLocaleString("id-ID")} Pelanggan</span>
+              <span className={`text-[11px] font-medium ${
+                activeTab === "vip" ? "text-white/90" : "text-muted-foreground"
+              }`}>
+                {summaryStats.vipCount.toLocaleString("id-ID")} Pelanggan
+              </span>
             </Button>
 
             {/* Tab 6: Semua Database */}
@@ -1873,11 +1903,17 @@ function LoyaltyPage() {
                   : "border-slate-300 dark:border-slate-700 hover:bg-muted/50 text-foreground"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
+              <div className={`flex items-center gap-1.5 text-xs font-bold ${
+                activeTab === "all" ? "text-white" : "text-muted-foreground"
+              }`}>
                 <Users className="w-3.5 h-3.5" />
                 Semua Data
               </div>
-              <span className="text-[11px] opacity-85 font-medium">{summaryStats.totalUnique.toLocaleString("id-ID")} Pelanggan</span>
+              <span className={`text-[11px] font-medium ${
+                activeTab === "all" ? "text-white/90" : "text-muted-foreground"
+              }`}>
+                {summaryStats.totalUnique.toLocaleString("id-ID")} Pelanggan
+              </span>
             </Button>
           </div>
 
