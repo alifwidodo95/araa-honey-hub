@@ -284,6 +284,7 @@ export const getScalevLeads = createServerFn({ method: "GET" })
           sl.follow_up_session, sl.created_at, sl.updated_at, COALESCE(sl.is_phone_edited, false) AS is_phone_edited,
           COALESCE(sl.follow_up_step, sl.follow_up_count, 0) AS follow_up_step,
           sl.fu1_at, sl.fu2_at, sl.fu3_at, sl.last_fu_notes, sl.notes,
+          sl.wa_status, sl.wa_chat_phone, sl.wa_chat_timestamp, sl.wa_last_snippet, sl.wa_checked_at,
           o.net_revenue, o.subtotal_gross AS order_subtotal_gross, o.amount_received AS order_amount_received,
           o.tracking_number AS matched_tracking_number,
           COALESCE(o.returned, false) AS order_returned
@@ -993,6 +994,11 @@ export const updateScalevLeadPhone = createServerFn({ method: "POST" })
              is_closed = $3,
              matched_order_id = COALESCE($4, matched_order_id),
              closed_at = COALESCE($5, closed_at),
+             wa_status = NULL,
+             wa_chat_phone = NULL,
+             wa_chat_timestamp = NULL,
+             wa_last_snippet = NULL,
+             wa_checked_at = NULL,
              updated_at = now() 
          WHERE id = $6`,
         [cleanPhone, data.newPhone.trim(), isClosed, matchedOrderId, closedAt, data.leadId]
@@ -1162,6 +1168,7 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
     }>;
   }) => data)
   .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
     try {
       const cutoffTime = new Date("2026-10-22T00:00:00+07:00").getTime();
       const results: Record<string, LeadWaStatusInfo> = {};
@@ -1176,9 +1183,45 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
         return !isNaN(t) && t >= cutoffTime;
       });
 
-      // 2. Check in-memory cache first
+      if (eligibleLeads.length === 0) {
+        return results;
+      }
+
+      // 2. Check Database First (Ultra-fast 0ms cache for confirmed chat statuses)
+      try {
+        pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+        const leadIds = eligibleLeads.map((l) => l.id);
+        const dbCheck = await pool.query(
+          `SELECT id, wa_status, wa_chat_phone, wa_chat_timestamp, wa_last_snippet, wa_checked_at 
+           FROM scalev_leads 
+           WHERE id = ANY($1::uuid[])`,
+          [leadIds]
+        );
+        for (const row of dbCheck.rows) {
+          if (row.wa_status === "same_number" || row.wa_status === "diff_number") {
+            results[row.id] = {
+              status: row.wa_status,
+              chatPhone: row.wa_chat_phone || undefined,
+              chatTimestamp: row.wa_chat_timestamp ? Number(row.wa_chat_timestamp) : undefined,
+              lastSnippet: row.wa_last_snippet || undefined,
+            };
+          } else if (row.wa_status === "not_sent" && row.wa_checked_at) {
+            const checkedTime = new Date(row.wa_checked_at).getTime();
+            // If checked less than 45 seconds ago, use cached not_sent to avoid hammer
+            if (now - checkedTime < 45000) {
+              results[row.id] = { status: "not_sent" };
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn("[getLeadWaChatStatuses DB Check Error]:", dbErr);
+      }
+
+      // 3. Check in-memory cache for remaining leads
       const leadsToCheck: typeof eligibleLeads = [];
       for (const lead of eligibleLeads) {
+        if (results[lead.id]) continue; // Already resolved from DB!
+
         const cleanPhone = normalizePhone(lead.customer_phone || "");
         const cacheKey = `${lead.id}_${cleanPhone}`;
         const cached = confirmedLeadWaCache.get(cacheKey);
@@ -1190,6 +1233,9 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
       }
 
       if (leadsToCheck.length === 0) {
+        if (pool) {
+          try { await pool.end(); } catch (e) {}
+        }
         return results;
       }
 
@@ -1319,8 +1365,40 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
         }
       }
 
+      // 4. Persist newly determined statuses to PostgreSQL so future views are 0ms instant
+      if (pool) {
+        try {
+          for (const [leadId, info] of Object.entries(results)) {
+            if (leadsToCheck.some((l) => l.id === leadId)) {
+              if (info.status === "same_number" || info.status === "diff_number") {
+                await pool.query(
+                  `UPDATE scalev_leads 
+                   SET wa_status = $1, wa_chat_phone = $2, wa_chat_timestamp = $3, wa_last_snippet = $4, wa_checked_at = now() 
+                   WHERE id = $5`,
+                  [info.status, info.chatPhone || null, info.chatTimestamp || null, info.lastSnippet || null, leadId]
+                );
+              } else if (info.status === "not_sent") {
+                await pool.query(
+                  `UPDATE scalev_leads 
+                   SET wa_status = 'not_sent', wa_checked_at = now() 
+                   WHERE id = $1 AND (wa_status IS NULL OR wa_status = 'not_sent')`,
+                  [leadId]
+                );
+              }
+            }
+          }
+        } catch (dbSaveErr) {
+          console.warn("[getLeadWaChatStatuses DB Save Error]:", dbSaveErr);
+        } finally {
+          try { await pool.end(); } catch (e) {}
+        }
+      }
+
       return results;
     } catch (err: any) {
+      if (pool) {
+        try { await pool.end(); } catch (e) {}
+      }
       console.error("[getLeadWaChatStatuses Error]:", err);
       return {};
     }

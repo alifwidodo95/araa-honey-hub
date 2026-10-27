@@ -383,6 +383,8 @@ export function ScalevLeadsPage() {
     queryKey: ["scalev-metrics", startDate, endDate],
     queryFn: () => getScalevMetrics({ data: { startDate, endDate } }),
     refetchInterval: 15000,
+    refetchOnWindowFocus: false,
+    staleTime: 30000,
   });
 
   // Query: Leads List
@@ -400,6 +402,9 @@ export function ScalevLeadsPage() {
         },
       }),
     refetchInterval: 15000,
+    refetchOnWindowFocus: false,
+    staleTime: 30000,
+    placeholderData: (previousData) => previousData,
   });
 
   // Bulk Selection Helpers & Computed States
@@ -409,11 +414,34 @@ export function ScalevLeadsPage() {
   // Raw leads from server
   const rawLeads = useMemo(() => leadsData?.leads || [], [leadsData]);
 
-  // Query: Realtime WAHA Chat Statuses for leads on current page (only new leads >= 22 Oct 2026)
+  // Seed status map immediately from DB values returned with leads (0ms latency!)
+  const dbSeededWaMap = useMemo(() => {
+    const map: Record<string, LeadWaStatusInfo> = {};
+    rawLeads.forEach((l: any) => {
+      if (l.wa_status) {
+        map[l.id] = {
+          status: l.wa_status,
+          chatPhone: l.wa_chat_phone || l.customer_phone,
+          chatTimestamp: l.wa_chat_timestamp ? Number(l.wa_chat_timestamp) : undefined,
+          lastSnippet: l.wa_last_snippet || undefined,
+        };
+      }
+    });
+    return map;
+  }, [rawLeads]);
+
+  // Query: Realtime WAHA Chat Statuses for leads that need verification
+  // Only query WAHA for leads not yet confirmed 'same_number' in DB (saves 90% WAHA traffic)
   const newLeadsForWaCheck = useMemo(() => {
     const cutoffTime = new Date("2026-10-22T00:00:00+07:00").getTime();
     return rawLeads
-      .filter((l: any) => new Date(l.created_at).getTime() >= cutoffTime)
+      .filter((l: any) => {
+        const t = new Date(l.created_at).getTime();
+        if (t < cutoffTime) return false;
+        // If already confirmed same_number in DB, skip querying WAHA!
+        if (l.wa_status === "same_number") return false;
+        return true;
+      })
       .map((l: any) => ({
         id: l.id,
         customer_name: l.customer_name,
@@ -423,35 +451,42 @@ export function ScalevLeadsPage() {
       }));
   }, [rawLeads]);
 
-  const { data: waChatStatusMap, isLoading: isWaStatusLoading } = useQuery({
+  const { data: dynamicWaStatusMap, isLoading: isWaStatusLoading } = useQuery({
     queryKey: ["lead-wa-chat-statuses", newLeadsForWaCheck.map((l: any) => l.id + l.customer_phone).join(",")],
     queryFn: () => getLeadWaChatStatuses({ data: { leads: newLeadsForWaCheck } }),
     enabled: newLeadsForWaCheck.length > 0,
-    refetchInterval: 15000,
-    staleTime: 10000,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
+    staleTime: 60000,
+    placeholderData: (previousData) => previousData,
   });
+
+  // Merged: Instant DB-seeded statuses + newly discovered dynamic statuses
+  const effectiveWaChatStatusMap = useMemo(() => {
+    return { ...dbSeededWaMap, ...(dynamicWaStatusMap || {}) };
+  }, [dbSeededWaMap, dynamicWaStatusMap]);
 
   // Filtered Leads based on WA Chat Status
   const currentLeads = useMemo(() => {
-    if (waChatFilter === "all" || !waChatStatusMap) return rawLeads;
+    if (waChatFilter === "all" || !effectiveWaChatStatusMap) return rawLeads;
     return rawLeads.filter((l: any) => {
-      const waInfo = waChatStatusMap[l.id];
+      const waInfo = effectiveWaChatStatusMap[l.id];
       if (!waInfo) return false;
       return waInfo.status === waChatFilter;
     });
-  }, [rawLeads, waChatFilter, waChatStatusMap]);
+  }, [rawLeads, waChatFilter, effectiveWaChatStatusMap]);
 
   // Status counts for WA Chat filter pills
   const waStatusCounts = useMemo(() => {
-    if (!waChatStatusMap) return { same: 0, diff: 0, notSent: 0 };
+    if (!effectiveWaChatStatusMap) return { same: 0, diff: 0, notSent: 0 };
     let same = 0, diff = 0, notSent = 0;
-    Object.values(waChatStatusMap).forEach((info) => {
+    Object.values(effectiveWaChatStatusMap).forEach((info) => {
       if (info.status === "same_number") same++;
       else if (info.status === "diff_number") diff++;
       else if (info.status === "not_sent") notSent++;
     });
     return { same, diff, notSent };
-  }, [waChatStatusMap]);
+  }, [effectiveWaChatStatusMap]);
 
   // Render Dot Indicator next to customer name
   const renderWaChatDot = (lead: any) => {
@@ -460,10 +495,10 @@ export function ScalevLeadsPage() {
       return null;
     }
 
-    const waInfo: LeadWaStatusInfo | undefined = waChatStatusMap?.[lead.id];
+    const waInfo: LeadWaStatusInfo | undefined = effectiveWaChatStatusMap?.[lead.id];
 
     if (!waInfo) {
-      if (isWaStatusLoading) {
+      if (isWaStatusLoading && !lead.wa_status) {
         return (
           <span 
             className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30 animate-pulse inline-block shrink-0 ml-0.5" 
