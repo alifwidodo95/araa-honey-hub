@@ -139,7 +139,7 @@ function WhatsAppPage() {
     setTemplateParamValues(initialParams);
     const headerComp = tpl.components.find((c) => c.type === "HEADER");
     if (headerComp?.format === "IMAGE") {
-      setTestHeaderImageUrl(templateImagesMap[tpl.name]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png");
+      setTestHeaderImageUrl(templateImagesMap[tpl.name]?.url || "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png");
     } else {
       setTestHeaderImageUrl("");
     }
@@ -3188,7 +3188,7 @@ function WhatsAppPage() {
                                 <div className="space-y-1.5 pb-2 border-b border-emerald-500/10">
                                   <div className="relative rounded-md overflow-hidden border bg-muted/40 aspect-video max-h-36 flex items-center justify-center group">
                                     <img 
-                                      src={templateImagesMap[tpl.name]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png"} 
+                                      src={templateImagesMap[tpl.name]?.url || "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png"} 
                                       alt="Flyer Header" 
                                       className="w-full h-full object-cover"
                                     />
@@ -3368,7 +3368,7 @@ function WhatsAppPage() {
                   <div className="flex items-center gap-2.5 pt-1">
                     <div className="w-16 h-16 rounded-md border overflow-hidden bg-background shrink-0 shadow-2xs">
                       <img 
-                        src={testHeaderImageUrl || templateImagesMap[selectedTemplateForTest.name]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png"} 
+                        src={testHeaderImageUrl || templateImagesMap[selectedTemplateForTest.name]?.url || "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png"} 
                         alt="Flyer header" 
                         className="w-full h-full object-cover" 
                       />
@@ -3500,7 +3500,7 @@ function WhatsAppPage() {
                 return matchQuery && matchCat;
               })
               .map((img) => {
-                const currentImgUrl = templateImagesMap[selectedTemplateForImage?.name || ""]?.url || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+                const currentImgUrl = templateImagesMap[selectedTemplateForImage?.name || ""]?.url || "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png";
                 const isSelected = currentImgUrl === img.file_url;
                 return (
                   <div

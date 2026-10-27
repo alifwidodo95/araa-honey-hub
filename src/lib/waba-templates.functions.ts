@@ -161,7 +161,7 @@ export const sendMetaTemplateMessage = createServerFn({ method: "POST" })
 
             // Fallback to default approved Araa Honey Repeat Order flyer image if still unset
             if (!headerImageUrl || headerImageUrl.includes("scontent.whatsapp.net") || headerImageUrl.includes("fbcdn.net")) {
-              headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+              headerImageUrl = "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png";
             }
           }
         } else if (headerComp?.format !== "VIDEO") {

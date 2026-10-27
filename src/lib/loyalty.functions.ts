@@ -506,7 +506,7 @@ export const sendDirectLoyaltyWhatsApp = createServerFn({ method: "POST" })
               }
             } catch (e) {}
             if (!headerImageUrl) {
-              headerImageUrl = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+              headerImageUrl = "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png";
             }
           }
 

@@ -1631,11 +1631,11 @@ function ReaktivasiPage() {
                     {/* Header Image */}
                     <div className="w-full bg-black/5 flex items-center justify-center relative overflow-hidden border-b border-border/40">
                       <img
-                        src={previewImageUrl || "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png"}
+                        src={previewImageUrl || "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png"}
                         alt="Flyer Repeat Order"
                         className="w-full h-40 object-cover"
                         onError={(e) => {
-                          (e.target as any).src = "https://waha.araahoney.my.id/media/1788438796747-chatgpt-image-sep-3-2026-07_32_54-pm.png";
+                          (e.target as any).src = "https://saefgyiloalpiqfrglqo.supabase.co/storage/v1/object/public/crm-media/flyers/waba_default_flyer.png";
                         }}
                       />
                       <Badge className="absolute top-2 right-2 bg-black/70 text-white backdrop-blur-xs text-[9px] border-none font-semibold">
