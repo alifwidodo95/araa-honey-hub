@@ -299,7 +299,6 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                 className="relative flex items-center justify-center"
                 style={{
                   perspective: "1000px",
-                  transformStyle: "preserve-3d",
                   width: `${svgSize}px`,
                   height: `${svgSize}px`,
                 }}
@@ -399,97 +398,99 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                   </g>
                 </svg>
 
-                {/* Dynamic Center Badge (Floating in Center Hole) */}
+                {/* Dynamic Center Badge (Elevated in 3D center hole) */}
                 <div
-                  className="absolute pointer-events-none flex flex-col items-center justify-center text-center p-2 rounded-full transition-all duration-300"
+                  className="absolute pointer-events-none flex flex-col items-center justify-center text-center p-2 rounded-full transition-all duration-300 bg-background/85 backdrop-blur-md border border-muted/50 shadow-md"
                   style={{
-                    width: `${rInner * 1.7}px`,
-                    height: `${rInner * 1.7}px`,
+                    width: `${rInner * 1.65}px`,
+                    height: `${rInner * 1.65}px`,
                     top: "50%",
                     left: "50%",
                     transform: "translate(-50%, -50%)",
+                    zIndex: 20,
                   }}
                 >
                   {activeStat ? (
                     <div className="space-y-0.5 animate-in fade-in zoom-in-95 duration-200">
-                      <div className="text-xl">{activeStat.icon}</div>
-                      <div className="text-[11px] font-bold text-foreground truncate max-w-[110px]" title={activeStat.label}>
-                        {activeStat.label.split(" ")[0]}
+                      <div className="text-lg leading-none">{activeStat.icon}</div>
+                      <div className="text-[10px] font-bold text-foreground truncate max-w-[85px]" title={activeStat.label}>
+                        {activeStat.label.replace(" (Scalev)", "")}
                       </div>
-                      <div className="text-sm font-extrabold" style={{ color: activeStat.color }}>
-                        {metric === "paket" && `${activeStat.total_paket} Paket`}
-                        {metric === "omzet" && formatIDR(activeStat.omzet)}
-                        {metric === "laba" && formatIDR(activeStat.laba_kotor)}
+                      <div className="text-xs font-black truncate max-w-[90px]" style={{ color: activeStat.color }}>
+                        {metric === "paket" && `${activeStat.total_paket} Pkt`}
+                        {metric === "omzet" && (activeStat.omzet >= 1000000 ? `Rp ${(activeStat.omzet / 1000000).toFixed(2)} Jt` : formatIDR(activeStat.omzet))}
+                        {metric === "laba" && (activeStat.laba_kotor >= 1000000 ? `Rp ${(activeStat.laba_kotor / 1000000).toFixed(2)} Jt` : formatIDR(activeStat.laba_kotor))}
                       </div>
-                      <div className="text-[10px] font-semibold text-muted-foreground">
+                      <div className="text-[9px] font-semibold text-muted-foreground leading-none">
                         {activeSlice?.percentage.toFixed(1)}% porsi
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-0.5">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">
                         Total {metric === "paket" ? "Order" : metric === "omzet" ? "Omzet" : "Laba"}
                       </div>
-                      <div className="text-base font-extrabold text-foreground">
+                      <div className="text-xs font-black text-foreground">
                         {metric === "paket" && `${totalPaket} Paket`}
-                        {metric === "omzet" && formatIDR(totalOmzet)}
-                        {metric === "laba" && formatIDR(totalLaba)}
+                        {metric === "omzet" && `Rp ${(totalOmzet / 1000000).toFixed(2)} Jt`}
+                        {metric === "laba" && `Rp ${(totalLaba / 1000000).toFixed(2)} Jt`}
                       </div>
-                      <div className="text-[9px] text-amber-500 font-semibold flex items-center justify-center gap-0.5">
+                      <div className="text-[8px] text-amber-500 font-semibold flex items-center justify-center gap-0.5 leading-none">
                         <Sparkles className="w-2.5 h-2.5" /> Arahkan Mouse
                       </div>
                     </div>
                   )}
                 </div>
-
-                {/* Floating Glassmorphism Tooltip when hovering over a slice */}
-                {activeStat && mousePos && (
-                  <div
-                    className="absolute pointer-events-none z-30 p-3 rounded-xl bg-card/95 backdrop-blur-md border shadow-xl text-left transition-all duration-75 space-y-1.5"
-                    style={{
-                      left: `${Math.min(Math.max(mousePos.x + 15, 10), svgSize - 180)}px`,
-                      top: `${Math.min(Math.max(mousePos.y - 70, 10), svgSize - 120)}px`,
-                      borderColor: activeStat.color,
-                      minWidth: "175px",
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5 pb-1 border-b border-muted/30">
-                      <span className="text-base">{activeStat.icon}</span>
-                      <span className="text-xs font-bold text-foreground">{activeStat.label}</span>
-                    </div>
-                    <div className="space-y-1 text-[11px]">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Total Paket:</span>
-                        <span className="font-bold text-foreground">
-                          {activeStat.total_paket} <span className="text-[10px] font-normal text-muted-foreground">({activeStat.percent_paket.toFixed(1)}%)</span>
-                        </span>
-                      </div>
-                      {showFinancials && (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Omzet Bersih:</span>
-                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                              {formatIDR(activeStat.omzet)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">HPP Madu:</span>
-                            <span className="font-medium text-muted-foreground">{formatIDR(activeStat.cogs)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Laba Kotor:</span>
-                            <span className="font-bold text-amber-500">{formatIDR(activeStat.laba_kotor)}</span>
-                          </div>
-                          <div className="flex justify-between pt-1 border-t border-muted/20">
-                            <span className="text-muted-foreground">Margin Untung:</span>
-                            <span className="font-extrabold text-foreground">{activeStat.margin.toFixed(1)}%</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {/* Floating Glassmorphism Tooltip - OUTSIDE 3D CONTAINER so it NEVER gets cut/covered by SVG */}
+              {activeStat && mousePos && (
+                <div
+                  className="absolute pointer-events-none z-50 p-3 rounded-xl bg-card/95 backdrop-blur-xl border border-muted/80 shadow-2xl text-left transition-all duration-100 space-y-1.5 animate-in fade-in zoom-in-95"
+                  style={{
+                    left: `${mousePos.x > center ? Math.max(10, mousePos.x - 200) : Math.min(mousePos.x + 20, svgSize - 190)}px`,
+                    top: `${mousePos.y > center ? Math.max(10, mousePos.y - 140) : Math.min(mousePos.y + 15, svgSize - 140)}px`,
+                    borderColor: activeStat.color,
+                    width: "190px",
+                    boxShadow: `0 15px 30px -5px ${activeStat.color}35, 0 8px 12px -3px rgba(0, 0, 0, 0.25)`,
+                  }}
+                >
+                  <div className="flex items-center gap-1.5 pb-1 border-b border-muted/30">
+                    <span className="text-base">{activeStat.icon}</span>
+                    <span className="text-xs font-bold text-foreground truncate">{activeStat.label}</span>
+                  </div>
+                  <div className="space-y-1 text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total Paket:</span>
+                      <span className="font-bold text-foreground">
+                        {activeStat.total_paket} <span className="text-[10px] font-normal text-muted-foreground">({activeStat.percent_paket.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    {showFinancials && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Omzet Bersih:</span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                            {formatIDR(activeStat.omzet)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">HPP Madu:</span>
+                          <span className="font-medium text-muted-foreground">{formatIDR(activeStat.cogs)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Laba Kotor:</span>
+                          <span className="font-bold text-amber-500">{formatIDR(activeStat.laba_kotor)}</span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-muted/20">
+                          <span className="text-muted-foreground">Margin Untung:</span>
+                          <span className="font-extrabold text-foreground">{activeStat.margin.toFixed(1)}%</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Sub-helper text */}
               <p className="text-[11px] text-muted-foreground mt-3 text-center">
