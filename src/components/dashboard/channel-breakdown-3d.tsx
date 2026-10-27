@@ -317,7 +317,7 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                   height={svgSize}
                   className="overflow-visible select-none"
                   style={{
-                    transform: "rotateX(22deg) rotateZ(-3deg)",
+                    transform: "rotateX(20deg)",
                     transformOrigin: "center center",
                     transition: "transform 0.4s ease",
                   }}
@@ -350,7 +350,17 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                     ))}
                   </defs>
 
-                  {/* Render 3D Donut Slices */}
+                  {/* 1. Perfectly Concentric Center Disc (Shares exact same 3D projective geometry) */}
+                  <circle
+                    cx={center}
+                    cy={center}
+                    r={rInner - 5}
+                    className="fill-card stroke-muted/60"
+                    strokeWidth="1.5"
+                    filter="url(#resting-shadow)"
+                  />
+
+                  {/* 2. Render 3D Donut Slices */}
                   <g>
                     {sortedSlices.map((s) => {
                       const isHovered = hoveredKey === s.stat.key;
@@ -398,15 +408,16 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                   </g>
                 </svg>
 
-                {/* Dynamic Center Badge (Elevated in 3D center hole) */}
+                {/* Dynamic Center Badge (Concentric & Tilted with matching 3D perspective) */}
                 <div
-                  className="absolute pointer-events-none flex flex-col items-center justify-center text-center p-2 rounded-full transition-all duration-300 bg-background/85 backdrop-blur-md border border-muted/50 shadow-md"
+                  className="absolute pointer-events-none flex flex-col items-center justify-center text-center p-2 rounded-full transition-all duration-300"
                   style={{
-                    width: `${rInner * 1.65}px`,
-                    height: `${rInner * 1.65}px`,
+                    width: `${(rInner - 5) * 2}px`,
+                    height: `${(rInner - 5) * 2}px`,
                     top: "50%",
                     left: "50%",
-                    transform: "translate(-50%, -50%)",
+                    transform: "translate(-50%, -50%) rotateX(20deg)",
+                    transformOrigin: "center center",
                     zIndex: 20,
                   }}
                 >
