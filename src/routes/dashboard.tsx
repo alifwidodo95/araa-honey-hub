@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatIDR } from "@/lib/theme";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, Droplet, RotateCcw } from "lucide-react";
+import { ChannelBreakdown3D } from "@/components/dashboard/channel-breakdown-3d";
 
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
 
@@ -232,6 +233,9 @@ function DashboardPage() {
           }
         />
       </div>
+
+      {/* Breakdown Saluran Penjualan 3D (Meta Ads, WABA, Reseller, TikTok, Shopee, dll) */}
+      <ChannelBreakdown3D showFinancials={hasPermission("keuangan")} />
 
       {/* Rincian Madu Keluar Hari Ini */}
       <Card className="rounded-2xl border-muted/50 shadow-xs overflow-hidden bg-card transition-all duration-300 hover:shadow-md">
