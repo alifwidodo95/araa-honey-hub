@@ -234,9 +234,6 @@ function DashboardPage() {
         />
       </div>
 
-      {/* Breakdown Saluran Penjualan 3D (Meta Ads, WABA, Reseller, TikTok, Shopee, dll) */}
-      <ChannelBreakdown3D showFinancials={hasPermission("keuangan")} />
-
       {/* Rincian Madu Keluar Hari Ini */}
       <Card className="rounded-2xl border-muted/50 shadow-xs overflow-hidden bg-card transition-all duration-300 hover:shadow-md">
         <CardHeader className="pb-3 border-b border-muted/20 flex flex-row items-center justify-between">
@@ -268,6 +265,9 @@ function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Breakdown Saluran Penjualan 3D (Meta Ads, WABA, Reseller, TikTok, Shopee, dll) */}
+      <ChannelBreakdown3D showFinancials={hasPermission("keuangan")} />
 
       {hasPermission("keuangan") && (
         <Card>
