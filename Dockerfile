@@ -11,7 +11,8 @@ RUN npm install
 
 COPY . .
 
-# Build with standalone node-server preset
+# Build with standalone node-server preset and expanded heap
+ENV NODE_OPTIONS="--max-old-space-size=3072"
 ENV NITRO_PRESET=node-server
 ENV NODE_ENV=production
 RUN npm run build
