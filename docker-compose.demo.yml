@@ -1,0 +1,35 @@
+services:
+  demo-db:
+    image: postgres:16-alpine
+    container_name: araa-demo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DEMO_DB_USER:-araa_admin}
+      POSTGRES_PASSWORD: ${DEMO_DB_PASSWORD:-araa_demo_password_2026}
+      POSTGRES_DB: ${DEMO_DB_NAME:-araa_honey_demo}
+    volumes:
+      - demo_pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DEMO_DB_USER:-araa_admin} -d ${DEMO_DB_NAME:-araa_honey_demo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  demo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: araa-demo-app
+    restart: unless-stopped
+    depends_on:
+      demo-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.demo
+
+volumes:
+  demo_pg_data:

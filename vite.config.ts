@@ -13,7 +13,7 @@ export default defineConfig({
     server: { entry: "server" },
   },
   nitro: {
-    preset: "vercel",
+    preset: (process.env.NITRO_PRESET || "vercel").trim(),
     routeRules: {
       '/api/**': { maxDuration: 60 },
     },
