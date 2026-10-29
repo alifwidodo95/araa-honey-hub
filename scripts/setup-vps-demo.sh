@@ -67,6 +67,6 @@ docker compose -f docker-compose.demo.yml up -d --build demo-app
 
 echo "=========================================================="
 echo "🎉 DEMO ENVIRONMENT IS READY!"
-echo "Aplikasi Demo berjalan di port 3000:"
-echo "👉 http://$(curl -s ifconfig.me):3000"
+echo "Aplikasi Demo berjalan di port 4000:"
+echo "👉 http://$(curl -s ifconfig.me):4000"
 echo "=========================================================="

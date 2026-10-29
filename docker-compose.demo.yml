@@ -27,7 +27,7 @@ services:
       demo-db:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "4000:3000"
     env_file:
       - .env.demo
 
