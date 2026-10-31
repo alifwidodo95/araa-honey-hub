@@ -19,7 +19,7 @@ import {
   Search, Filter, Clock, Calendar, CheckSquare,
   ShieldCheck, Loader2, PartyPopper, Copy, Image, Video, Film, Sparkles, Check,
   Phone, Smartphone, ExternalLink, Send, ArrowUpDown, ChevronLeft, ChevronRight, Zap,
-  Pencil, Trash2, Plus, Tag, FileText, RotateCcw, MessageSquare, Save
+  Pencil, Trash2, Plus, Tag, FileText, RotateCcw, MessageSquare, Save, Megaphone, Radio, Play, Square, CheckCheck
 } from "lucide-react";
 import {
   Popover,
@@ -46,6 +46,8 @@ import {
   deleteScalevLeads,
   updateScalevLeadNotes,
   getLeadWaChatStatuses,
+  getScalevBroadcastTargets,
+  sendScalevBroadcastDirect,
   type LeadWaStatusInfo
 } from "@/lib/scalev.functions";
 import { getWahaSessionsInfo } from "@/lib/reaktivasi.functions";
@@ -339,6 +341,44 @@ export function ScalevLeadsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Broadcast Leads States
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [broadcastSegment, setBroadcastSegment] = useState<"unclosed_all" | "unclosed_no_fu" | "unclosed_has_fu" | "closed_all" | "selected">("unclosed_all");
+  const [broadcastSenderSession, setBroadcastSenderSession] = useState<string>("waba");
+  const [broadcastMode, setBroadcastMode] = useState<"custom" | "meta_template">("custom");
+  const [broadcastMessage, setBroadcastMessage] = useState<string>(
+    "Halo Kak {nama}! 🍯🐝\n\nKabar baik dari Araa Honey! Pesanan *{produk}* Kakak masih kami simpan di antrean khusus.\n\nHari ini ada PROMO SPESIAL GRATIS ONGKIR dan bonus botol mini madu asli 100gr. Mau kami bantu proses kirim hari ini Kak? Boleh konfirmasi di sini yaa. 😊🙏"
+  );
+  const [broadcastMediaUrl, setBroadcastMediaUrl] = useState<string>("");
+  const [broadcastMetaTemplateName, setBroadcastMetaTemplateName] = useState<string>("");
+  const [broadcastMetaParam1, setBroadcastMetaParam1] = useState<string>("");
+  const [broadcastMetaParam2, setBroadcastMetaParam2] = useState<string>("");
+  const [isBroadcastTargetsLoading, setIsBroadcastTargetsLoading] = useState(false);
+  const [broadcastTargets, setBroadcastTargets] = useState<any[]>([]);
+
+  // Broadcast Execution Progress States
+  const [isBroadcastRunning, setIsBroadcastRunning] = useState(false);
+  const [broadcastProgress, setBroadcastProgress] = useState<{
+    current: number;
+    total: number;
+    currentName: string;
+    currentPhone: string;
+    countdown: number;
+    successCount: number;
+    failedCount: number;
+    logs: Array<{ name: string; phone: string; status: "success" | "failed"; time: string }>;
+  }>({
+    current: 0,
+    total: 0,
+    currentName: "",
+    currentPhone: "",
+    countdown: 0,
+    successCount: 0,
+    failedCount: 0,
+    logs: [],
+  });
+  const broadcastAbortRef = useRef(false);
 
   // Config Form State
   const [configForm, setConfigForm] = useState({
@@ -693,6 +733,165 @@ export function ScalevLeadsPage() {
       approvedMetaTemplates[0]
     );
   }, [approvedMetaTemplates, selectedMetaTemplateName]);
+
+  const activeBroadcastMetaTemplate = useMemo(() => {
+    if (!approvedMetaTemplates.length) return null;
+    return (
+      approvedMetaTemplates.find((t: any) => t.name === broadcastMetaTemplateName) ||
+      approvedMetaTemplates[0]
+    );
+  }, [approvedMetaTemplates, broadcastMetaTemplateName]);
+
+  const loadBroadcastTargets = async (seg: typeof broadcastSegment) => {
+    setIsBroadcastTargetsLoading(true);
+    try {
+      const res = await getScalevBroadcastTargets({
+        data: {
+          segment: seg,
+          selectedIds: seg === "selected" ? selectedLeadIds : undefined,
+          startDate: (dateFilterMode !== "all" && startDate) ? startDate : undefined,
+          endDate: (dateFilterMode !== "all" && endDate) ? endDate : undefined,
+        },
+      });
+      setBroadcastTargets(res.targets || []);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memuat target broadcast.");
+      setBroadcastTargets([]);
+    } finally {
+      setIsBroadcastTargetsLoading(false);
+    }
+  };
+
+  const handleOpenBroadcastModal = async (initialSeg?: typeof broadcastSegment) => {
+    const seg = initialSeg || (selectedLeadIds.length > 0 ? "selected" : "unclosed_all");
+    setBroadcastSegment(seg);
+    setBroadcastModalOpen(true);
+    if (approvedMetaTemplates.length > 0 && !broadcastMetaTemplateName) {
+      setBroadcastMetaTemplateName(approvedMetaTemplates[0].name);
+    }
+    await loadBroadcastTargets(seg);
+  };
+
+  const handleExecuteBroadcast = async () => {
+    if (broadcastTargets.length === 0) {
+      toast.error("Tidak ada target lead yang valid untuk dibroadcast.");
+      return;
+    }
+
+    setIsBroadcastRunning(true);
+    broadcastAbortRef.current = false;
+    const total = broadcastTargets.length;
+    let successCount = 0;
+    let failedCount = 0;
+    const isWaba = broadcastSenderSession === "waba";
+
+    for (let i = 0; i < total; i++) {
+      if (broadcastAbortRef.current) break;
+
+      const lead = broadcastTargets[i];
+      const leadName = lead.customer_name || "Pelanggan";
+      const prodName = lead.product_name || "Madu Araa Akasia";
+
+      setBroadcastProgress((prev) => ({
+        ...prev,
+        current: i + 1,
+        total,
+        currentName: leadName,
+        currentPhone: lead.customer_phone || "-",
+        countdown: 0,
+        successCount,
+        failedCount,
+      }));
+
+      const payload: any = {
+        leadId: lead.id,
+        phone: lead.customer_phone,
+        customerName: leadName,
+        productName: prodName,
+        senderSession: broadcastSenderSession,
+        mediaUrl: broadcastMediaUrl.trim() || undefined,
+        broadcastTag: `Broadcast WA (${broadcastSenderSession.toUpperCase()})`,
+      };
+
+      if (broadcastMode === "meta_template" && isWaba && activeBroadcastMetaTemplate) {
+        payload.template = {
+          name: activeBroadcastMetaTemplate.name,
+          language: activeBroadcastMetaTemplate.language || "id",
+          bodyParameters: [
+            broadcastMetaParam1 ? broadcastMetaParam1.replace(/{nama}/g, leadName).replace(/{produk}/g, prodName) : leadName,
+            broadcastMetaParam2 ? broadcastMetaParam2.replace(/{nama}/g, leadName).replace(/{produk}/g, prodName) : prodName,
+          ],
+          headerImageUrl: broadcastMediaUrl.trim() || undefined,
+        };
+      } else {
+        payload.message = broadcastMessage;
+      }
+
+      try {
+        await sendScalevBroadcastDirect({ data: payload });
+        successCount++;
+        setBroadcastProgress((prev) => ({
+          ...prev,
+          successCount,
+          logs: [
+            { name: leadName, phone: lead.customer_phone, status: "success", time: new Date().toLocaleTimeString("id-ID") },
+            ...prev.logs.slice(0, 4),
+          ],
+        }));
+      } catch (err: any) {
+        console.warn(`Broadcast error on ${lead.customer_phone}, retrying once in 2.5s:`, err);
+        try {
+          await new Promise((r) => setTimeout(r, 2500));
+          if (!broadcastAbortRef.current) {
+            await sendScalevBroadcastDirect({ data: payload });
+            successCount++;
+            setBroadcastProgress((prev) => ({
+              ...prev,
+              successCount,
+              logs: [
+                { name: leadName, phone: lead.customer_phone, status: "success", time: new Date().toLocaleTimeString("id-ID") },
+                ...prev.logs.slice(0, 4),
+              ],
+            }));
+          } else {
+            failedCount++;
+          }
+        } catch (retryErr: any) {
+          failedCount++;
+          setBroadcastProgress((prev) => ({
+            ...prev,
+            failedCount,
+            logs: [
+              { name: leadName, phone: lead.customer_phone, status: "failed", time: new Date().toLocaleTimeString("id-ID") },
+              ...prev.logs.slice(0, 4),
+            ],
+          }));
+        }
+      }
+
+      // Safe Delay: WABA (1.5-2s) vs WAHA (10-14s)
+      if (i < total - 1 && !broadcastAbortRef.current) {
+        const delaySeconds = isWaba ? 2 : Math.floor(Math.random() * 5) + 10;
+        for (let cd = delaySeconds; cd > 0; cd--) {
+          if (broadcastAbortRef.current) break;
+          setBroadcastProgress((prev) => ({ ...prev, countdown: cd }));
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+    }
+
+    setIsBroadcastRunning(false);
+    queryClient.invalidateQueries({ queryKey: ["scalev-leads"] });
+    queryClient.invalidateQueries({ queryKey: ["scalev-metrics"] });
+    refetchLeads();
+    refetchMetrics();
+    toast.success(`📢 Selesai! Berhasil mengirim broadcast ke ${successCount} leads.`);
+  };
+
+  const handleStopBroadcast = () => {
+    broadcastAbortRef.current = true;
+    toast.info("⏸️ Pengiriman broadcast dihentikan.");
+  };
 
   // Keep form in sync when currentConfig loads
   useMemo(() => {
@@ -1074,6 +1273,16 @@ export function ScalevLeadsPage() {
             )}
             <span>Pencocokan CS</span>
           </Button>
+
+          <Button
+            size="sm"
+            onClick={() => handleOpenBroadcastModal()}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-1.5 font-medium"
+            title="Kirim pesan broadcast WABA / WAHA ke leads yang belum closing"
+          >
+            <Send className="w-4 h-4" />
+            <span>Broadcast Leads</span>
+          </Button>
         </div>
       </div>
 
@@ -1387,6 +1596,14 @@ export function ScalevLeadsPage() {
                 </Button>
                 <Button
                   size="sm"
+                  onClick={() => handleOpenBroadcastModal("selected")}
+                  className="h-7 text-xs gap-1.5 font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Broadcast Terpilih ({selectedLeadIds.length})</span>
+                </Button>
+                <Button
+                  size="sm"
                   variant="destructive"
                   onClick={handleOpenBulkDelete}
                   className="h-7 text-xs gap-1.5 font-medium shadow-xs"
@@ -1594,6 +1811,7 @@ export function ScalevLeadsPage() {
                         <TableCell className="text-center">
                           {(() => {
                             const step = Number(lead.follow_up_step ?? lead.follow_up_count ?? 0);
+                            const isBroadcast = (lead.last_fu_notes || "").toLowerCase().includes("broadcast");
                             if (step === 0 || !lead.followed_up_at) {
                               return (
                                 <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground whitespace-nowrap">
@@ -1601,38 +1819,30 @@ export function ScalevLeadsPage() {
                                 </Badge>
                               );
                             }
-                            if (step === 1) {
-                              return (
-                                <div className="flex flex-col items-center">
+                            return (
+                              <div className="flex flex-col items-center gap-0.5">
+                                {step === 1 ? (
                                   <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border-blue-500/20 text-[10px] font-semibold whitespace-nowrap">
                                     FU 1 Terkirim
                                   </Badge>
-                                  <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
-                                    {formatDateIndo(lead.fu1_at || lead.followed_up_at)}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            if (step === 2) {
-                              return (
-                                <div className="flex flex-col items-center">
+                                ) : step === 2 ? (
                                   <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 border-amber-500/20 text-[10px] font-semibold whitespace-nowrap">
                                     FU 2 Terkirim
                                   </Badge>
-                                  <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
-                                    {formatDateIndo(lead.fu2_at || lead.followed_up_at)}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div className="flex flex-col items-center">
-                                <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/20 text-[10px] font-semibold whitespace-nowrap">
-                                  FU 3 (Maks)
-                                </Badge>
-                                <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">
-                                  {formatDateIndo(lead.fu3_at || lead.followed_up_at)}
+                                ) : (
+                                  <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/20 text-[10px] font-semibold whitespace-nowrap">
+                                    FU 3 (Maks)
+                                  </Badge>
+                                )}
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {formatDateIndo(lead.fu1_at || lead.fu2_at || lead.fu3_at || lead.followed_up_at)}
                                 </span>
+                                {isBroadcast && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold border border-purple-500/20 whitespace-nowrap">
+                                    <Megaphone className="w-2.5 h-2.5" />
+                                    Broadcast
+                                  </span>
+                                )}
                               </div>
                             );
                           })()}
@@ -3156,6 +3366,457 @@ export function ScalevLeadsPage() {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG BROADCAST LEADS WABA / WAHA */}
+      <Dialog open={broadcastModalOpen} onOpenChange={(open) => !isBroadcastRunning && setBroadcastModalOpen(open)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <Send className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold flex items-center gap-2">
+                  <span>Broadcast Leads WhatsApp</span>
+                  <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-300">
+                    WABA & WAHA
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Kirim pesan penawaran promo atau reminder ke kontak leads yang belum closing secara massal.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {!isBroadcastRunning ? (
+            <div className="space-y-4 my-2">
+              {/* Step 1: Pilih Segmen */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-primary" />
+                    <span>1. Pilih Segmen Target Penerima:</span>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => loadBroadcastTargets(broadcastSegment)}
+                    disabled={isBroadcastTargetsLoading}
+                    className="h-6 text-[10px] text-muted-foreground hover:text-foreground gap-1 px-2"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isBroadcastTargetsLoading ? "animate-spin" : ""}`} />
+                    <span>Hitung Ulang</span>
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBroadcastSegment("unclosed_all");
+                      loadBroadcastTargets("unclosed_all");
+                    }}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all ${
+                      broadcastSegment === "unclosed_all"
+                        ? "bg-rose-500/10 border-rose-500/40 text-foreground font-semibold shadow-xs"
+                        : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">🔴 Belum Closing</span>
+                      <Radio className={`w-3.5 h-3.5 ${broadcastSegment === "unclosed_all" ? "text-rose-600 fill-rose-600" : "text-muted-foreground"}`} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Semua lead belum order</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBroadcastSegment("unclosed_no_fu");
+                      loadBroadcastTargets("unclosed_no_fu");
+                    }}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all ${
+                      broadcastSegment === "unclosed_no_fu"
+                        ? "bg-amber-500/10 border-amber-500/40 text-foreground font-semibold shadow-xs"
+                        : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">🟡 Belum FU</span>
+                      <Radio className={`w-3.5 h-3.5 ${broadcastSegment === "unclosed_no_fu" ? "text-amber-600 fill-amber-600" : "text-muted-foreground"}`} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Belum pernah di-follow up</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBroadcastSegment("unclosed_has_fu");
+                      loadBroadcastTargets("unclosed_has_fu");
+                    }}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all ${
+                      broadcastSegment === "unclosed_has_fu"
+                        ? "bg-blue-500/10 border-blue-500/40 text-foreground font-semibold shadow-xs"
+                        : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">🔵 Sudah Di-FU</span>
+                      <Radio className={`w-3.5 h-3.5 ${broadcastSegment === "unclosed_has_fu" ? "text-blue-600 fill-blue-600" : "text-muted-foreground"}`} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Sudah FU tapi belum closing</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBroadcastSegment("closed_all");
+                      loadBroadcastTargets("closed_all");
+                    }}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all ${
+                      broadcastSegment === "closed_all"
+                        ? "bg-emerald-500/10 border-emerald-500/40 text-foreground font-semibold shadow-xs"
+                        : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">🟢 Sudah Closing</span>
+                      <Radio className={`w-3.5 h-3.5 ${broadcastSegment === "closed_all" ? "text-emerald-600 fill-emerald-600" : "text-muted-foreground"}`} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Repeat order / Loyalitas promo</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={selectedLeadIds.length === 0}
+                    onClick={() => {
+                      setBroadcastSegment("selected");
+                      loadBroadcastTargets("selected");
+                    }}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all col-span-2 sm:col-span-2 ${
+                      selectedLeadIds.length === 0 ? "opacity-50 cursor-not-allowed" : ""
+                    } ${
+                      broadcastSegment === "selected"
+                        ? "bg-purple-500/10 border-purple-500/40 text-foreground font-semibold shadow-xs"
+                        : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400">
+                        ☑️ Centang Terpilih ({selectedLeadIds.length} lead)
+                      </span>
+                      <Radio className={`w-3.5 h-3.5 ${broadcastSegment === "selected" ? "text-purple-600 fill-purple-600" : "text-muted-foreground"}`} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {selectedLeadIds.length > 0 ? "Kirim ke baris yang dicentang di tabel" : "Pilih/centang baris di tabel dulu"}
+                    </p>
+                  </button>
+                </div>
+
+                {/* Target Counter Alert */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      Total Target Ditemukan:{" "}
+                      <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                        {isBroadcastTargetsLoading ? "Menghitung..." : `${broadcastTargets.length} Kontak Valid`}
+                      </strong>
+                    </span>
+                  </div>
+                  {dateFilterMode !== "all" && (
+                    <Badge variant="outline" className="text-[10px] bg-background/50">
+                      Filter Tanggal Aktif
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 2: Jalur Pengirim */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-primary" />
+                  <span>2. Jalur Pengirim WhatsApp:</span>
+                </label>
+                <Select value={broadcastSenderSession} onValueChange={setBroadcastSenderSession}>
+                  <SelectTrigger className="h-9 text-xs font-medium">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="waba" className="text-xs">
+                      🟢 WABA Resmi Meta (+62 856-4540-6949) — Direkomendasikan (Resmi & Jeda 1.5s)
+                    </SelectItem>
+                    <SelectItem value="default" className="text-xs">
+                      🔵 WAHA Slot 1: CS Utama ({wahaInfo?.mainSession?.me?.id?.split("@")[0] || "081337324522"})
+                    </SelectItem>
+                    <SelectItem value="campaign" className="text-xs">
+                      🟣 WAHA Slot 2: Kampanye Blast ({slot2Phone})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  {broadcastSenderSession === "waba"
+                    ? "✨ Menggunakan Meta Cloud API Resmi: Bebas risiko blokir WhatsApp, pengiriman cepat ~1.5 detik per pesan."
+                    : "⚠️ Menggunakan WAHA Unofficial: Sistem otomatis menyisipkan jeda acak 10-14 detik untuk keamanan nomor WhatsApp."}
+                </p>
+              </div>
+
+              {/* Step 3: Mode Pesan */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-primary" />
+                    <span>3. Konten Pesan Broadcast:</span>
+                  </label>
+                  {broadcastSenderSession === "waba" && (
+                    <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setBroadcastMode("custom")}
+                        className={`px-2 py-0.5 rounded-md transition-all ${
+                          broadcastMode === "custom" ? "bg-background text-foreground font-semibold shadow-xs" : "text-muted-foreground"
+                        }`}
+                      >
+                        Teks Kustom
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBroadcastMode("meta_template")}
+                        className={`px-2 py-0.5 rounded-md transition-all ${
+                          broadcastMode === "meta_template" ? "bg-background text-emerald-700 dark:text-emerald-300 font-semibold shadow-xs" : "text-muted-foreground"
+                        }`}
+                      >
+                        Template Meta (HSM)
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {broadcastMode === "meta_template" && broadcastSenderSession === "waba" ? (
+                  <div className="space-y-3 p-3 rounded-xl border bg-muted/20">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold text-foreground">
+                        Pilih Template Meta Terdaftar:
+                      </label>
+                      <Select value={broadcastMetaTemplateName} onValueChange={setBroadcastMetaTemplateName}>
+                        <SelectTrigger className="h-9 text-xs bg-background">
+                          <SelectValue placeholder="Pilih Template Resmi" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {approvedMetaTemplates.map((tpl: any) => (
+                            <SelectItem key={tpl.id} value={tpl.name} className="text-xs">
+                              <span className="font-semibold">{tpl.name}</span>
+                              <span className="text-[10px] text-muted-foreground ml-2 uppercase">({tpl.category} • {tpl.language})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-muted-foreground">Variabel 1 {"{{1}}"} (Nama):</label>
+                        <Input
+                          value={broadcastMetaParam1 || "{nama}"}
+                          onChange={(e) => setBroadcastMetaParam1(e.target.value)}
+                          placeholder="{nama}"
+                          className="h-8 text-xs bg-background"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-muted-foreground">Variabel 2 {"{{2}}"} (Produk):</label>
+                        <Input
+                          value={broadcastMetaParam2 || "{produk}"}
+                          onChange={(e) => setBroadcastMetaParam2(e.target.value)}
+                          placeholder="{produk}"
+                          className="h-8 text-xs bg-background"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Preset buttons */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-medium text-muted-foreground mr-1">Preset Cepat:</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setBroadcastMessage(
+                            "Halo Kak {nama}! 🍯🐝\n\nKabar baik dari Araa Honey! Pesanan *{produk}* Kakak masih kami simpan di antrean khusus.\n\nHari ini ada PROMO SPESIAL GRATIS ONGKIR dan bonus botol mini madu asli 100gr. Mau kami bantu proses kirim hari ini Kak? Boleh konfirmasi di sini yaa. 😊🙏"
+                          )
+                        }
+                        className="h-6 text-[10px] px-2 rounded-full"
+                      >
+                        🎁 Promo Free Ongkir + Botol
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setBroadcastMessage(
+                            "Halo Kak {nama}, salam hangat dari Araa Honey! 🍯\n\nKami mendapati Kakak sebelumnya sempat mengisi data pemesanan untuk *{produk}*.\n\nApakah ada kendala saat konfirmasi pembayaran atau pengiriman? Jika butuh sistem Bayar di Tempat (COD) atau transfer bank, CS kami siap bantu proseskan sekarang ya Kak! 🥰📦"
+                          )
+                        }
+                        className="h-6 text-[10px] px-2 rounded-full"
+                      >
+                        🚚 Reminder COD / Bantuan CS
+                      </Button>
+                    </div>
+
+                    <Textarea
+                      rows={4}
+                      value={broadcastMessage}
+                      onChange={(e) => setBroadcastMessage(e.target.value)}
+                      placeholder="Tulis pesan broadcast di sini... gunakan tag {nama} dan {produk}"
+                      className="text-xs font-mono leading-relaxed"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Gunakan tag: <code className="text-primary font-bold">{"{nama}"}</code> dan <code className="text-primary font-bold">{"{produk}"}</code></span>
+                      <span>{broadcastMessage.length} karakter</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Media URL (Optional) */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground flex items-center gap-1">
+                    <Image className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span>URL Banner / Gambar Promo (Opsional):</span>
+                  </label>
+                  <Input
+                    value={broadcastMediaUrl}
+                    onChange={(e) => setBroadcastMediaUrl(e.target.value)}
+                    placeholder="https://waha.araahoney.my.id/media/promo-madu.webp"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Security & Throttling Note */}
+              <div className="p-3 rounded-xl bg-muted/40 border border-muted/60 text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center justify-between font-semibold text-foreground">
+                  <span>Estimasi Durasi Pengiriman:</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                    {broadcastSenderSession === "waba"
+                      ? `~${Math.ceil((broadcastTargets.length * 2) / 60)} menit (${broadcastTargets.length} kontak via Meta)`
+                      : `~${Math.ceil((broadcastTargets.length * 12) / 60)} menit (${broadcastTargets.length} kontak via WAHA)`}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  Pengiriman berjalan langsung di browser ini. Mohon jangan menutup tab atau me-refresh halaman selama proses berlangsung.
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* Progress view when running */
+            <div className="space-y-4 my-3 py-2">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                    <span>Mengirim ke: <strong className="text-foreground">{broadcastProgress.currentName}</strong> ({broadcastProgress.currentPhone})</span>
+                  </span>
+                  <span className="font-mono font-bold text-emerald-600">
+                    {broadcastProgress.current} / {broadcastProgress.total} (
+                    {Math.round((broadcastProgress.current / (broadcastProgress.total || 1)) * 100)}%)
+                  </span>
+                </div>
+
+                <Progress
+                  value={(broadcastProgress.current / (broadcastProgress.total || 1)) * 100}
+                  className="h-2.5"
+                />
+
+                {broadcastProgress.countdown > 0 && (
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 animate-pulse">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Jeda keamanan anti-ban... pengiriman berikutnya dalam <strong>{broadcastProgress.countdown} detik</strong></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Counters */}
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs">
+                  <span className="text-muted-foreground block text-[11px]">Terkirim Sukses</span>
+                  <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                    {broadcastProgress.successCount}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs">
+                  <span className="text-muted-foreground block text-[11px]">Gagal / Skip</span>
+                  <span className="text-lg font-bold text-rose-600 dark:text-rose-400">
+                    {broadcastProgress.failedCount}
+                  </span>
+                </div>
+              </div>
+
+              {/* Live activity log */}
+              {broadcastProgress.logs.length > 0 && (
+                <div className="space-y-1.5 p-2.5 rounded-xl border bg-muted/20 text-[11px]">
+                  <span className="font-semibold text-muted-foreground block text-[10px] uppercase tracking-wider">
+                    Aktivitas Pengiriman Terbaru:
+                  </span>
+                  <div className="space-y-1">
+                    {broadcastProgress.logs.map((log, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          {log.status === "success" ? (
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <AlertCircle className="w-3 h-3 text-rose-600" />
+                          )}
+                          <span className="text-foreground font-medium">{log.name}</span> ({log.phone})
+                        </span>
+                        <span className="font-mono text-[10px]">{log.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+            {!isBroadcastRunning ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBroadcastModalOpen(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleExecuteBroadcast}
+                  disabled={broadcastTargets.length === 0 || isBroadcastTargetsLoading}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Mulai Broadcast ({broadcastTargets.length})</span>
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleStopBroadcast}
+                className="w-full gap-1.5 font-bold shadow-sm"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                <span>Hentikan Pengiriman Broadcast</span>
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

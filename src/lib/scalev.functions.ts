@@ -1404,6 +1404,195 @@ export const getLeadWaChatStatuses = createServerFn({ method: "POST" })
     }
   });
 
+// 13. Broadcast Leads Feature: Get Broadcast Target Leads
+export const getScalevBroadcastTargets = createServerFn({ method: "POST" })
+  .validator((data: {
+    segment: "unclosed_all" | "unclosed_no_fu" | "unclosed_has_fu" | "closed_all" | "selected";
+    selectedIds?: string[];
+    startDate?: string;
+    endDate?: string;
+  }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      let whereClauses: string[] = ["1=1"];
+      const params: any[] = [];
+
+      if (data.segment === "selected") {
+        if (!data.selectedIds || data.selectedIds.length === 0) {
+          await pool.end();
+          return { targets: [] };
+        }
+        params.push(data.selectedIds);
+        whereClauses.push(`sl.id = ANY($${params.length}::uuid[])`);
+      } else if (data.segment === "unclosed_all") {
+        whereClauses.push("sl.is_closed = false");
+      } else if (data.segment === "unclosed_no_fu") {
+        whereClauses.push("sl.is_closed = false");
+        whereClauses.push("(sl.follow_up_count IS NULL OR sl.follow_up_count = 0)");
+      } else if (data.segment === "unclosed_has_fu") {
+        whereClauses.push("sl.is_closed = false");
+        whereClauses.push("(sl.follow_up_count > 0)");
+      } else if (data.segment === "closed_all") {
+        whereClauses.push("sl.is_closed = true");
+      }
+
+      if (data.startDate) {
+        params.push(formatWibFilterStart(data.startDate));
+        whereClauses.push(`sl.created_at >= $${params.length}`);
+      }
+
+      if (data.endDate) {
+        params.push(formatWibFilterEnd(data.endDate));
+        whereClauses.push(`sl.created_at <= $${params.length}`);
+      }
+
+      const query = `
+        SELECT 
+          sl.id, 
+          sl.customer_name, 
+          sl.customer_phone, 
+          sl.product_name, 
+          COALESCE(sl.follow_up_step, sl.follow_up_count, 0) AS follow_up_step,
+          COALESCE(sl.follow_up_count, 0) AS follow_up_count,
+          sl.is_closed,
+          sl.followed_up_at,
+          sl.last_fu_notes,
+          sl.created_at
+        FROM scalev_leads sl
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY sl.created_at DESC
+        LIMIT 2500
+      `;
+
+      const res = await pool.query(query, params);
+      await pool.end();
+      return { targets: res.rows || [] };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[getScalevBroadcastTargets Error]:", err);
+      throw new Error(err.message || "Gagal mengambil data target broadcast");
+    }
+  });
+
+// 14. Broadcast Leads Feature: Send Individual Broadcast Message
+export const sendScalevBroadcastDirect = createServerFn({ method: "POST" })
+  .validator((data: {
+    leadId: string;
+    phone: string;
+    customerName: string;
+    productName?: string;
+    message?: string;
+    senderSession?: string; // "waba" | "default" | "campaign"
+    mediaUrl?: string;
+    mediaType?: "image" | "video";
+    template?: {
+      name: string;
+      language?: string;
+      bodyParameters?: string[];
+      namedParameters?: Record<string, string>;
+      headerImageUrl?: string;
+      headerVideoUrl?: string;
+    };
+    broadcastTag?: string;
+  }) => data)
+  .handler(async ({ data }) => {
+    let pool: pg.Pool | null = null;
+    try {
+      pool = new pg.Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false } });
+
+      const scalevCfgRes = await pool.query("SELECT value FROM app_settings WHERE key = 'scalev_config'");
+      const scalevCfg = scalevCfgRes.rows[0]?.value || {};
+
+      const activeSession = data.senderSession || scalevCfg.senderSession || "waba";
+      const rawPhone = normalizePhone(data.phone);
+      const chatId = `${rawPhone}@c.us`;
+
+      // Compose message text with placeholder replacement
+      let messageText = (data.message || "").trim();
+      if (!messageText && !data.template) {
+        messageText = `Halo Kak ${data.customerName || "Pelanggan"}, ada kabar baik mengenai pesanan ${data.productName || "Madu Araa"} Kakak! 🍯✨`;
+      } else if (messageText) {
+        messageText = messageText
+          .replace(/{nama}/g, data.customerName || "Pelanggan")
+          .replace(/{produk}/g, data.productName || "Madu Araa")
+          .replace(/{kontak}/g, data.phone || "");
+      } else if (data.template) {
+        messageText = `[Meta Broadcast Template: ${data.template.name}]`;
+      }
+
+      // Fetch configs for dispatcher
+      const wabaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waba_config'");
+      const wabaConfig = wabaConfigRes.rows[0]?.value || {};
+
+      const wahaConfigRes = await pool.query("SELECT value FROM app_settings WHERE key = 'waha_config'");
+      const wahaConfig = wahaConfigRes.rows[0]?.value || {};
+
+      const channel = activeSession === "waba" ? "waba" : (activeSession === "default" ? "waha_main" : "waha_campaign");
+
+      const res = await sendWhatsAppMessage({
+        to: rawPhone,
+        message: messageText,
+        mediaUrl: data.mediaUrl?.trim() || undefined,
+        mediaType: data.mediaType,
+        channel,
+        template: data.template,
+        wabaConfig: {
+          phoneNumberId: wabaConfig.phone_number_id || wabaConfig.phoneNumberId || "1289613457572802",
+          permanentToken: wabaConfig.permanent_token || wabaConfig.permanentToken,
+        },
+        wahaConfig: {
+          wahaUrl: wahaConfig.wahaUrl,
+          apiKey: wahaConfig.apiKey,
+          sessionName: activeSession,
+        },
+      });
+
+      if (!res.success) {
+        console.error("[sendScalevBroadcastDirect Error]:", res.error);
+        throw new Error(`Gagal mengirim via ${channel.toUpperCase()}: ${res.error}`);
+      }
+
+      const note = data.broadcastTag || "Broadcast WA";
+      await pool.query(
+        `UPDATE scalev_leads 
+         SET followed_up_at = now(), 
+             follow_up_count = follow_up_count + 1, 
+             follow_up_session = $1, 
+             last_fu_notes = $2,
+             updated_at = now() 
+         WHERE id = $3`,
+        [activeSession, note, data.leadId]
+      );
+
+      // Record in whatsapp_chat_logs
+      try {
+        await pool.query(
+          `INSERT INTO whatsapp_chat_logs (chat_id, customer_phone, customer_name, message, direction, channel, created_at)
+           VALUES ($1, $2, $3, $4, 'outgoing', $5, now())`,
+          [chatId, rawPhone, data.customerName, messageText, channel]
+        );
+      } catch (e) {
+        console.warn("Could not insert chat log:", e);
+      }
+
+      await pool.end();
+      return {
+        ok: true,
+        recipient: chatId,
+        channel,
+        messageId: res.messageId,
+        sentAt: new Date().toISOString(),
+      };
+    } catch (err: any) {
+      if (pool) try { await pool.end(); } catch (e) {}
+      console.error("[sendScalevBroadcastDirect Error]:", err);
+      throw new Error(err.message || "Gagal mengirim pesan broadcast");
+    }
+  });
+
 
 
 
