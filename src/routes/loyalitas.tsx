@@ -92,7 +92,7 @@ function LoyaltyPage() {
   const [hideInvalidPhone, setHideInvalidPhone] = useState(true);
   const [sortBy, setSortBy] = useState<"oldest" | "newest" | "spent_desc" | "count_desc">("oldest");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(20);
 
   // Local state tracking sent customers
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
@@ -2209,10 +2209,48 @@ function LoyaltyPage() {
 
           {/* Pagination Controls */}
           {filteredCustomers.length > 0 && (
-            <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
-              <div>
-                Menampilkan {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredCustomers.length)} dari {filteredCustomers.length.toLocaleString("id-ID")} pelanggan
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-muted/30 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>
+                  Menampilkan{" "}
+                  <strong className="text-foreground">
+                    {(currentPage - 1) * itemsPerPage + 1}
+                  </strong>{" "}
+                  -{" "}
+                  <strong className="text-foreground">
+                    {Math.min(currentPage * itemsPerPage, filteredCustomers.length)}
+                  </strong>{" "}
+                  dari{" "}
+                  <strong className="text-foreground">
+                    {filteredCustomers.length.toLocaleString("id-ID")}
+                  </strong>{" "}
+                  pelanggan
+                </span>
+
+                <div className="flex items-center gap-1.5 pl-2 border-l border-muted/60">
+                  <span className="text-[11px] text-muted-foreground">Tampilkan:</span>
+                  <Select
+                    value={String(itemsPerPage)}
+                    onValueChange={(val) => {
+                      setItemsPerPage(Number(val));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-[75px] text-xs font-semibold bg-background border-muted shadow-2xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="20" className="text-xs">20</SelectItem>
+                      <SelectItem value="50" className="text-xs">50</SelectItem>
+                      <SelectItem value="100" className="text-xs">100</SelectItem>
+                      <SelectItem value="250" className="text-xs">250</SelectItem>
+                      <SelectItem value="500" className="text-xs">500</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[11px] text-muted-foreground">/ hal</span>
+                </div>
               </div>
+
               <div className="flex items-center gap-1.5">
                 <Button
                   size="sm"
