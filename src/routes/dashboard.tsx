@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAuth } from "@/components/require-auth";
@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { formatIDR } from "@/lib/theme";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, Droplet, RotateCcw } from "lucide-react";
+import { AlertTriangle, Droplet, RotateCcw, ChevronDown, Layers, ArrowUpRight } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ChannelBreakdown3D } from "@/components/dashboard/channel-breakdown-3d";
 
 export const Route = createFileRoute("/dashboard")({ component: () => <RequireAuth><DashboardPage /></RequireAuth> });
@@ -125,6 +126,9 @@ function DashboardPage() {
     },
   });
 
+  const akasiaRow = (dandang?.rows || []).find((r: any) => (r.honey_type || "").toLowerCase().includes("akasia"));
+  const akasiaKg = Number(akasiaRow?.kg_remaining ?? 0);
+
   const currentMonthKey = today.slice(0, 7);
   const { data: monthReturnStats } = useQuery({
     queryKey: ["dashboard-month-return-stats", currentMonthKey],
@@ -195,7 +199,59 @@ function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        <MetricCard label="Saldo Madu Dandang" value={`${Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg`} />
+        <MetricCard 
+          label="Saldo Madu Dandang" 
+          value={`${Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg`}
+          subValue={
+            <div className="flex items-center justify-between gap-1 text-[11px] mt-1.5">
+              <span className="truncate font-medium text-amber-700 dark:text-amber-300">
+                🍯 Akasia: <strong>{akasiaKg.toFixed(2)} kg</strong>
+              </span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline bg-primary/10 px-1.5 py-0.5 rounded cursor-pointer shrink-0">
+                    Rincian <ChevronDown className="w-2.5 h-2.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-3 shadow-xl z-50 bg-popover" align="start">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/50">
+                    <div className="font-bold text-xs">Stok Madu di Dandang</div>
+                    <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full font-semibold">
+                      Total: {Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {(dandang?.rows ?? []).map((r: any) => (
+                      <div key={r.honey_type} className="flex items-center justify-between p-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 text-xs transition-colors">
+                        <div>
+                          <div className="font-semibold text-foreground flex items-center gap-1.5">
+                            {r.honey_type}
+                            {(r.honey_type || "").toLowerCase().includes("akasia") && (
+                              <span className="text-[9px] bg-amber-500/20 text-amber-700 dark:text-amber-300 px-1.5 py-0.2 rounded font-bold">Utama</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">HPP {formatIDR(r.avg_cost_per_kg)}/kg</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-sm text-foreground">{Number(r.kg_remaining ?? 0).toFixed(2)} kg</div>
+                          {Number(r.kg_remaining ?? 0) <= Number(r.min_kg ?? 5) && (
+                            <span className="text-[9px] text-destructive font-medium">Batas Menipis</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2 mt-2 border-t border-border/50 flex justify-between items-center text-[11px]">
+                    <span className="text-muted-foreground text-[10px]">Perlu isi ulang?</span>
+                    <Link to="/stok/pindah-wadah" className="font-semibold text-primary hover:underline flex items-center gap-1">
+                      Pindah Wadah / Tuang Jerigen &rarr;
+                    </Link>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          }
+        />
         <MetricCard label="Order Hari Ini" value={String(ordersToday?.length ?? 0)} />
         {hasPermission("keuangan") ? (
           <>
@@ -234,37 +290,103 @@ function DashboardPage() {
         />
       </div>
 
-      {/* Rincian Madu Keluar Hari Ini */}
-      <Card className="rounded-2xl border-muted/50 shadow-xs overflow-hidden bg-card transition-all duration-300 hover:shadow-md">
-        <CardHeader className="pb-3 border-b border-muted/20 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
-              <Droplet className="w-4 h-4" />
+      {/* Grid: Saldo Stok Dandang & Madu Keluar Hari Ini */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Card 1: Saldo Madu Dandang Siap Kemas */}
+        <Card className="rounded-2xl border-muted/50 shadow-xs overflow-hidden bg-card transition-all duration-300 hover:shadow-md">
+          <CardHeader className="pb-3 border-b border-muted/20 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Layers className="w-4 h-4" />
+              </div>
+              Saldo Madu di Dandang (Siap Kemas)
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-foreground bg-muted px-2.5 py-0.5 rounded-full">
+                Total: {Number(dandang?.kg_remaining ?? 0).toFixed(2)} kg
+              </span>
+              <Link 
+                to="/stok/pindah-wadah" 
+                className="text-[10px] text-primary hover:underline flex items-center gap-0.5 font-medium"
+                title="Buka Jerigen & Tuang ke Dandang"
+              >
+                Pindah Wadah <ArrowUpRight className="w-3 h-3" />
+              </Link>
             </div>
-            Madu Keluar Hari Ini
-          </CardTitle>
-          <span className="text-[10px] bg-muted px-2.5 py-0.5 rounded-full text-muted-foreground font-semibold">
-            Real-time
-          </span>
-        </CardHeader>
-        <CardContent className="pt-5">
-          {Object.keys(honeyToday || {}).length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6">Belum ada madu yang keluar dari pesanan hari ini.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Object.entries(honeyToday || {}).map(([type, kg]) => (
-                <div key={type} className="flex justify-between items-center p-4 rounded-xl bg-gradient-to-br from-amber-500/5 to-amber-500/[0.01] border border-amber-500/10 hover:border-amber-500/20 transition-all">
-                  <div className="space-y-0.5">
-                    <div className="text-xs font-bold text-foreground">{type}</div>
-                    <div className="text-[10px] text-muted-foreground">Volume keluar</div>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {(dandang?.rows ?? []).map((r: any) => {
+                const kg = Number(r.kg_remaining ?? 0);
+                const isAkasia = (r.honey_type || "").toLowerCase().includes("akasia");
+                return (
+                  <div 
+                    key={r.honey_type} 
+                    className={`p-3 rounded-xl border transition-all flex flex-col justify-between ${
+                      isAkasia 
+                        ? "bg-amber-500/10 border-amber-500/30 shadow-xs" 
+                        : "bg-muted/20 border-muted/40 hover:border-muted/70"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-bold truncate ${isAkasia ? "text-amber-700 dark:text-amber-300" : "text-foreground"}`}>
+                          {r.honey_type}
+                        </span>
+                        {isAkasia && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1 rounded font-extrabold">
+                            Utama
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        HPP {formatIDR(r.avg_cost_per_kg)}/kg
+                      </div>
+                    </div>
+                    <div className="mt-2 text-right">
+                      <div className={`text-base font-black ${isAkasia ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
+                        {kg.toFixed(2)} <span className="text-[10px] font-normal text-muted-foreground">kg</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-sm font-extrabold text-amber-500">{Number(kg).toFixed(2)} kg</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Rincian Madu Keluar Hari Ini */}
+        <Card className="rounded-2xl border-muted/50 shadow-xs overflow-hidden bg-card transition-all duration-300 hover:shadow-md">
+          <CardHeader className="pb-3 border-b border-muted/20 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
+                <Droplet className="w-4 h-4" />
+              </div>
+              Madu Keluar Hari Ini
+            </CardTitle>
+            <span className="text-[10px] bg-muted px-2.5 py-0.5 rounded-full text-muted-foreground font-semibold">
+              Real-time
+            </span>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {Object.keys(honeyToday || {}).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">Belum ada madu yang keluar dari pesanan hari ini.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5">
+                {Object.entries(honeyToday || {}).map(([type, kg]) => (
+                  <div key={type} className="flex justify-between items-center p-3 rounded-xl bg-gradient-to-br from-amber-500/5 to-amber-500/[0.01] border border-amber-500/10 hover:border-amber-500/20 transition-all">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-bold text-foreground">{type}</div>
+                      <div className="text-[10px] text-muted-foreground">Volume keluar</div>
+                    </div>
+                    <div className="text-sm font-extrabold text-amber-500">{Number(kg).toFixed(2)} kg</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Breakdown Saluran Penjualan 3D (Meta Ads, WABA, Reseller, TikTok, Shopee, dll) */}
       <ChannelBreakdown3D showFinancials={hasPermission("keuangan")} />
@@ -304,8 +426,8 @@ function MetricCard({
 }: { 
   label: string; 
   value: string; 
-  subValue?: string;
-  badge?: string;
+  subValue?: React.ReactNode;
+  badge?: React.ReactNode;
   badgeColor?: "emerald" | "amber" | "rose";
   accent?: boolean;
 }) {
@@ -315,20 +437,26 @@ function MetricCard({
         <div className="flex items-center justify-between">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
           {badge && (
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-              badgeColor === "emerald" 
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
-                : badgeColor === "amber" 
-                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" 
-                : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-            }`}>
-              {badge}
-            </span>
+            typeof badge === "string" ? (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                badgeColor === "emerald" 
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
+                  : badgeColor === "amber" 
+                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" 
+                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+              }`}>
+                {badge}
+              </span>
+            ) : badge
           )}
         </div>
         <div className="text-2xl font-bold mt-2">{value}</div>
         {subValue && (
-          <div className="text-[11px] text-muted-foreground mt-1 truncate">{subValue}</div>
+          typeof subValue === "string" ? (
+            <div className="text-[11px] text-muted-foreground mt-1 truncate">{subValue}</div>
+          ) : (
+            subValue
+          )
         )}
       </CardContent>
     </Card>
