@@ -108,6 +108,7 @@ export interface ChannelOrderRow {
   id: string;
   customer_name: string;
   customer_phone: string;
+  customer_address?: string;
   shipping_address?: string;
   tracking_number?: string;
   expedition?: string;
@@ -382,7 +383,7 @@ export const getChannelOrderList = createServerFn({ method: "POST" })
             o.channel,
             o.customer_name,
             o.customer_phone,
-            o.shipping_address,
+            o.customer_address,
             o.tracking_number,
             o.expedition,
             o.payment_method,
@@ -448,7 +449,7 @@ export const getChannelOrderList = createServerFn({ method: "POST" })
           LEFT JOIN recent_crm rc ON rc.phone = t.norm_phone
         )
         SELECT 
-          c.id, c.customer_name, c.customer_phone, c.shipping_address, c.tracking_number, c.expedition, c.payment_method,
+          c.id, c.customer_name, c.customer_phone, c.customer_address, c.tracking_number, c.expedition, c.payment_method,
           c.subtotal_gross::numeric, c.amount_received::numeric, c.net_revenue::numeric, c.cogs::numeric, c.created_at, c.cat_key,
           COALESCE(
             json_agg(
@@ -464,7 +465,7 @@ export const getChannelOrderList = createServerFn({ method: "POST" })
         LEFT JOIN order_items oi ON oi.order_id = c.id
         LEFT JOIN product_sizes ps ON ps.id = oi.size_id
         WHERE ($3 = 'all' OR c.cat_key = $3)
-        GROUP BY c.id, c.customer_name, c.customer_phone, c.shipping_address, c.tracking_number, c.expedition, c.payment_method, c.subtotal_gross, c.amount_received, c.net_revenue, c.cogs, c.created_at, c.cat_key
+        GROUP BY c.id, c.customer_name, c.customer_phone, c.customer_address, c.tracking_number, c.expedition, c.payment_method, c.subtotal_gross, c.amount_received, c.net_revenue, c.cogs, c.created_at, c.cat_key
         ORDER BY c.created_at DESC;
       `;
 
@@ -479,7 +480,8 @@ export const getChannelOrderList = createServerFn({ method: "POST" })
           id: r.id,
           customer_name: r.customer_name || "Pelanggan",
           customer_phone: r.customer_phone || "-",
-          shipping_address: r.shipping_address || "",
+          customer_address: r.customer_address || "",
+          shipping_address: r.customer_address || "",
           tracking_number: r.tracking_number || "",
           expedition: r.expedition || "",
           payment_method: r.payment_method || "",
