@@ -1,8 +1,25 @@
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatIDR } from "@/lib/theme";
-import { getSalesChannelBreakdown, ChannelStat, ChannelBreakdownResponse } from "@/lib/dashboard.functions";
+import { 
+  getSalesChannelBreakdown, 
+  getChannelOrderList,
+  ChannelStat, 
+  ChannelBreakdownResponse,
+  ChannelOrderListResponse,
+  ChannelOrderRow 
+} from "@/lib/dashboard.functions";
 import { 
   Package, 
   DollarSign, 
@@ -11,7 +28,11 @@ import {
   Calendar, 
   PieChart as PieIcon, 
   Sparkles,
-  ArrowUpRight
+  ArrowUpRight,
+  Search,
+  X,
+  Phone,
+  Loader2
 } from "lucide-react";
 
 type MetricType = "paket" | "omzet" | "laba";
@@ -77,6 +98,10 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
+  // Modal / Pop-up order list state
+  const [selectedChannelForOrders, setSelectedChannelForOrders] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const { data, isLoading } = useQuery<ChannelBreakdownResponse>({
     queryKey: ["dashboard-channel-breakdown", period],
     queryFn: () => getSalesChannelBreakdown({ data: { period } }),
@@ -87,6 +112,49 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
   const totalPaket = data?.total_paket || 0;
   const totalOmzet = data?.total_omzet || 0;
   const totalLaba = data?.total_laba_kotor || 0;
+
+  // Query orders for selected channel popup
+  const { data: channelOrdersData, isLoading: isLoadingOrders } = useQuery<ChannelOrderListResponse>({
+    queryKey: ["channel-order-list", period, selectedChannelForOrders],
+    queryFn: () => getChannelOrderList({ data: { period, channelKey: selectedChannelForOrders! } }),
+    enabled: !!selectedChannelForOrders,
+  });
+
+  const selectedMeta = useMemo(() => {
+    if (!selectedChannelForOrders) return null;
+    return channels.find((c) => c.key === selectedChannelForOrders) || null;
+  }, [channels, selectedChannelForOrders]);
+
+  const periodLabel = useMemo(() => {
+    if (period === "today") return "Hari Ini";
+    if (period === "yesterday") return "Kemarin";
+    if (period === "7days") return "7 Hari Terakhir";
+    if (period === "month") return "Bulan Ini";
+    return "";
+  }, [period]);
+
+  const filteredOrders = useMemo(() => {
+    if (!channelOrdersData?.orders) return [];
+    if (!searchQuery.trim()) return channelOrdersData.orders;
+    const q = searchQuery.toLowerCase().trim();
+    return channelOrdersData.orders.filter((o) => {
+      const name = (o.customer_name || "").toLowerCase();
+      const phone = (o.customer_phone || "").toLowerCase();
+      const tracking = (o.tracking_number || "").toLowerCase();
+      const expedition = (o.expedition || "").toLowerCase();
+      const items = (o.items || [])
+        .map((it) => `${it.honey_type} ${it.size_name}`)
+        .join(" ")
+        .toLowerCase();
+      return (
+        name.includes(q) ||
+        phone.includes(q) ||
+        tracking.includes(q) ||
+        expedition.includes(q) ||
+        items.includes(q)
+      );
+    });
+  }, [channelOrdersData?.orders, searchQuery]);
 
   // Geometry configuration
   const svgSize = 360;
@@ -382,6 +450,7 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                             opacity: hasHover && !isHovered ? 0.45 : 1,
                           }}
                           onMouseEnter={() => setHoveredKey(s.stat.key)}
+                          onClick={() => setSelectedChannelForOrders(s.stat.key)}
                         >
                           {/* 1. Extruded Bottom Face (3D Thickness Wall) */}
                           <path
@@ -513,8 +582,8 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
             <div className="lg:col-span-6 space-y-2.5">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center justify-between">
                 <span>Rincian Saluran ({channels.length} Aktif)</span>
-                <span className="text-[11px] font-normal normal-case text-muted-foreground">
-                  Hover kartu untuk menyorot
+                <span className="text-[11px] font-semibold text-primary flex items-center gap-1">
+                  Klik kartu untuk daftar order <ArrowUpRight className="w-3 h-3" />
                 </span>
               </div>
 
@@ -526,7 +595,8 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                       key={c.key}
                       onMouseEnter={() => setHoveredKey(c.key)}
                       onMouseLeave={() => setHoveredKey(null)}
-                      className={`relative p-3.5 rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden ${
+                      onClick={() => setSelectedChannelForOrders(c.key)}
+                      className={`group relative p-3.5 rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden ${
                         isHovered
                           ? "bg-muted/70 shadow-md scale-[1.02]"
                           : "bg-muted/20 hover:bg-muted/40 border-muted/60"
@@ -535,6 +605,7 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                         borderLeftColor: c.color,
                         borderLeftWidth: "4px",
                       }}
+                      title={`Klik untuk melihat daftar order ${c.label}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
@@ -543,15 +614,18 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
                             {c.label}
                           </span>
                         </div>
-                        <span
-                          className="text-[11px] font-extrabold px-1.5 py-0.5 rounded-md"
-                          style={{
-                            backgroundColor: `${c.color}20`,
-                            color: c.color,
-                          }}
-                        >
-                          {c.total_paket} pkt
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span
+                            className="text-[11px] font-extrabold px-1.5 py-0.5 rounded-md"
+                            style={{
+                              backgroundColor: `${c.color}20`,
+                              color: c.color,
+                            }}
+                          >
+                            {c.total_paket} pkt
+                          </span>
+                          <ArrowUpRight className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </div>
                       </div>
 
                       {/* Progress bar of percentage */}
@@ -618,6 +692,217 @@ export function ChannelBreakdown3D({ showFinancials = true }: { showFinancials?:
             </div>
           </div>
         )}
+
+        {/* POPUP / MODAL DAFTAR ORDER PENJUALAN PER SALURAN */}
+        <Dialog
+          open={!!selectedChannelForOrders}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedChannelForOrders(null);
+              setSearchQuery("");
+            }
+          }}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden sm:rounded-2xl border-muted/80 shadow-2xl">
+            {/* Header */}
+            <div
+              className="p-5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-white transition-all"
+              style={{
+                background: `linear-gradient(135deg, ${selectedMeta?.color || "#3b82f6"} 0%, #0f172a 100%)`,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center text-2xl shadow-inner border border-white/20">
+                  {selectedMeta?.icon || "📦"}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <DialogTitle className="text-xl font-bold text-white tracking-tight">
+                      {selectedMeta?.label}
+                    </DialogTitle>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/20 font-bold backdrop-blur-sm border border-white/30 text-white">
+                      {channelOrdersData?.totalOrders ?? 0} Pesanan
+                    </span>
+                  </div>
+                  <DialogDescription className="text-xs text-white/80 mt-0.5">
+                    Periode: <strong className="text-white">{periodLabel}</strong> • Rincian data pesanan & pelanggan
+                  </DialogDescription>
+                </div>
+              </div>
+
+              <div className="bg-black/30 px-4 py-2 rounded-xl backdrop-blur-md border border-white/15 text-left sm:text-right">
+                <div className="text-[11px] text-white/70 uppercase tracking-wider font-semibold">Total Omzet Saluran</div>
+                <div className="text-base font-black text-white">
+                  {formatIDR(channelOrdersData?.totalOmzet ?? 0)}
+                </div>
+              </div>
+            </div>
+
+            {/* Search & Quick Stats Bar */}
+            <div className="p-3.5 bg-muted/40 border-b flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Cari nama pelanggan, nomor WA, ekspedisi, no resi, atau produk..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-8 h-9 bg-background text-sm rounded-lg"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground font-medium self-center sm:self-auto">
+                Menampilkan <strong className="text-foreground">{filteredOrders.length}</strong> dari {channelOrdersData?.totalOrders ?? 0} pesanan
+              </div>
+            </div>
+
+            {/* Scrollable Orders List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2.5 max-h-[58vh]">
+              {isLoadingOrders ? (
+                <div className="py-16 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-sm font-medium">Mengambil daftar pesanan {selectedMeta?.label}...</p>
+                </div>
+              ) : filteredOrders.length === 0 ? (
+                <div className="py-16 text-center text-muted-foreground space-y-2">
+                  <Package className="w-12 h-12 mx-auto opacity-30" />
+                  <p className="text-sm font-bold text-foreground">
+                    {searchQuery ? "Tidak ada pesanan yang sesuai pencarian" : "Belum ada pesanan pada saluran ini"}
+                  </p>
+                  <p className="text-xs">
+                    {searchQuery
+                      ? `Coba periksa kembali kata kunci "${searchQuery}"`
+                      : `Transaksi untuk periode ${periodLabel} akan tercatat otomatis saat masuk`}
+                  </p>
+                </div>
+              ) : (
+                filteredOrders.map((ord, idx) => {
+                  const dateObj = new Date(ord.created_at);
+                  const timeStr =
+                    dateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
+                  const dateStr = dateObj.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+                  const cleanPhone = (ord.customer_phone || "").replace(/[^0-9]/g, "");
+                  const normPhone = cleanPhone.startsWith("0")
+                    ? "62" + cleanPhone.substring(1)
+                    : cleanPhone.startsWith("8")
+                    ? "62" + cleanPhone
+                    : cleanPhone;
+                  const waLink = `https://wa.me/${normPhone}`;
+
+                  return (
+                    <div
+                      key={ord.id}
+                      className="p-3.5 rounded-xl border border-muted/80 bg-card hover:bg-muted/30 hover:border-muted-foreground/30 transition-all duration-150 space-y-2 shadow-sm"
+                    >
+                      {/* Top Bar: Number, Name, Phone, Date, Omzet */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
+                            #{idx + 1}
+                          </span>
+                          <span className="font-bold text-sm text-foreground">{ord.customer_name}</span>
+                          {ord.customer_phone && ord.customer_phone !== "-" && (
+                            <a
+                              href={waLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-2 py-0.5 rounded-full transition-colors border border-emerald-200/50"
+                              title="Chat WhatsApp Konsumen"
+                            >
+                              <Phone className="w-2.5 h-2.5" />
+                              {ord.customer_phone}
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3">
+                          <span className="text-[11px] text-muted-foreground">
+                            {period !== "today" && period !== "yesterday" ? `${dateStr}, ` : ""}
+                            {timeStr}
+                          </span>
+                          <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                            {formatIDR(ord.net_revenue)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bottom Bar: Honey Items and Shipping/Payment badges */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-muted/40 text-xs">
+                        {/* Honey Items */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {ord.items && ord.items.length > 0 ? (
+                            ord.items.map((it, itemIdx) => (
+                              <span
+                                key={itemIdx}
+                                className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
+                              >
+                                🍯 {it.qty}x {it.honey_type} {it.size_name || ""}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground italic">
+                              Paket Madu
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Badges and Details Link */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {ord.payment_method && (
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] uppercase font-bold ${
+                                ord.payment_method.toUpperCase().includes("COD")
+                                  ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                  : "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                              }`}
+                            >
+                              {ord.payment_method}
+                            </Badge>
+                          )}
+                          {ord.expedition && (
+                            <span className="text-[11px] text-muted-foreground font-medium">
+                              {ord.expedition} {ord.tracking_number ? `(${ord.tracking_number})` : ""}
+                            </span>
+                          )}
+                          <a
+                            href={`/penjualan?search=${encodeURIComponent(ord.customer_name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] font-semibold text-primary hover:underline inline-flex items-center gap-0.5 ml-1"
+                          >
+                            Buka di Penjualan <ArrowUpRight className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3.5 bg-muted/20 border-t flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                💡 Klik <strong className="text-foreground">Buka di Penjualan</strong> untuk melihat faktur resi atau detail lengkap pesanan.
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedChannelForOrders(null)}
+                className="h-8 text-xs font-semibold"
+              >
+                Tutup
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
